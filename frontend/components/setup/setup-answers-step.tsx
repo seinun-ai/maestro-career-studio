@@ -5,6 +5,7 @@ import { Check } from "lucide-react";
 
 import { useAdoptServed, useSaveAnswers } from "@/components/profile/autofill-profile";
 import { FillFromResumeButton, useFillFromResume } from "@/components/profile/contact";
+import { CITIZEN_HINT, CitizenshipPicker } from "@/components/profile/citizenship-picker";
 import { DiversityConsentSwitch, useDiversityConsent } from "@/components/profile/diversity-consent";
 import { FieldGrid } from "@/components/profile/field-control";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
@@ -22,17 +23,20 @@ import {
 import {
   RACE_STAYS_YOURS,
   booleanAnswer,
+  citizenshipEntries,
+  citizenshipField,
   groupFields,
   groupValues,
   isBlank,
   permitEntry,
-  permitQuestions,
   profileForEditing,
   staleAnswers,
 } from "@/lib/autofill-options";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import {
+  permitAsks,
   questionAnswered,
+  withCitizenshipAnswer,
   withDiversityAnswer,
   withDiversityDeclined,
   withPermitAnswer,
@@ -46,6 +50,28 @@ import { cn } from "@/lib/utils";
 const NOTICE_CHOICES = ["Now", "2 weeks", "1 month", "3 months"] as const;
 
 type Update = (next: (current: AutofillProfile) => AutofillProfile) => void;
+
+/** The form answers Setup edits, and their save: what `useSetupAnswers` returns. */
+export type SetupAnswers = {
+  value: AutofillProfile;
+  update: Update;
+  pending: boolean;
+  failed: boolean;
+  retry: () => void;
+};
+
+/**
+ * The form answers, held by the flow (components/setup/setup-flow.tsx) so Continue can wait for a save, and
+ * saved as Profile saves them (`useSaveAnswers`: a save that changes a citizenship reads the questions again
+ * before it lands). Each country's legacy pair is read as typed answers, and a newer copy (the Companion learned
+ * an answer while this tab was away) is taken only while every edit is on the server.
+ */
+export function useSetupAnswers(served: AutofillProfile): SetupAnswers {
+  const save = useSaveAnswers();
+  const answers = useAutosave<AutofillProfile>(profileForEditing(served), (next) => save.mutateAsync(next));
+  useAdoptServed(served, answers.adopt);
+  return answers;
+}
 
 /** A one-of-a-few answer: buttons that say which is chosen (`aria-pressed` and a Check), in a named group. */
 function Choices<T extends string | boolean>({
@@ -86,10 +112,11 @@ const YES_NO = [
 ] as const;
 
 /**
- * Step 4, the answers job forms ask, one question at a time. Work permits come first, one card per
- * country you apply in, named by its heading and asked in that country's words (as served for it: the visa
- * status only where that country asks it; each answer's group is labelled by the country and the question,
- * so a country's answer is never asked or heard without it); then notice period and
+ * Step 4, the answers job forms ask, one question at a time. Citizenship comes first, with its country picker,
+ * since it settles some work permits. Then one card per country you apply in that is left to ask, named by its
+ * heading and asked in that country's words (as served for it: the visa status only where that country asks
+ * it; each answer's group is labelled by the country and the question, so a country's answer is never asked or
+ * heard without it), and only what your citizenship does not settle (`permitAsks`); then notice period and
  * relocation; then diversity, only for a country with a checked set. Each answer saves to the autofill
  * profile as you go (`PUT /api/settings/autofill`, the country's own entry in `work_auth_by_country`, never
  * the one-set `work_auth`). Contact fields fill from career history in place. Diversity is answered or
@@ -97,7 +124,8 @@ const YES_NO = [
  * Profile's switch, which sits beside the answers here too, D10).
  */
 export function SetupAnswersStep({
-  profile,
+  answers,
+  opened,
   questionSet,
   consent,
   questions,
@@ -108,7 +136,9 @@ export function SetupAnswersStep({
   onDiversity,
   headingRef,
 }: {
-  profile: AutofillProfile;
+  answers: SetupAnswers;
+  /** The answers when Setup opened: a permit answered then is not asked again (`permitAsks`). */
+  opened: AutofillProfile;
   questionSet: QuestionSet;
   consent: EeoConsent;
   questions: FormQuestion[];
@@ -119,11 +149,6 @@ export function SetupAnswersStep({
   onDiversity: (choice: DiversityChoice) => void;
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) {
-  // Saved as Profile saves: each country's legacy pair read as typed answers, and a newer copy (the Companion
-  // learned an answer while this tab was away) taken only while every edit is on the server.
-  const save = useSaveAnswers();
-  const answers = useAutosave<AutofillProfile>(profileForEditing(profile), (next) => save.mutateAsync(next));
-  useAdoptServed(profile, answers.adopt);
   const current = questions[question];
   const questionRef = useRef<HTMLHeadingElement>(null);
   const shown = useRef(question);
@@ -178,6 +203,7 @@ export function SetupAnswersStep({
             question={current}
             headingRef={questionRef}
             profile={answers.value}
+            opened={opened}
             questionSet={questionSet}
             consent={consent}
             update={answers.update}
@@ -214,6 +240,7 @@ function ContactFromHistory({ profile, update }: { profile: AutofillProfile; upd
 type QuestionProps = {
   headingRef: RefObject<HTMLHeadingElement | null>;
   profile: AutofillProfile;
+  opened: AutofillProfile;
   questionSet: QuestionSet;
   consent: EeoConsent;
   update: Update;
@@ -223,15 +250,19 @@ type QuestionProps = {
 };
 
 function Question({ question, ...props }: QuestionProps & { question: FormQuestion }) {
-  const { headingRef, profile, questionSet, update, advance } = props;
+  const { headingRef, profile, opened, questionSet, update, advance } = props;
   const titleId = useId();
   const noticeId = useId();
+  if (question.kind === "citizenship") {
+    return <CitizenshipQuestion headingRef={headingRef} profile={profile} questionSet={questionSet} update={update} />;
+  }
   if (question.kind === "permit") {
     return (
       <PermitQuestion
         question={question}
         headingRef={headingRef}
         profile={profile}
+        opened={opened}
         questionSet={questionSet}
         update={update}
       />
@@ -366,19 +397,55 @@ function DiversityQuestion({
   );
 }
 
-/** One country's work permit: its name as the heading, then its required questions in its own words (as
- *  served: the visa status first where that country asks it), each a group named by the country and the
- *  question. Every answer is that country's own entry. Never guessed for you. */
+/** Citizen of, with its country picker (ISO codes; the United Kingdom read as British citizen), worded as served.
+ *  Saving it reads the questions again, so what it settles is known before Continue moves on (the flow waits). */
+function CitizenshipQuestion({
+  headingRef,
+  profile,
+  questionSet,
+  update,
+}: Pick<QuestionProps, "headingRef" | "profile" | "questionSet" | "update">) {
+  const pickerId = useId();
+  const hintId = useId();
+  const field = citizenshipField(questionSet);
+  if (!field) return null;
+  return (
+    <div className="flex flex-col gap-4">
+      <h3 ref={headingRef} tabIndex={-1} className="text-title-large outline-none">
+        <label htmlFor={pickerId}>{field.label}</label>
+      </h3>
+      <p id={hintId} className="max-w-[65ch] text-body-small text-muted-foreground">
+        {CITIZEN_HINT}
+      </p>
+      <div className="max-w-md">
+        <CitizenshipPicker
+          id={pickerId}
+          label={field.label}
+          describedBy={hintId}
+          value={citizenshipEntries(profile)}
+          onChange={(codes) => update((current) => withCitizenshipAnswer(current, codes))}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** One country's work permit: its name as the heading, then the required questions left to ask in its own
+ *  words (as served: the visa status first where that country asks it; none your citizenship settles, none
+ *  answered before Setup opened: `permitAsks`), each a group named by the country and the question. Every
+ *  answer is that country's own entry. Never guessed for you. */
 function PermitQuestion({
   question,
   headingRef,
   profile,
+  opened,
   questionSet,
   update,
 }: {
   question: Extract<FormQuestion, { kind: "permit" }>;
   headingRef: RefObject<HTMLHeadingElement | null>;
   profile: AutofillProfile;
+  opened: AutofillProfile;
   questionSet: QuestionSet;
   update: Update;
 }) {
@@ -395,7 +462,7 @@ function PermitQuestion({
         {question.label}
       </h3>
       <ul className="flex flex-col gap-4">
-        {permitQuestions(questionSet, question.market).map((q) => {
+        {permitAsks(profile, questionSet, question.market, opened).map((q) => {
           const questionId = `${baseId}-${q.key}`;
           return (
             <li key={q.key} className="flex flex-wrap items-center justify-between gap-3">

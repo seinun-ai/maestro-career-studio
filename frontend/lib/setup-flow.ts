@@ -7,6 +7,7 @@ import type {
   CapabilityReport,
   ImportReport,
   MarketOption,
+  QuestionSet,
   RecommendedModelsInfo,
   SetupStatus,
 } from "./types";
@@ -44,45 +45,53 @@ export function preference(profile: AutofillProfile, key: PreferenceKey): string
 }
 
 export type FormQuestion =
+  | { kind: "citizenship" }
   | { kind: "permit"; market: string; label: string }
   | { kind: "notice" }
   | { kind: "relocate" }
   | { kind: "diversity"; countries: string[] };
 
-/** Step 4, one question at a time: a work permit per country you apply in (named, in its own words), then
- *  notice period and relocation, then diversity only when a country you apply in has a checked set
- *  (`offers_eeo`, from the market list; never decided here). */
-export function formQuestions(applyIn: readonly string[], markets: readonly MarketOption[]): FormQuestion[] {
-  const byKey = new Map(markets.map((m) => [m.key, m]));
-  const permits: FormQuestion[] = applyIn.map((market) => ({
+/** Step 4, one question at a time: citizenship first where the set asks it (a list of countries, `type:
+ *  "countries"`), since it settles some work permits; then a work permit per country the served set lists, in
+ *  its order and named as served (none while no country is chosen); then notice period and relocation; then
+ *  diversity only when a country you apply in has a checked set (`offers_eeo`, from the served set and the
+ *  market list; never decided here). Which permit cards are passed is lib/setup-answers.ts `questionsToAsk`. */
+export function formQuestions(questionSet: QuestionSet, markets: readonly MarketOption[]): FormQuestion[] {
+  const asksCitizenship = questionSet.groups.some(
+    (group) => group.key === "personal" && group.fields.some((field) => field.type === "countries"),
+  );
+  const permits: FormQuestion[] = questionSet.countries.map((country) => ({
     kind: "permit",
-    market,
-    label: byKey.get(market)?.label ?? market,
+    market: country.market,
+    label: country.label,
   }));
-  const withSet = applyIn.flatMap((market) => {
-    const m = byKey.get(market);
-    return m?.offers_eeo ? [m.label] : [];
-  });
+  const byKey = new Map(markets.map((m) => [m.key, m]));
+  const withSet = questionSet.countries.flatMap((country) => (byKey.get(country.market)?.offers_eeo ? [country.label] : []));
   const rest: FormQuestion[] = [{ kind: "notice" }, { kind: "relocate" }];
-  if (withSet.length > 0) rest.push({ kind: "diversity", countries: [...withSet].sort() });
-  return [...permits, ...rest];
+  if (questionSet.offers_eeo && withSet.length > 0) rest.push({ kind: "diversity", countries: [...withSet].sort() });
+  return [...(asksCitizenship ? [{ kind: "citizenship" } as const] : []), ...permits, ...rest];
 }
 
 export type StepsDone = Record<SetupStepId, boolean>;
 
-/** Each step, done from the data it writes: a key, a resume in career history, job preferences, and every
- *  country's work-permit answers (setup status counts each country's required questions from the catalog,
- *  and a country it has no count for is not done). */
-export function stepsDone(status: SetupStatus, applyIn: readonly string[]): StepsDone {
+/** Each step, done from the data it writes: a key, a resume in career history, job preferences, and the form
+ *  answers as setup status counts them: every country the served set asks, and citizenship, which it counts
+ *  in the work-permit group beside them (a count it lacks is not done). With no country chosen the set asks
+ *  none, so citizenship alone decides. */
+export function stepsDone(status: SetupStatus, questionSet: QuestionSet): StepsDone {
   const counted = status.autofill.work_auth_by_country;
+  const workAuth = status.autofill.groups.work_auth;
   return {
     model: status.model_key.done,
     resume: status.import_resumes.done,
     where: status.job_preferences.done,
-    answers: applyIn.every((market) => {
-      const count = counted[market];
-      return count !== undefined && count.answered >= count.answerable;
-    }),
+    answers:
+      questionSet.countries.every(({ market }) => {
+        const count = counted[market];
+        return count !== undefined && count.answered >= count.answerable;
+      }) &&
+      workAuth !== undefined &&
+      workAuth.answered >= workAuth.answerable,
   };
 }
 

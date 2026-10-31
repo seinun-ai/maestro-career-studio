@@ -6,19 +6,66 @@
  * load it bare).
  */
 import {
+  answered,
   booleanAnswer,
+  citizenshipAnswered,
   declinedEeo,
+  derivedPermits,
   forSaving,
   groupCount,
   groupValues,
   isBlank,
   permitAnswered,
+  permitEntry,
+  permitQuestions,
+  withCitizenshipList,
+  withCitizenships,
   withField,
   withPermit,
+  type FieldDef,
   type Profile,
 } from "./autofill-options";
 import type { FormQuestion } from "./setup-flow";
 import type { QuestionSet } from "./types";
+
+/** The profile with these citizenships (ISO codes, from the picker). The save reads the questions again, so
+ *  what they settle (`derived`) is served before Continue moves on. */
+export function withCitizenshipAnswer(profile: Profile, codes: readonly string[]): Profile {
+  return forSaving(withCitizenships(profile, codes));
+}
+
+/** The profile with a citizenship stored as a plain string stored as a list (`withCitizenshipList`): what
+ *  Continue does first, on the citizenship question, before it moves on. */
+export function withCitizenshipListed(profile: Profile): Profile {
+  return forSaving(withCitizenshipList(profile));
+}
+
+/**
+ * The work-permit questions one country's card asks: its required ones that your citizenship does not settle
+ * (`derivedPermits`, read as the answers now stand) and that were not answered when Setup opened (`opened`).
+ * One you answer here stays on its card with your answer, so Back finds it; optional ones (an expiry, a status
+ * list outside the US, the country's own answers) are left to Profile.
+ */
+export function permitAsks(profile: Profile, questionSet: QuestionSet, market: string, opened: Profile): FieldDef[] {
+  const derived = derivedPermits(profile, questionSet, market);
+  const before = permitEntry(opened, market);
+  return permitQuestions(questionSet, market).filter(
+    (field) => !(field.key in derived) && !answered(field, before[field.key]),
+  );
+}
+
+/** The questions Setup asks, in order: `formQuestions` less each country's card with nothing to ask
+ *  (`permitAsks`): one your citizenship settles, or one answered before Setup opened, is passed. */
+export function questionsToAsk(
+  questions: readonly FormQuestion[],
+  profile: Profile,
+  questionSet: QuestionSet,
+  opened: Profile,
+): FormQuestion[] {
+  return questions.filter(
+    (question) => question.kind !== "permit" || permitAsks(profile, questionSet, question.market, opened).length > 0,
+  );
+}
 
 /** The profile with one work-permit answer on one country's entry (by market, "UK" never "GB"); an answer
  *  that hides another of its fields removes it (`withPermit`). */
@@ -61,6 +108,8 @@ export function withDiversityDeclined(profile: Profile, questionSet: QuestionSet
  *  (round means a state, so a dot never says done for a question you left). */
 export function questionAnswered(question: FormQuestion, profile: Profile, questionSet: QuestionSet): boolean {
   switch (question.kind) {
+    case "citizenship":
+      return citizenshipAnswered(profile, questionSet);
     case "permit":
       return permitAnswered(profile, questionSet, question.market);
     case "notice":

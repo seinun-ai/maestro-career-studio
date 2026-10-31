@@ -9,7 +9,7 @@ import { useEeoConsentQuery } from "@/components/profile/diversity-consent";
 import { useAutofillQuery } from "@/components/profile/use-autofill-query";
 import { useFormQuestions } from "@/components/profile/use-form-questions";
 import { useOpenAIInfo } from "@/components/settings/models-section";
-import { SetupAnswersStep } from "@/components/setup/setup-answers-step";
+import { SetupAnswersStep, useSetupAnswers, type SetupAnswers } from "@/components/setup/setup-answers-step";
 import { SetupDone } from "@/components/setup/setup-done";
 import { SetupModelStep } from "@/components/setup/setup-model-step";
 import { SetupResumeStep } from "@/components/setup/setup-resume-step";
@@ -20,8 +20,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { loadErrorDetail } from "@/lib/error-text";
-import { permitMarkets } from "@/lib/autofill-options";
+import { citizenshipIsLoose, profileForEditing } from "@/lib/autofill-options";
 import { isLoadFailure } from "@/lib/query-state";
+import { questionsToAsk, withCitizenshipListed } from "@/lib/setup-answers";
 import {
   SETUP_STEPS,
   firstOpenStep,
@@ -123,10 +124,18 @@ export function SetupFlow() {
 }
 
 function SetupScreens({ data }: { data: SetupData }) {
-  const applyIn = data.market.apply_in;
-  const done = stepsDone(data.status, applyIn);
-  // The countries asked are the served set's, never a market list newer than it.
-  const questions = formQuestions(permitMarkets(data.questionSet), data.market.markets ?? []);
+  const done = stepsDone(data.status, data.questionSet);
+  const answers = useSetupAnswers(data.profile);
+  // The answers when Setup opened: a work permit answered then is not asked again.
+  const [opened] = useState(() => profileForEditing(data.profile));
+  // The countries asked are the served set's, never a market list newer than it, and a country's card is passed
+  // when nothing is left to ask there (your citizenship settles it, or you answered it before).
+  const questions = questionsToAsk(
+    formQuestions(data.questionSet, data.market.markets ?? []),
+    answers.value,
+    data.questionSet,
+    opened,
+  );
   // The step shown: 0 to 3, and the done screen after them.
   const [step, setStep] = useState(() => firstOpenStep(done));
   const [question, setQuestion] = useState(0);
@@ -146,11 +155,21 @@ function SetupScreens({ data }: { data: SetupData }) {
 
   const last = Math.max(0, questions.length - 1);
   const atQuestion = Math.min(question, last);
+  // On citizenship, Continue waits for its save, which reads the questions again: the card after it is never a
+  // country the citizenship is about to settle. A citizenship stored as a plain string is stored as a list first,
+  // and Continue, pressed again once that lands, moves on.
+  const onCitizenship = SETUP_STEPS[step]?.id === "answers" && questions[atQuestion]?.kind === "citizenship";
   const nav =
     SETUP_STEPS[step]?.id === "answers"
       ? {
           onBack: () => (atQuestion > 0 ? setQuestion(atQuestion - 1) : go(step - 1)),
-          onContinue: () => (atQuestion < last ? setQuestion(atQuestion + 1) : go(step + 1)),
+          onContinue: () => {
+            if (onCitizenship && citizenshipIsLoose(answers.value)) {
+              answers.update((current) => withCitizenshipListed(current));
+            } else if (atQuestion < last) setQuestion(atQuestion + 1);
+            else go(step + 1);
+          },
+          waiting: onCitizenship && answers.pending,
         }
       : { onBack: step > 0 ? () => go(step - 1) : undefined, onContinue: () => go(step + 1) };
 
@@ -161,6 +180,8 @@ function SetupScreens({ data }: { data: SetupData }) {
         <StepBody
           step={step}
           data={data}
+          answers={answers}
+          opened={opened}
           done={done}
           headingRef={headingRef}
           questions={questions}
@@ -179,6 +200,8 @@ function SetupScreens({ data }: { data: SetupData }) {
 function StepBody({
   step,
   data,
+  answers,
+  opened,
   done,
   headingRef,
   questions,
@@ -190,6 +213,8 @@ function StepBody({
 }: {
   step: number;
   data: SetupData;
+  answers: SetupAnswers;
+  opened: AutofillProfile;
   done: StepsDone;
   headingRef: RefObject<HTMLHeadingElement | null>;
   questions: ReturnType<typeof formQuestions>;
@@ -209,7 +234,8 @@ function StepBody({
     case "answers":
       return (
         <SetupAnswersStep
-          profile={data.profile}
+          answers={answers}
+          opened={opened}
           questionSet={data.questionSet}
           consent={data.consent}
           questions={questions}
@@ -226,9 +252,8 @@ function StepBody({
         <SetupDone
           status={data.status}
           done={done}
-          profile={data.profile}
+          profile={answers.value}
           questionSet={data.questionSet}
-          questions={questions}
           diversity={diversity}
           headingRef={headingRef}
           go={go}
@@ -306,8 +331,19 @@ function StepMark({ index, done, current }: { index: number; done: boolean; curr
   );
 }
 
-/** Under every step: Back (none on the first), Skip for now, and Continue, the view's one filled button. */
-function StepNav({ onBack, onSkip, onContinue }: { onBack?: () => void; onSkip: () => void; onContinue: () => void }) {
+/** Under every step: Back (none on the first), Skip for now, and Continue, the view's one filled button, which
+ *  waits (`waiting`) while a save it must follow is on its way. */
+function StepNav({
+  onBack,
+  onSkip,
+  onContinue,
+  waiting = false,
+}: {
+  onBack?: () => void;
+  onSkip: () => void;
+  onContinue: () => void;
+  waiting?: boolean;
+}) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {onBack ? (
@@ -319,7 +355,7 @@ function StepNav({ onBack, onSkip, onContinue }: { onBack?: () => void; onSkip: 
       <Button type="button" variant="ghost" size="lg" className="text-muted-foreground" onClick={onSkip}>
         Skip for now
       </Button>
-      <Button type="button" size="lg" onClick={onContinue}>
+      <Button type="button" size="lg" disabled={waiting} focusableWhenDisabled onClick={onContinue}>
         Continue
       </Button>
     </div>

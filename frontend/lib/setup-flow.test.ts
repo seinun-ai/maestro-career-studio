@@ -22,6 +22,23 @@ const MARKETS = [
   { key: "IE", label: "Ireland", country_code: "IE", currency: "EUR", date_format: "DMY", offers_eeo: false, work_auth_vocab: "generic" },
 ];
 
+// A small set in the served shape (GET /api/settings/autofill/questions): citizenship in personal, then each
+// country you apply in, in its order. A node-tested lib file builds its own; components/setup/setup-flow.test.mjs
+// renders the served fixtures.
+const CITIZEN_OF = { key: "citizenships", label: "Citizen of", type: "countries" as const };
+const served = (markets: string[], { citizenship = true, offersEeo = true } = {}) =>
+  ({
+    groups: [{ key: "personal", title: "Personal details", fields: citizenship ? [CITIZEN_OF] : [] }],
+    countries: markets.map((market) => ({
+      market,
+      label: MARKETS.find((m) => m.key === market)?.label ?? market,
+      permits: [],
+      answers: [],
+    })),
+    offers_eeo: offersEeo,
+    chosen: markets.length > 0,
+  }) as never;
+
 const step = (done: boolean) => ({ done, detail: {} });
 const status = (over: Record<string, unknown> = {}) =>
   ({
@@ -50,22 +67,55 @@ test("four steps, each with a time", () => {
 });
 
 test("a step is done from the data it writes, never from a visit", () => {
-  // Setup status counts each country's work-permit answers in its own words (the US visa status too).
-  const counted = (byCountry: Record<string, { answered: number; answerable: number }>) => ({
-    autofill: { done: false, readiness: 0, groups: {}, blocking: [], work_auth_by_country: byCountry },
-  });
-  assert.deepEqual(stepsDone(status(), ["DE"]), { model: false, resume: false, where: false, answers: false });
+  // Setup status counts each country's work-permit answers in its own words (the US visa status too), and
+  // citizenship beside them in the work-permit group.
+  const counted = (
+    byCountry: Record<string, { answered: number; answerable: number }>,
+    citizenship = { answered: 1, answerable: 1 },
+  ) => {
+    const all = [citizenship, ...Object.values(byCountry)];
+    const sum = (key: "answered" | "answerable") => all.reduce((n, g) => n + g[key], 0);
+    return {
+      autofill: {
+        done: false,
+        readiness: 0,
+        groups: { work_auth: { answered: sum("answered"), answerable: sum("answerable") } },
+        blocking: [],
+        work_auth_by_country: byCountry,
+      },
+    };
+  };
+  assert.deepEqual(stepsDone(status(), served(["DE"])), { model: false, resume: false, where: false, answers: false });
   assert.deepEqual(
     stepsDone(
       status({ model_key: step(true), import_resumes: step(true), job_preferences: step(true), ...counted({ DE: { answered: 3, answerable: 3 } }) }),
-      ["DE"],
+      served(["DE"]),
     ),
     { model: true, resume: true, where: true, answers: true },
   );
   // A second country with answers left, the US visa status say, keeps the form answers open.
   const two = counted({ DE: { answered: 3, answerable: 3 }, US: { answered: 3, answerable: 4 } });
-  assert.equal(stepsDone(status(two), ["DE", "US"]).answers, false);
-  assert.equal(stepsDone(status(two), ["DE", "UK"]).answers, false, "a country the status has not counted is open");
+  assert.equal(stepsDone(status(two), served(["DE", "US"])).answers, false);
+  assert.equal(stepsDone(status(two), served(["DE", "UK"])).answers, false, "a country the status has not counted is open");
+  // Citizenship is the one other answer the step needs.
+  const noCitizenship = counted({ DE: { answered: 3, answerable: 3 } }, { answered: 0, answerable: 1 });
+  assert.equal(stepsDone(status(noCitizenship), served(["DE"])).answers, false);
+});
+
+test("with no country chosen, the form answers need only citizenship, never the default country's permits", () => {
+  // Unchosen, the market still stores the US, but the set serves no country and readiness counts none.
+  const unchosen = (answered: number) =>
+    status({
+      autofill: {
+        done: false,
+        readiness: 0,
+        groups: { work_auth: { answered, answerable: 1 } },
+        blocking: [],
+        work_auth_by_country: {},
+      },
+    });
+  assert.equal(stepsDone(unchosen(1), served([])).answers, true);
+  assert.equal(stepsDone(unchosen(0), served([])).answers, false);
 });
 
 test("setup opens on the first step not done, and on the first one when all are", () => {
@@ -90,24 +140,37 @@ test("a brand-new install opens setup once; a returning user never", () => {
   assert.equal(opensSetup(status({ import_resumes: step(true) }), false), false);
 });
 
-test("form questions: one work permit per country you apply in, named, then notice and relocation", () => {
-  const qs = formQuestions(["DE", "IE"], MARKETS);
+test("form questions: citizenship, then one work permit per country served, named, then notice and relocation", () => {
+  const qs = formQuestions(served(["DE", "IE"]), MARKETS);
   assert.deepEqual(qs, [
+    { kind: "citizenship" },
     { kind: "permit", market: "DE", label: "Germany" },
     { kind: "permit", market: "IE", label: "Ireland" },
     { kind: "notice" },
     { kind: "relocate" },
   ]);
-  // Each country's questions are the ones served for its market key (the words come from the backend).
-  // A market the list lacks still carries its key, never nothing.
-  assert.deepEqual(formQuestions(["XX"], MARKETS)[0], { kind: "permit", market: "XX", label: "XX" });
+  // The countries and their names are the served set's, in its order, never the market list's.
+  const lagging = { ...(served(["IE"]) as object), countries: [{ market: "XX", label: "Elsewhere", permits: [], answers: [] }] };
+  assert.deepEqual(formQuestions(lagging as never, MARKETS)[1], { kind: "permit", market: "XX", label: "Elsewhere" });
+  // A set that does not ask citizenship starts at the first country.
+  assert.deepEqual(formQuestions(served(["DE"], { citizenship: false }), MARKETS)[0], { kind: "permit", market: "DE", label: "Germany" });
+});
+
+test("with no country chosen: citizenship, notice and relocation, and no work permit", () => {
+  assert.deepEqual(formQuestions(served([], { offersEeo: false }), MARKETS), [
+    { kind: "citizenship" },
+    { kind: "notice" },
+    { kind: "relocate" },
+  ]);
 });
 
 test("diversity is asked only for the countries with a checked set, and names them", () => {
-  assert.equal(formQuestions(["DE"], MARKETS).some((q) => q.kind === "diversity"), false);
-  const qs = formQuestions(["DE", "UK", "US"], MARKETS);
+  assert.equal(formQuestions(served(["DE"], { offersEeo: false }), MARKETS).some((q) => q.kind === "diversity"), false);
+  const qs = formQuestions(served(["DE", "UK", "US"]), MARKETS);
   assert.deepEqual(qs.at(-1), { kind: "diversity", countries: ["United Kingdom", "United States"] });
   assert.equal(qs.filter((q) => q.kind === "permit").length, 3);
+  // The served set decides: one that offers no checked set asks none, whatever the market list says.
+  assert.equal(formQuestions(served(["UK"], { offersEeo: false }), MARKETS).some((q) => q.kind === "diversity"), false);
 });
 
 test("a preference reads as stored: text, or a yes or no as typed", () => {

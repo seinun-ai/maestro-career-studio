@@ -151,7 +151,7 @@ def test_country_answers_asks_citizenship_first_and_shows_what_it_settles():
     assert 'out.push({ kind: "citizenship", field: citizenship });' in options
     # One rule for what is still open, for the count, Next up and Setup's done card.
     assert "for (const field of openPermitFields(profile, questionSet, market)) out.push(" in options
-    assert "const [open] = openPermitFields(editing, questionSet, q.market);" in _src("components/setup/setup-done.tsx")
+    assert "const [open] = openPermitFields(editing, questionSet, country.market);" in _src("components/setup/setup-done.tsx")
 
 
 def test_the_market_list_carries_each_markets_work_permit_vocabulary():
@@ -234,8 +234,9 @@ def test_an_open_page_reads_the_answers_again_when_you_come_back():
     assert "if (served === seen.current) return;" in adopt and "adopt(profileForEditing(served));" in adopt
     # Profile's provider and Setup's Form answers both take a newer copy through it, and save the same way.
     assert "useAdoptServed(served, answers.adopt);" in provider
-    setup = _src("components/setup/setup-answers-step.tsx")
-    assert "useAdoptServed(profile, answers.adopt);" in setup and "const save = useSaveAnswers();" in setup
+    setup = _between(_src("components/setup/setup-answers-step.tsx"), "export function useSetupAnswers(", "\n}\n")
+    assert "useAdoptServed(served, answers.adopt);" in setup and "const save = useSaveAnswers();" in setup
+    assert "const answers = useSetupAnswers(data.profile);" in _src("components/setup/setup-flow.tsx")
     # Last, because it skips where the web app's packages are not installed (the backend CI job).
     result = run_node_render_test("components/profile/use-autofill-query.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr

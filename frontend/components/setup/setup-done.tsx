@@ -9,8 +9,14 @@ import { Button } from "@/components/ui/button";
 import { LeadCard } from "@/components/ui/lead-card";
 import { CheckDraw, NextStep } from "@/components/visual";
 import { COMPANION_GUIDE_URL, CONNECTED_AGENTS_SETTINGS } from "@/lib/agent-links";
-import { groupCount, openPermitFields, permitAnswered, profileForEditing } from "@/lib/autofill-options";
-import { SETUP_STEPS, type AutofillProfile, type FormQuestion, type StepsDone } from "@/lib/setup-flow";
+import {
+  citizenshipAnswered,
+  groupCount,
+  openPermitFields,
+  permitAnswered,
+  profileForEditing,
+} from "@/lib/autofill-options";
+import { SETUP_STEPS, type AutofillProfile, type StepsDone } from "@/lib/setup-flow";
 import { anchorHref } from "@/lib/settings-tabs";
 import type { QuestionSet, SetupStatus } from "@/lib/types";
 
@@ -20,16 +26,15 @@ const ALSO_CARD =
 /**
  * After the four steps: Add your first job is the Lead and the view's one filled button; Connect an agent
  * app and Add the Companion sit under it. It says plainly when a required step is still open (no key or no
- * resume) and what is left in Profile: each country whose work permit you left unanswered, linked to that
- * country's own first open question (never another country's set), and the diversity answers when you chose
- * to give them and left some blank.
+ * resume) and what is left in Profile: citizenship when you left it blank, each country the served set asks
+ * whose work permit is left (none your citizenship settles), linked to that country's own first open question
+ * (never another country's set), and the diversity answers when you chose to give them and left some blank.
  */
 export function SetupDone({
   status,
   done,
   profile,
   questionSet,
-  questions,
   diversity,
   headingRef,
   go,
@@ -38,7 +43,6 @@ export function SetupDone({
   done: StepsDone;
   profile: AutofillProfile;
   questionSet: QuestionSet;
-  questions: FormQuestion[];
   diversity: DiversityChoice;
   headingRef: RefObject<HTMLHeadingElement | null>;
   go: (step: number) => void;
@@ -48,19 +52,23 @@ export function SetupDone({
   const name = typeof personal?.first_name === "string" ? personal.first_name.trim() : "";
   const open = SETUP_STEPS.flatMap((s, i) => (done[s.id] ? [] : [{ ...s, index: i }]));
   const editing = profileForEditing(profile);
-  const permitsLeft = questions.flatMap((q) => {
-    if (q.kind !== "permit" || permitAnswered(editing, questionSet, q.market)) return [];
+  const citizenshipLeft = citizenshipAnswered(editing, questionSet)
+    ? []
+    : [{ label: "Add your citizenship", href: anchorHref("/profile", "af-citizenships") }];
+  const permitsLeft = questionSet.countries.flatMap((country) => {
+    if (permitAnswered(editing, questionSet, country.market)) return [];
     // The first question still open, never one your citizenship settled (a row of words, with no control): its
     // own control in Profile's Country answers tile (`af-permit-<market>-<key>`); a country served no questions
     // is still open, and its link opens the tile.
-    const [open] = openPermitFields(editing, questionSet, q.market);
+    const [open] = openPermitFields(editing, questionSet, country.market);
     const href = open
-      ? anchorHref("/profile", `af-permit-${q.market}-${open.key}`)
-      : anchorHref("/profile", `af-permit-${q.market}`);
-    return [{ label: `Finish your work permit for ${q.label}`, href }];
+      ? anchorHref("/profile", `af-permit-${country.market}-${open.key}`)
+      : anchorHref("/profile", `af-permit-${country.market}`);
+    return [{ label: `Finish your work permit for ${country.label}`, href }];
   });
   const eeo = groupCount(profile, questionSet, "eeo");
   const inProfile = [
+    ...citizenshipLeft,
     ...permitsLeft,
     ...(diversity === "answer" && eeo.answered < eeo.answerable
       ? [{ label: "Finish the diversity questions", href: anchorHref("/profile", "autofill-eeo") }]

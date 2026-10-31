@@ -14,7 +14,16 @@ const { SetupFlow } = load("components/setup/setup-flow.tsx");
 const { SetupDone } = load("components/setup/setup-done.tsx");
 const { SetupAnswersStep } = load("components/setup/setup-answers-step.tsx");
 const { formQuestions, stepsDone } = load("lib/setup-flow.ts");
-const { questionAnswered, withDiversityDeclined, withPermitAnswer, withPreference } = load("lib/setup-answers.ts");
+const {
+  permitAsks,
+  questionAnswered,
+  questionsToAsk,
+  withCitizenshipAnswer,
+  withCitizenshipListed,
+  withDiversityDeclined,
+  withPermitAnswer,
+  withPreference,
+} = load("lib/setup-answers.ts");
 
 // The one filled button's classes (components/ui/button.tsx, variant "default").
 const FILLED = /bg-primary text-primary-foreground/g;
@@ -56,9 +65,13 @@ const INFO = {
   json_mode: "auto",
   capabilities: {},
 };
-const market = (applyIn = ["DE"]) => ({
+const COUNTRIES = [
+  { code: "AE", name: "United Arab Emirates" }, { code: "DE", name: "Germany" }, { code: "GB", name: "United Kingdom" },
+  { code: "IN", name: "India" }, { code: "NL", name: "Netherlands" }, { code: "US", name: "United States" },
+];
+const market = (applyIn = ["DE"], chosen = true) => ({
   key: "market",
-  value: { home: "DE", apply_in: applyIn, market: "DE" },
+  value: { home: "DE", apply_in: applyIn, market: "DE", chosen },
   home: "DE",
   apply_in: applyIn,
   markets: MARKETS,
@@ -80,15 +93,23 @@ const PERMITS = { authorized_now: true, sponsorship_now: false, sponsorship_futu
 const CONSENT_OFF = { enabled: false, consent_forms: false, acknowledged_at: null, policy_version: "2" };
 const CONSENT_ON = { ...CONSENT_OFF, enabled: true, acknowledged_at: "2026-10-20T09:00:00Z" };
 
-function render({ status = STATUS, info = INFO, applyIn = ["DE"], profile = {} } = {}) {
+function render({
+  status = STATUS,
+  info = INFO,
+  applyIn = ["DE"],
+  chosen = true,
+  profile = {},
+  served = servedQuestions("DE", applyIn, { chosen }),
+} = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, retryOnMount: false } } });
   client.setQueryData(["setup-status"], status);
   client.setQueryData(["settings", "openai"], info);
-  client.setQueryData(["settings", "market"], market(applyIn));
+  client.setQueryData(["settings", "market"], market(applyIn, chosen));
   client.setQueryData(["settings", "job-preferences"], { key: "job_preferences", value: PREFS });
   client.setQueryData(["settings", "autofill"], { key: "autofill_profile", value: profile });
   client.setQueryData(["settings", "eeo-consent"], { key: "eeo_consent", value: CONSENT_OFF });
-  client.setQueryData(["settings", "form-questions"], servedQuestions("DE", applyIn));
+  client.setQueryData(["settings", "form-questions"], served);
+  client.setQueryData(["countries"], COUNTRIES);
   client.setQueryData(["settings", "money"], {
     key: "money",
     value: { home_currency: null, period: "year", hours_per_year: 2080, show_posted: true },
@@ -101,11 +122,48 @@ function render({ status = STATUS, info = INFO, applyIn = ["DE"], profile = {} }
   return html;
 }
 
+function renderElement(element, seed = []) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  for (const [key, data] of seed) client.setQueryData(key, data);
+  const html = renderToStaticMarkup(React.createElement(QueryClientProvider, { client }, withRouter(element)));
+  client.clear();
+  return html;
+}
+
+// What the server serves for every country these tests apply in.
+const SERVED = servedQuestions("DE", ["DE", "UK", "US"]);
+
+// The answers as the flow holds them (`useSetupAnswers`), with nothing saving.
+const held = (profile) => ({ value: profile, update: () => {}, pending: false, failed: false, retry: () => {} });
+const answersStep = ({ profile = {}, opened = {}, ...props }, seed = []) =>
+  renderElement(
+    React.createElement(SetupAnswersStep, {
+      answers: held(profile),
+      opened,
+      questionSet: SERVED,
+      consent: CONSENT_OFF,
+      onQuestion: () => {},
+      onDone: () => {},
+      diversity: null,
+      onDiversity: () => {},
+      headingRef: { current: null },
+      ...props,
+    }),
+    seed,
+  );
+
 const KEYED = { ...STATUS, model_key: step(true) };
 const IMPORTED = { ...KEYED, import_resumes: { done: true, detail: { base_resumes: 2, kb_entities: 40 } } };
 const WANTED = { ...IMPORTED, job_preferences: step(true) };
-// Setup status counts each country's work-permit answers in its own words.
-const PERMITTED = { ...WANTED, autofill: { ...STATUS.autofill, work_auth_by_country: { DE: { answered: 3, answerable: 3 } } } };
+// Setup status counts each country's work-permit answers in its own words, and citizenship beside them.
+const PERMITTED = {
+  ...WANTED,
+  autofill: {
+    ...STATUS.autofill,
+    groups: { work_auth: { answered: 4, answerable: 4 } },
+    work_auth_by_country: { DE: { answered: 3, answerable: 3 } },
+  },
+};
 
 test("a new install opens on the AI model: five providers in words, no image, one filled Continue", () => {
   const html = render();
@@ -137,6 +195,14 @@ test("a saved key opens the resume step: one drop zone, Back and Skip for now", 
   assert.match(html, /AI model<\/span><span[^>]*>Done</);
 });
 
+test("with no country chosen, where you apply shows none picked and says so", () => {
+  const html = render({ status: IMPORTED, applyIn: ["US"], chosen: false });
+  // The stored default (the US) is not a choice: no chip is pressed, and the hint says none is chosen.
+  for (const name of ["United States", "United Kingdom", "Germany"]) assert.match(html, new RegExp(`aria-pressed="false"[^>]*>${name}<`));
+  assert.match(html, /No country chosen yet\. Each one you pick has its own work-permit answers\./);
+  assert.doesNotMatch(html, /0 countries/);
+});
+
 test("then where and what: where you live, where you apply as chips, roles and work mode", () => {
   const html = render({ status: IMPORTED, applyIn: ["DE", "UK"] });
   assert.match(html, /Where and what you&#x27;re looking for/);
@@ -152,11 +218,32 @@ test("then where and what: where you live, where you apply as chips, roles and w
   assert.match(html, />Skip for now</);
 });
 
-test("then form answers, one at a time: the first country's work permit, named", () => {
+test("then form answers, one at a time: citizenship first, with its country picker", () => {
   const html = render({ status: WANTED, applyIn: ["DE", "UK"] });
   assert.match(html, /Answers every job form asks/);
-  // Two permits, notice, relocation, and diversity for the United Kingdom's checked set.
-  assert.match(html, /1 of 5/);
+  // Citizenship, two permits, notice, relocation, and diversity for the United Kingdom's checked set.
+  assert.match(html, /1 of 6/);
+  assert.match(html, /<h3[^>]*><label for="([^"]+)">Citizen of<\/label><\/h3>/);
+  assert.match(html, /aria-label="Citizen of"/);
+  assert.match(html, /its work-permit answers follow from it\./);
+  assert.doesNotMatch(html, /Work permit</);
+  // Continue moves on; nothing is saving.
+  assert.match(html, /<button[^>]*bg-primary text-primary-foreground[^>]*>Continue<\/button>/);
+  assert.doesNotMatch(html.match(/<button[^>]*>Continue<\/button>/)?.[0] ?? "", /aria-disabled="true"|disabled=""/);
+  assert.match(html, />Skip for now</);
+});
+
+test("with no country chosen, the form answers are citizenship, notice and relocation: no work permit", () => {
+  const html = render({ status: WANTED, applyIn: ["US"], chosen: false });
+  assert.match(html, /1 of 3/);
+  assert.match(html, />Citizen of<\/label>/);
+  assert.equal(formQuestions(servedQuestions("US", [], { chosen: false }), MARKETS).some((q) => q.kind === "permit"), false);
+});
+
+test("a country's work permit, named, each question's group named by the country and the question", () => {
+  const questions = formQuestions(servedQuestions("DE", ["DE", "UK"]), MARKETS);
+  const html = answersStep({ questionSet: servedQuestions("DE", ["DE", "UK"]), questions, question: 1 });
+  assert.match(html, /2 of 6/);
   assert.match(html, /Work permit/);
   assert.match(html, /<h3 id="([^"]+)"[^>]*>Germany<\/h3>/);
   const country = /<h3 id="([^"]+)"[^>]*>Germany<\/h3>/.exec(html)[1];
@@ -170,11 +257,16 @@ test("then form answers, one at a time: the first country's work permit, named",
   assert.doesNotMatch(html, /Work authorization status/, "the visa status is the US's only");
   // No link to another country's set (the old one edited the home country's).
   assert.doesNotMatch(html, /Answer in Profile/);
-  assert.match(html, />Skip for now</);
 });
 
+const permitCard = (applyIn, { profile = {}, opened = {} } = {}) => {
+  const questionSet = servedQuestions("DE", applyIn);
+  const questions = formQuestions(questionSet, MARKETS);
+  return answersStep({ questionSet, questions, question: 1, profile, opened });
+};
+
 test("the United States asks its visa status too, named by the country and the question", () => {
-  const html = render({ status: WANTED, applyIn: ["US"] });
+  const html = permitCard(["US"]);
   const country = /<h3 id="([^"]+)"[^>]*>United States<\/h3>/.exec(html)[1];
   const q = /<span id="([^"]+)"[^>]*>Work authorization status<\/span>/.exec(html);
   assert.ok(q);
@@ -183,48 +275,84 @@ test("the United States asks its visa status too, named by the country and the q
 });
 
 test("the United Kingdom is asked in its own words", () => {
-  const html = render({ status: WANTED, applyIn: ["UK"] });
+  const html = permitCard(["UK"]);
   assert.match(html, /Do you have the right to work in the UK now\?/);
   assert.doesNotMatch(html, /Work authorization status/);
 });
 
 test("every step done opens the first again, all four marked", () => {
-  const html = render({ status: PERMITTED, applyIn: ["DE"], profile: { work_auth_by_country: { DE: PERMITS } } });
+  const html = render({
+    status: PERMITTED,
+    applyIn: ["DE"],
+    profile: { personal: { citizenships: ["IN"] }, work_auth_by_country: { DE: PERMITS } },
+  });
   assert.match(html, /All 4 done/);
   assert.match(html, /Pick the AI that does the writing/);
 });
 
-function renderElement(element, seed = []) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  for (const [key, data] of seed) client.setQueryData(key, data);
-  const html = renderToStaticMarkup(React.createElement(QueryClientProvider, { client }, withRouter(element)));
-  client.clear();
-  return html;
-}
+// An Indian citizen who lives in India and applies in India, the UAE, Germany and the Netherlands, as the server
+// serves it: the citizenship settles India's three permit answers (`derived`), and nothing elsewhere.
+const INDIA = servedQuestions("IN", ["IN", "AE", "DE", "NL"], { citizenships: ["IN"] });
+const ASHA = { personal: { first_name: "Asha", citizenships: ["IN"] } };
 
-// What the server serves for every country these tests apply in.
-const SERVED = servedQuestions("DE", ["DE", "UK", "US"]);
+test("a country your citizenship settles is answered, so the flow passes it: citizenship, then the UAE, Germany, the Netherlands", () => {
+  const all = formQuestions(INDIA, MARKETS);
+  assert.deepEqual(all.map((q) => q.kind === "permit" ? q.market : q.kind), ["citizenship", "IN", "AE", "DE", "NL", "notice", "relocate"]);
+  assert.equal(questionAnswered(all[1], ASHA, INDIA), true, "India is settled by the citizenship");
+  assert.deepEqual(permitAsks(ASHA, INDIA, "IN", {}), []);
+  const asked = questionsToAsk(all, ASHA, INDIA, {});
+  assert.deepEqual(asked.map((q) => q.kind === "permit" ? q.market : q.kind), ["citizenship", "AE", "DE", "NL", "notice", "relocate"]);
+  // Removing the citizenship asks India again at once, before the questions are read again.
+  const noLonger = { personal: { first_name: "Asha" } };
+  assert.equal(questionsToAsk(all, noLonger, INDIA, {}).some((q) => q.kind === "permit" && q.market === "IN"), true);
+  // The flow, rendered: India is not among the questions, so the first card after citizenship is the UAE's.
+  const html = render({ status: WANTED, applyIn: ["IN", "AE", "DE", "NL"], served: INDIA, profile: ASHA });
+  assert.match(html, /1 of 6/);
+  assert.match(html, /aria-label="Remove India"/);
+  const card = answersStep({ questionSet: INDIA, questions: asked, question: 1, profile: ASHA });
+  assert.match(card, /<h3 id="[^"]+"[^>]*>United Arab Emirates<\/h3>/);
+});
 
-const answersStep = (props, seed = []) =>
-  renderElement(
-    React.createElement(SetupAnswersStep, {
-      profile: {},
-      questionSet: SERVED,
-      consent: CONSENT_OFF,
-      onQuestion: () => {},
-      onDone: () => {},
-      diversity: null,
-      onDiversity: () => {},
-      headingRef: { current: null },
-      ...props,
-    }),
-    seed,
-  );
+test("a permit card asks only the required questions neither settled nor answered before Setup opened", () => {
+  // The UAE: its three yes/no questions, never its status list or expiry (optional), and none of its own answers.
+  const uae = answersStep({ questionSet: INDIA, questions: questionsToAsk(formQuestions(INDIA, MARKETS), ASHA, INDIA, {}), question: 1, profile: ASHA });
+  assert.match(uae, /Can you work in the UAE without an employer sponsoring your residence visa\?/);
+  assert.match(uae, /Do you need an employer to sponsor your UAE residence visa now\?/);
+  assert.match(uae, /Will you need an employer to sponsor your UAE residence visa later\?/);
+  for (const optional of ["Immigration status", "Authorization expires on", "Expected total monthly salary", "Are you in the UAE now?", "UAE driving licence"]) {
+    assert.ok(!uae.includes(optional), optional);
+  }
+  // Germany, answered in part before Setup opened: only what is left. An answer given here stays on its card.
+  const opened = { ...ASHA, work_auth_by_country: { DE: { authorized_now: true } } };
+  assert.deepEqual(permitAsks(opened, INDIA, "DE", opened).map((f) => f.key), ["sponsorship_now", "sponsorship_future"]);
+  const now = { ...ASHA, work_auth_by_country: { DE: { authorized_now: true, sponsorship_now: false } } };
+  assert.deepEqual(permitAsks(now, INDIA, "DE", opened).map((f) => f.key), ["sponsorship_now", "sponsorship_future"]);
+  const de = answersStep({ questionSet: INDIA, questions: [{ kind: "permit", market: "DE", label: "Germany" }], question: 0, profile: now, opened });
+  assert.doesNotMatch(de, /Can you work in this country now\?/);
+  assert.match(de, /aria-pressed="true"[^>]*>.*?No</s);
+  // A country answered in full before Setup opened is passed; one answered here is not.
+  const done = { ...ASHA, work_auth_by_country: { DE: PERMITS } };
+  assert.equal(questionsToAsk(formQuestions(INDIA, MARKETS), done, INDIA, done).some((q) => q.kind === "permit" && q.market === "DE"), false);
+  assert.equal(questionsToAsk(formQuestions(INDIA, MARKETS), done, INDIA, ASHA).some((q) => q.kind === "permit" && q.market === "DE"), true);
+});
+
+test("citizenship saves as codes, without the one-set view; a plain string is stored as a list first", () => {
+  const before = { personal: { first_name: "Lena" }, work_auth: { authorized_now: true } };
+  const after = withCitizenshipAnswer(before, ["DE", "FR", "DE"]);
+  assert.deepEqual(after.personal, { first_name: "Lena", citizenships: ["DE", "FR"] });
+  assert.equal("work_auth" in after, false);
+  assert.deepEqual(withCitizenshipAnswer({ personal: { citizenships: ["DE"] } }, []).personal, {});
+  assert.deepEqual(withCitizenshipListed({ personal: { citizenships: "Germany" } }).personal, { citizenships: ["Germany"] });
+  // Answered once the picker stored a country; a plain string is no answer until it is a list.
+  assert.equal(questionAnswered({ kind: "citizenship" }, { personal: { citizenships: ["DE"] } }, SERVED), true);
+  assert.equal(questionAnswered({ kind: "citizenship" }, { personal: { citizenships: "Germany" } }, SERVED), false);
+  assert.equal(questionAnswered({ kind: "citizenship" }, {}, SERVED), false);
+});
 
 test("diversity: only for a country with a set, named, and nothing stored before the consent", () => {
-  const without = formQuestions(["DE"], MARKETS);
+  const without = formQuestions(servedQuestions("DE", ["DE"]), MARKETS);
   assert.equal(without.some((q) => q.kind === "diversity"), false);
-  const questions = formQuestions(["DE", "UK", "US"], MARKETS);
+  const questions = formQuestions(SERVED, MARKETS);
   const html = answersStep({ questions, question: questions.length - 1 });
   assert.match(html, /Diversity questions on forms/);
   assert.match(html, /United Kingdom, United States/);
@@ -247,18 +375,25 @@ test("diversity: only for a country with a set, named, and nothing stored before
 });
 
 test("a dot is green only for a question that holds its answer, never one passed or skipped", () => {
-  const questions = formQuestions(["DE", "UK"], MARKETS);
+  const questionSet = servedQuestions("DE", ["DE", "UK"]);
+  const questions = formQuestions(questionSet, MARKETS);
   const dots = (html) => [...html.matchAll(/<span class="size-1\.5 rounded-full ([^"]+)"><\/span>/g)].map((m) => m[1]);
-  // On the notice question, both work permits passed by unanswered: neither is green.
-  assert.deepEqual(dots(answersStep({ questions, question: 2 })), [
-    "bg-surface-container-high", "bg-surface-container-high", "bg-primary", "bg-surface-container-high", "bg-surface-container-high",
+  // On the notice question, citizenship and both work permits passed by unanswered: none is green.
+  assert.deepEqual(dots(answersStep({ questionSet, questions, question: 3 })), [
+    "bg-surface-container-high", "bg-surface-container-high", "bg-surface-container-high", "bg-primary",
+    "bg-surface-container-high", "bg-surface-container-high",
   ]);
-  const answered = answersStep({ questions, question: 2, profile: { work_auth_by_country: { DE: PERMITS } } });
-  assert.deepEqual(dots(answered).slice(0, 2), ["bg-success", "bg-surface-container-high"]);
+  const answered = answersStep({
+    questionSet,
+    questions,
+    question: 3,
+    profile: { personal: { citizenships: ["IN"] }, work_auth_by_country: { DE: PERMITS } },
+  });
+  assert.deepEqual(dots(answered).slice(0, 3), ["bg-success", "bg-success", "bg-surface-container-high"]);
 });
 
 test("contact fields fill from career history in place, and say why they cannot", () => {
-  const questions = formQuestions(["DE"], MARKETS);
+  const questions = formQuestions(servedQuestions("DE", ["DE"]), MARKETS);
   const ready = answersStep({ questions, question: 0 }, [[["kb", "profile"], { contact: { name: "Lena Vogel", email: "lena@example.com" } }]]);
   assert.match(ready, /<button[^>]*>Fill from career history<\/button>/);
   assert.doesNotMatch(ready, /aria-disabled="true"[^>]*>Fill from career history/);
@@ -294,27 +429,33 @@ test("what Setup writes: each answer on its own country, never the one-set view"
   assert.equal("race_ethnicity" in withDiversityDeclined({}, SERVED).eeo, false);
   assert.equal(questionAnswered({ kind: "notice" }, { preferences: { notice_period: "  " } }, SERVED), false);
   assert.equal(questionAnswered({ kind: "relocate" }, { preferences: { willing_to_relocate: "No" } }, SERVED), true);
-  assert.equal(questionAnswered(formQuestions(["US"], MARKETS)[0], { work_auth_by_country: { US: PERMITS } }, SERVED), false,
+  const us = formQuestions(servedQuestions("DE", ["US"]), MARKETS).find((q) => q.kind === "permit");
+  assert.equal(questionAnswered(us, { work_auth_by_country: { US: PERMITS } }, SERVED), false,
     "the United States also needs its visa status");
   // A country the set serves no questions for is open, never answered, whatever is stored for it.
   assert.equal(questionAnswered({ kind: "permit", market: "FR", label: "France" }, { work_auth_by_country: { FR: PERMITS } }, SERVED), false);
 });
 
 test("the done screen: Add your first job filled, the agent app and the Companion beside it", () => {
-  const questions = formQuestions(["DE"], MARKETS);
-  const done = stepsDone(PERMITTED, ["DE"]);
-  const html = renderElement(
-    React.createElement(SetupDone, {
-      questionSet: SERVED,
-      status: PERMITTED,
-      done,
-      profile: { personal: { first_name: "Lena" }, work_auth_by_country: { DE: PERMITS } },
-      questions,
-      diversity: "answer",
-      headingRef: { current: null },
-      go: () => {},
-    }),
-  );
+  const germany = servedQuestions("DE", ["DE"]);
+  const done = stepsDone(PERMITTED, germany);
+  const doneScreen = (props) =>
+    renderElement(
+      React.createElement(SetupDone, {
+        questionSet: germany,
+        status: PERMITTED,
+        done,
+        profile: {},
+        diversity: null,
+        headingRef: { current: null },
+        go: () => {},
+        ...props,
+      }),
+    );
+  const html = doneScreen({
+    profile: { personal: { first_name: "Lena", citizenships: ["DE"] }, work_auth_by_country: { DE: PERMITS } },
+    diversity: "answer",
+  });
   assert.match(html, /You&#x27;re set, Lena/);
   assert.equal((html.match(FILLED) ?? []).length, 1);
   assert.match(html, /<a[^>]*href="\/new"[^>]*bg-primary text-primary-foreground[^>]*>Add your first job<\/a>|<a[^>]*bg-primary text-primary-foreground[^>]*href="\/new"[^>]*>Add your first job<\/a>/);
@@ -322,48 +463,21 @@ test("the done screen: Add your first job filled, the agent app and the Companio
   assert.match(html, /href="https:\/\/github\.com\/[^"]+GETTING_STARTED\.md#4-the-companion-browser-extension-optional"[^>]*target="_blank"[^>]*>.*?Add the Companion/s);
   // Chose to answer diversity and left some blank: where to finish, beside its consent (the hash opens the fold).
   assert.match(html, /href="\/profile#autofill-eeo"[^>]*>Finish the diversity questions/);
-  // A country's work permit left open links to that country's own question, never another country's set.
-  const left = renderElement(
-    React.createElement(SetupDone, {
-      questionSet: SERVED,
-      status: PERMITTED,
-      done,
-      profile: { work_auth_by_country: { DE: PERMITS } },
-      questions: formQuestions(["DE", "UK"], MARKETS),
-      diversity: null,
-      headingRef: { current: null },
-      go: () => {},
-    }),
-  );
+  assert.doesNotMatch(html, /Add your citizenship/);
+  // A country's work permit left open links to that country's own question, never another country's set; a
+  // citizenship left blank links to Citizen of, in Country answers.
+  const left = doneScreen({ questionSet: servedQuestions("DE", ["DE", "UK"]), profile: { work_auth_by_country: { DE: PERMITS } } });
   assert.match(left, /href="\/profile#af-permit-UK-authorized_now"[^>]*>Finish your work permit for United Kingdom/);
   assert.doesNotMatch(left, /Germany/);
-  // A country served no questions is still left to finish, and its link opens the Country answers tile.
-  const unserved = renderElement(
-    React.createElement(SetupDone, {
-      questionSet: SERVED,
-      status: PERMITTED,
-      done,
-      profile: { work_auth_by_country: { FR: PERMITS } },
-      questions: [{ kind: "permit", market: "FR", label: "France" }],
-      diversity: null,
-      headingRef: { current: null },
-      go: () => {},
-    }),
-  );
+  assert.match(left, /href="\/profile#af-citizenships"[^>]*>Add your citizenship/);
+  // A country your citizenship settles is not left.
+  assert.doesNotMatch(doneScreen({ questionSet: INDIA, profile: ASHA }), /Finish your work permit for India/);
+  // A country served no permit questions is still left to finish, and its link opens the Country answers tile.
+  const france = { ...germany, countries: [{ market: "FR", label: "France", permits: [], answers: [] }] };
+  const unserved = doneScreen({ questionSet: france, profile: { work_auth_by_country: { FR: PERMITS } } });
   assert.match(unserved, /href="\/profile#af-permit-FR"[^>]*>Finish your work permit for France/);
   // Open required steps say so instead of "You're set".
-  const early = renderElement(
-    React.createElement(SetupDone, {
-      questionSet: SERVED,
-      status: STATUS,
-      done: stepsDone(STATUS, ["DE"]),
-      profile: {},
-      questions,
-      diversity: null,
-      headingRef: { current: null },
-      go: () => {},
-    }),
-  );
+  const early = doneScreen({ status: STATUS, done: stepsDone(STATUS, germany) });
   assert.match(early, /Almost there/);
   assert.match(early, /Not done yet/);
   assert.doesNotMatch(early, /You&#x27;re set/);

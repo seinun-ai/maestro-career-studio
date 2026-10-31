@@ -111,9 +111,13 @@ export function SetupWhereStep({
           applyIn={applyIn}
           toggleCountry={place.toggleCountry}
           hint={
-            applyIn.length === 1
-              ? "1 country, with its own work-permit answers. Keep at least one."
-              : `${applyIn.length} countries, each with its own work-permit answers.`
+            // Until you choose, nothing is picked (`useCountriesAutosave`), and the first country you press is
+            // where you apply.
+            applyIn.length === 0
+              ? "No country chosen yet. Each one you pick has its own work-permit answers."
+              : applyIn.length === 1
+                ? "1 country, with its own work-permit answers. Keep at least one."
+                : `${applyIn.length} countries, each with its own work-permit answers.`
           }
           className="content-start"
         />

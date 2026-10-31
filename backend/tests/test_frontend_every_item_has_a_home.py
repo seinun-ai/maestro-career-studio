@@ -274,7 +274,8 @@ def test_the_profile_sections_are_the_tiles_and_folds():
 def test_each_country_is_asked_every_work_permit_key():
     """Every vocabulary asks the three yes/no keys and when the permit runs out; a market with a status list
     asks its status first (the US's required, the others optional, so of these only the US asks one). The
-    served set holds one entry per country you apply in; Profile asks each, Setup one card per country."""
+    served set holds one entry per country you apply in; Profile asks each, Setup one card per served country
+    with its required questions left to ask (`permitAsks`: none your citizenship settles)."""
     served = form_questions.resolve(home="DE", apply_in=["US", "UK", "DE"], chosen=True, profile=None).countries
     assert [country.market for country in served] == ["US", "UK", "DE"]
     asked = [[field.key for field in country.permits] for country in served]
@@ -283,9 +284,11 @@ def test_each_country_is_asked_every_work_permit_key():
     tile = _flat(_read("components/profile/work-permits.tsx"))
     assert all(needle in tile for needle in _PERMITS)
     setup = _flat(_read("lib/setup-flow.ts"))
-    assert 'applyIn.map((market) => ({ kind: "permit",' in setup
+    assert 'questionSet.countries.map((country) => ({ kind: "permit", market: country.market,' in setup
     answers = _flat(_read("components/setup/setup-answers-step.tsx"))
-    assert "permitQuestions(questionSet, question.market).map((q) => {" in answers
+    assert "permitAsks(profile, questionSet, question.market, opened).map((q) => {" in answers
+    asks = _flat(_read("lib/setup-answers.ts"))
+    assert "return permitQuestions(questionSet, market).filter(" in asks
 
 
 # ----------------------------------------------------------------------------------- Setup
@@ -322,8 +325,8 @@ _SETUP: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("Where and what", "Roles", ('<Label htmlFor="setup-roles">Roles you want</Label>', "From your resumes")),
     ("Where and what", "Work mode", ("Work mode </span>", "{WORK_MODES.map((mode) => {")),
     ("Form answers", "Work permit, per country", (
-        'applyIn.map((market) => ({ kind: "permit",', "Work permit </span>",
-        "permitQuestions(questionSet, question.market).map((q) => {",
+        'questionSet.countries.map((country) => ({ kind: "permit", market: country.market,', "Work permit </span>",
+        "permitAsks(profile, questionSet, question.market, opened).map((q) => {",
         "withPermitAnswer(current, questionSet, question.market, q.key, option.value)",
     )),
     ("Form answers", "Notice period", (

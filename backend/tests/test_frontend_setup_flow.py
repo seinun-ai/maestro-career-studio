@@ -159,8 +159,9 @@ def test_each_work_permit_question_carries_its_country():
     assert "{question.label}" in answers
     assert "aria-labelledby={`${countryId} ${questionId}`}" in answers
     # In that country's own words (its market's work_auth_vocab, the visa status only for us_visa), from the
-    # one served set Profile asks from (GET /api/settings/autofill/questions, one entry per country).
-    assert "permitQuestions(questionSet, question.market).map(" in answers
+    # one served set Profile asks from (GET /api/settings/autofill/questions, one entry per country), and only
+    # its required questions left: none your citizenship settles, none answered before Setup opened.
+    assert "permitAsks(profile, questionSet, question.market, opened).map(" in answers
     assert "const questionSet = useFormQuestions();" in _read("components/setup/setup-flow.tsx")
     # Each answer is that country's own entry, sent without the one-set work_auth view.
     assert "withPermitAnswer(current, questionSet, question.market, q.key, option.value)" in answers
@@ -168,8 +169,37 @@ def test_each_work_permit_question_carries_its_country():
     # An answer that hides another of that country's fields (a citizen's expiry) removes it, as in Profile.
     assert "return forSaving(withPermit(profile, questionSet, market, key, value));" in lib
     # No link to Profile's set of another country (the old "Answer in Profile" edited the home one).
-    assert "Answer in Profile" not in answers and '"autofill-work_auth"' not in _read("components/setup/setup-done.tsx")
-    assert 'anchorHref("/profile", `af-permit-${q.market}-${open.key}`)' in _read("components/setup/setup-done.tsx")
+    done = _read("components/setup/setup-done.tsx")
+    assert "Answer in Profile" not in answers and '"autofill-work_auth"' not in done
+    assert 'anchorHref("/profile", `af-permit-${country.market}-${open.key}`)' in done
+    # The done screen reads the served countries, never the questions the flow passed.
+    assert "const permitsLeft = questionSet.countries.flatMap((country) => {" in done
+
+
+def test_citizenship_comes_first_and_settles_what_it_can():
+    """Setup asks citizenship first (Decision 6 of docs/plans/2026-10-30-country-form-questions.md: the one new
+    required answer), with Profile's picker; a country it settles is passed, and Continue waits for its save."""
+    lib = _read("lib/setup-flow.ts")
+    assert 'return [...(asksCitizenship ? [{ kind: "citizenship" } as const] : []), ...permits, ...rest];' in lib
+    # The countries are the served set's: none while no country is chosen (Decision 1), never apply_in.
+    assert "const permits: FormQuestion[] = questionSet.countries.map(" in lib
+    assert "apply_in" not in lib and "applyIn" not in lib
+    answers = _read("components/setup/setup-answers-step.tsx")
+    assert 'import { CITIZEN_HINT, CitizenshipPicker } from "@/components/profile/citizenship-picker";' in answers
+    assert "onChange={(codes) => update((current) => withCitizenshipAnswer(current, codes))}" in answers
+    assert "return forSaving(withCitizenships(profile, codes));" in _read("lib/setup-answers.ts")
+    flow = _read("components/setup/setup-flow.tsx")
+    # A card with nothing left to ask is passed (`questionsToAsk`), and the step is done from the served countries.
+    assert "const questions = questionsToAsk(" in flow
+    assert "const done = stepsDone(data.status, data.questionSet);" in flow
+    # Continue waits for the citizenship's save (it reads the questions again), and stores a plain string as a
+    # list first.
+    assert "waiting: onCitizenship && answers.pending," in flow
+    assert "if (onCitizenship && citizenshipIsLoose(answers.value)) {" in flow
+    nav = flow[flow.index("function StepNav(") :]
+    assert "disabled={waiting} focusableWhenDisabled" in nav
+    done = _read("components/setup/setup-done.tsx")
+    assert 'anchorHref("/profile", "af-citizenships")' in done
 
 
 def test_diversity_only_for_a_country_with_a_set_and_only_through_consent():

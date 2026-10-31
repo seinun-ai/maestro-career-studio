@@ -16,6 +16,7 @@ import {
   answered,
   booleanAnswer,
   citizenshipEntries,
+  citizenshipIsLoose,
   countryQuestions,
   fieldValue,
   groupCount,
@@ -156,7 +157,7 @@ export function NextUp({
     // the picker and is not a list yet: Next stores it as one (the server turns its names into codes) and stays
     // while that saves; pressed again, it moves on.
     const saving = saveState(SURFACE).pending;
-    const loose = typeof groupValues(profile, "personal").citizenships === "string";
+    const loose = citizenshipIsLoose(profile);
     const nextAfterSaving = () => {
       if (!loose) return next();
       setHeld(current);

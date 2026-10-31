@@ -337,12 +337,17 @@ export function citizenshipEntries(profile: Profile): string[] {
   return parts.filter((part): part is string => !isBlank(part)).map((part) => part.trim());
 }
 
+/** Whether citizenship is stored as a plain string (an older save, a hand edit): it shows in the picker, but it
+ *  is not a list yet, so it counts as no answer until it is stored as one (`withCitizenshipList`). */
+export function citizenshipIsLoose(profile: Profile): boolean {
+  return typeof groupValues(profile, "personal").citizenships === "string";
+}
+
 /** The profile with a citizenship stored as a plain string (an older save, a hand edit) stored as the list of
  *  its parts, which the server turns into codes (an entry that names no country is dropped there); unchanged
  *  when it is a list already, or absent. */
 export function withCitizenshipList(profile: Profile): Profile {
-  const stored = groupValues(profile, "personal").citizenships;
-  return typeof stored === "string" ? withCitizenships(profile, citizenshipEntries(profile)) : profile;
+  return citizenshipIsLoose(profile) ? withCitizenships(profile, citizenshipEntries(profile)) : profile;
 }
 
 /** The profile with these citizenships (ISO codes, each once; none removes the answer). The server stores
