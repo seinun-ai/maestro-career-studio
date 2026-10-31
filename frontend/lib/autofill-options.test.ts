@@ -8,6 +8,7 @@ import {
   countryAnswerEntry,
   declinedEeo,
   derivedPermits,
+  differsFromSettled,
   fieldShown,
   forSaving,
   groupCount,
@@ -15,6 +16,7 @@ import {
   languageFields,
   missingAnswers,
   missingKey,
+  openPermitFields,
   permitAnswers,
   permitCount,
   permitAnswered,
@@ -23,6 +25,8 @@ import {
   permitMarkets,
   permitQuestions,
   profileForEditing,
+  shownPermitFields,
+  withCitizenshipList,
   withCitizenships,
   withCountryAnswer,
   withField,
@@ -223,6 +227,17 @@ test("citizenships are saved as codes, each once, and none removes the answer", 
   assert.deepEqual(citizenshipEntries({}), []);
 });
 
+test("a citizenship stored as a plain string is stored as a list of its parts; a list stays as it is", () => {
+  assert.deepEqual(withCitizenshipList({ personal: { citizenships: "India, Ireland", city: "Pune" } }).personal, {
+    citizenships: ["India", "Ireland"],
+    city: "Pune",
+  });
+  const listed = { personal: { citizenships: ["IN"] } };
+  assert.equal(withCitizenshipList(listed), listed);
+  const none = { personal: { city: "Pune" } };
+  assert.equal(withCitizenshipList(none), none);
+});
+
 // An Indian citizen applying in the US and Germany, as the server serves it: nothing settled there. Applying in
 // Germany as an EU citizen: the three yes/no answers settled by the French citizenship.
 const SETTLED_DE = {
@@ -231,24 +246,31 @@ const SETTLED_DE = {
   sponsorship_future: { value: false, via: "FR" },
 };
 const EU = servedFor(["DE", "US"], { derived: { DE: SETTLED_DE } });
+const FRENCH = { personal: { citizenships: ["FR"] } };
+const french = (permits: Record<string, unknown>) => ({ ...FRENCH, work_auth_by_country: { DE: permits } });
 
 test("an answer your citizenship settles counts as answered, and next up never asks it", () => {
-  assert.equal(permitAnswered({}, EU, "DE"), true);
-  assert.deepEqual(permitCount({}, EU, "DE"), { answered: 3, answerable: 3 });
-  assert.equal(permitAnswered({}, EU, "US"), false, "a settled country settles no other");
-  const missing = missingAnswers({}, EU).map(missingKey);
+  assert.equal(permitAnswered(FRENCH, EU, "DE"), true);
+  assert.deepEqual(permitCount(FRENCH, EU, "DE"), { answered: 3, answerable: 3 });
+  assert.deepEqual(openPermitFields(FRENCH, EU, "DE"), []);
+  assert.equal(permitAnswered(FRENCH, EU, "US"), false, "a settled country settles no other");
+  assert.deepEqual(openPermitFields(FRENCH, EU, "US").map((f) => f.key), ["status", "authorized_now", "sponsorship_now", "sponsorship_future"]);
+  const missing = missingAnswers(FRENCH, EU).map(missingKey);
   assert.equal(missing.some((key) => key.startsWith("permit:DE:")), false);
   assert.equal(missing.includes("permit:US:authorized_now"), true);
-  assert.equal(permitAnswers({}, EU, "DE").authorized_now, true);
+  assert.equal(permitAnswers(FRENCH, EU, "DE").authorized_now, true);
 });
 
 test("an answer given the same way leaves the rest settled; one that differs settles nothing there", () => {
-  const same = { work_auth_by_country: { DE: { authorized_now: "Yes" } } };
+  const same = french({ authorized_now: "Yes" });
   assert.deepEqual(derivedPermits(same, EU, "DE"), SETTLED_DE);
   assert.equal(permitAnswered(same, EU, "DE"), true);
-  const differs = { work_auth_by_country: { DE: { authorized_now: false } } };
+  assert.equal(differsFromSettled(same, EU, "DE", SETTLED_DE), false);
+  const differs = french({ authorized_now: false });
   assert.deepEqual(derivedPermits(differs, EU, "DE"), {});
+  assert.equal(differsFromSettled(differs, EU, "DE", SETTLED_DE), true);
   assert.deepEqual(permitCount(differs, EU, "DE"), { answered: 1, answerable: 3 });
+  assert.deepEqual(openPermitFields(differs, EU, "DE").map((f) => f.key), ["sponsorship_now", "sponsorship_future"]);
   assert.deepEqual(
     missingAnswers(differs, EU).map(missingKey).filter((key) => key.startsWith("permit:DE:")),
     ["permit:DE:sponsorship_now", "permit:DE:sponsorship_future"],
@@ -256,13 +278,42 @@ test("an answer given the same way leaves the rest settled; one that differs set
   // The fill reads what you gave over what is settled.
   assert.equal(permitAnswers(differs, EU, "DE").authorized_now, false);
   // A blank or unusable answer is no answer: it hides nothing.
-  assert.deepEqual(derivedPermits({ work_auth_by_country: { DE: { authorized_now: "maybe" } } }, EU, "DE"), SETTLED_DE);
+  assert.deepEqual(derivedPermits(french({ authorized_now: "maybe" }), EU, "DE"), SETTLED_DE);
+});
+
+test("removing the citizenship stops what it settled before the questions are read again", () => {
+  // The served set still says the French citizenship settles Germany; the profile on screen no longer lists it.
+  assert.deepEqual(derivedPermits({ personal: { citizenships: ["IN"] } }, EU, "DE"), {});
+  assert.deepEqual(derivedPermits({}, EU, "DE"), {});
+  assert.equal(permitAnswered({}, EU, "DE"), false);
+  assert.deepEqual(openPermitFields({}, EU, "DE").map((f) => f.key), ["authorized_now", "sponsorship_now", "sponsorship_future"]);
+  // A code in another case is the same citizenship; and it only narrows: nothing the server did not settle.
+  assert.deepEqual(derivedPermits({ personal: { citizenships: ["fr"] } }, EU, "DE"), SETTLED_DE);
+  assert.deepEqual(derivedPermits(FRENCH, EU, "US"), {});
+  // A differing answer under a citizenship you removed differs from nothing.
+  assert.equal(differsFromSettled({ work_auth_by_country: { DE: { authorized_now: false } } }, EU, "DE", SETTLED_DE), false);
 });
 
 test("a status your citizenship settles hides the expiry, as a status you gave does", () => {
   const us = servedFor(["US"], { derived: { US: { status: { value: "citizen", via: "US" } } } });
-  const shown = permitFields(us, "US").filter((field) => fieldShown(field, permitAnswers({}, us, "US")));
+  const american = { personal: { citizenships: ["US"] } };
+  const shown = permitFields(us, "US").filter((field) => fieldShown(field, permitAnswers(american, us, "US")));
   assert.equal(shown.some((field) => field.key === "authorization_expires_on"), false);
+});
+
+test("a country your citizenship settles is not asked when the permit runs out: that right does not", () => {
+  const keys = (profile: Parameters<typeof shownPermitFields>[0], answering: string[] = []) =>
+    shownPermitFields(profile, EU, "DE", answering).map((f) => f.key);
+  const asked = ["authorized_now", "sponsorship_now", "sponsorship_future"];
+  assert.deepEqual(keys(FRENCH), asked);
+  // Answering one yourself, an answer that differs, or no citizenship there: the expiry is asked again.
+  assert.deepEqual(keys(FRENCH, ["authorized_now"]), [...asked, "authorization_expires_on"]);
+  assert.deepEqual(keys(french({ authorized_now: false })), [...asked, "authorization_expires_on"]);
+  assert.deepEqual(keys({}), [...asked, "authorization_expires_on"]);
+  // A stored expiry always shows.
+  assert.deepEqual(keys(french({ authorization_expires_on: "2027-01-31" })), [...asked, "authorization_expires_on"]);
+  // Another country's expiry is its own.
+  assert.equal(shownPermitFields(FRENCH, EU, "US").some((f) => f.key === "authorization_expires_on"), true);
 });
 
 test("each language asks the served fields too, each select with a way back to Not set", () => {

@@ -337,6 +337,14 @@ export function citizenshipEntries(profile: Profile): string[] {
   return parts.filter((part): part is string => !isBlank(part)).map((part) => part.trim());
 }
 
+/** The profile with a citizenship stored as a plain string (an older save, a hand edit) stored as the list of
+ *  its parts, which the server turns into codes (an entry that names no country is dropped there); unchanged
+ *  when it is a list already, or absent. */
+export function withCitizenshipList(profile: Profile): Profile {
+  const stored = groupValues(profile, "personal").citizenships;
+  return typeof stored === "string" ? withCitizenships(profile, citizenshipEntries(profile)) : profile;
+}
+
 /** The profile with these citizenships (ISO codes, each once; none removes the answer). The server stores
  *  codes, and what a citizenship settles is read again with the questions. */
 export function withCitizenships(profile: Profile, codes: readonly string[]): Profile {
@@ -347,22 +355,74 @@ export function withCitizenships(profile: Profile, codes: readonly string[]): Pr
   return { ...profile, personal };
 }
 
+/** The served `settled` answers whose citizenship is still among yours: removing one stops what it settled at
+ *  once, before the questions are read again. */
+function stillCitizen(profile: Profile, settled: Record<string, DerivedAnswer>): Record<string, DerivedAnswer> {
+  const codes = new Set(citizenshipEntries(profile).map((entry) => entry.toUpperCase()));
+  return Object.fromEntries(Object.entries(settled).filter(([, answer]) => codes.has(answer.via.toUpperCase())));
+}
+
+/** Whether an answer you gave in `market` differs from one of `settled`: you know something the rule does not,
+ *  so it settles nothing there. A blank or unusable answer differs from nothing. */
+export function differsFromSettled(
+  profile: Profile,
+  questionSet: QuestionSet,
+  market: string,
+  settled: Record<string, DerivedAnswer>,
+): boolean {
+  const entry = permitEntry(profile, market);
+  const fields = permitFields(questionSet, market);
+  return Object.entries(stillCitizen(profile, settled)).some(([key, answer]) => {
+    const field = fields.find((f) => f.key === key);
+    if (!field || !answered(field, entry[key])) return false;
+    return (field.boolean ? booleanAnswer(entry[key]) : entry[key]) !== answer.value;
+  });
+}
+
 /**
- * The work-permit answers a citizenship settles in one country that still hold: the served `derived`, or none
- * once an answer you gave there differs from one it settles, because you know something the rule does not
- * (backend `autofill_derive.derived_in_effect`, which the server applies to what it last read; this applies it
- * to the answers on screen too). An answer you gave the same way leaves the rest settled.
+ * The work-permit answers a citizenship settles in one country, as far as the answers on screen allow. The
+ * server decides them (`derived`, from backend `autofill_derive.derived_in_effect` over what it last read);
+ * this only narrows that until the questions are read again: none once an answer you gave there differs from
+ * one it settles, and none from a citizenship you removed. It never settles anything the server did not.
  */
 export function derivedPermits(profile: Profile, questionSet: QuestionSet, market: string): Record<string, DerivedAnswer> {
-  const country = countryQuestions(questionSet, market);
-  const derived = country?.derived ?? {};
+  const settled = stillCitizen(profile, countryQuestions(questionSet, market)?.derived ?? {});
+  return differsFromSettled(profile, questionSet, market, settled) ? {} : settled;
+}
+
+/** One country's required permit questions still open: neither answered by you nor settled by your
+ *  citizenship. What Next up and Setup ask, and what the count leaves out. */
+export function openPermitFields(profile: Profile, questionSet: QuestionSet, market: string): FieldDef[] {
   const entry = permitEntry(profile, market);
-  const differs = Object.entries(derived).some(([key, settled]) => {
-    const field = country?.permits.find((f) => f.key === key);
-    if (!field || !answered(field, entry[key])) return false;
-    return (field.boolean ? booleanAnswer(entry[key]) : entry[key]) !== settled.value;
-  });
-  return differs ? {} : derived;
+  const derived = derivedPermits(profile, questionSet, market);
+  return permitQuestions(questionSet, market).filter(
+    (field) => !(field.key in derived) && !answered(field, entry[field.key]),
+  );
+}
+
+/** The key of when a country's permit runs out: optional, and never asked of a right to work a citizenship
+ *  gives (that one does not run out). */
+export const PERMIT_EXPIRY = "authorization_expires_on";
+
+/**
+ * One country's permit fields as Country answers shows them: by the answers as the fill reads them (a status
+ * your citizenship settles hides its expiry, as one you gave does), and without the expiry while your
+ * citizenship settles that country, unless you are answering one of its questions yourself (`answering`) or an
+ * expiry is stored, which always shows.
+ */
+export function shownPermitFields(
+  profile: Profile,
+  questionSet: QuestionSet,
+  market: string,
+  answering: readonly string[] = [],
+): FieldDef[] {
+  const answers = permitAnswers(profile, questionSet, market);
+  const citizen = Object.keys(derivedPermits(profile, questionSet, market)).length > 0 && answering.length === 0;
+  const stored = permitEntry(profile, market);
+  return permitFields(questionSet, market).filter(
+    (field) =>
+      fieldShown(field, answers) && !(citizen && field.key === PERMIT_EXPIRY && isBlank(stored[field.key])),
+  );
 }
 
 /** One country's permit answers as the fill reads them: each one you gave, over the ones a citizenship
@@ -433,13 +493,8 @@ function countOf(values: Record<string, unknown>, fields: readonly FieldDef[]): 
 /** How many of one country's required work-permit answers are given, in its own questions: each you gave, and
  *  each your citizenship settles there (`derivedPermits`), as setup readiness counts them. */
 export function permitCount(profile: Profile, questionSet: QuestionSet, market: string): Count {
-  const entry = permitEntry(profile, market);
-  const derived = derivedPermits(profile, questionSet, market);
-  const required = permitQuestions(questionSet, market);
-  return {
-    answered: required.filter((field) => field.key in derived || answered(field, entry[field.key])).length,
-    answerable: required.length,
-  };
+  const answerable = permitQuestions(questionSet, market).length;
+  return { answered: answerable - openPermitFields(profile, questionSet, market).length, answerable };
 }
 
 /** Whether citizenship is answered: at least one country, as the picker saves it. A set that does not ask it
@@ -541,11 +596,7 @@ export function missingAnswers(profile: Profile, questionSet: QuestionSet): Miss
     out.push({ kind: "citizenship", field: citizenship });
   }
   for (const market of permitMarkets(questionSet)) {
-    const entry = permitEntry(profile, market);
-    const derived = derivedPermits(profile, questionSet, market);
-    for (const field of permitQuestions(questionSet, market)) {
-      if (!(field.key in derived) && !answered(field, entry[field.key])) out.push({ kind: "permit", market, field });
-    }
+    for (const field of openPermitFields(profile, questionSet, market)) out.push({ kind: "permit", market, field });
   }
   for (const group of ["personal", "preferences"] as const) {
     const values = groupValues(profile, group);

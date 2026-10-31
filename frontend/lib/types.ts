@@ -2442,8 +2442,9 @@ export interface MarketSettingResponse {
   key: "market";
   /** `market` is the old single market, kept equal to `home` for readers not moved yet. `chosen` is false
    *  until the user picks where they apply: `home` and `apply_in` are then the defaults, never a choice, and
-   *  the form questions are the generic set (no country's). */
-  value: { home: string; apply_in: string[]; market: string; chosen: boolean };
+   *  the form questions are the generic set (no country's). A server from before the mark sends none, and its
+   *  countries were chosen (`countriesChosen`). */
+  value: { home: string; apply_in: string[]; market: string; chosen?: boolean };
   /** Where the user lives: the home currency and date format. */
   home: string;
   /** Every market the user applies in, each once; at least one. */

@@ -7,7 +7,7 @@ import { useAutofillProfile } from "@/components/profile/autofill-profile";
 import { FieldControl } from "@/components/profile/field-control";
 import { diversityCountries } from "@/components/profile/diversity";
 import { tileTitle } from "@/components/profile/tile";
-import { CITIZEN_HINT, CitizenshipPicker } from "@/components/profile/work-permits";
+import { CITIZEN_HINT, CitizenshipPicker } from "@/components/profile/citizenship-picker";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { Button } from "@/components/ui/button";
 import { LeadCard } from "@/components/ui/lead-card";
@@ -15,7 +15,6 @@ import { ProgressCount } from "@/components/visual";
 import {
   answered,
   booleanAnswer,
-  citizenshipAnswered,
   citizenshipEntries,
   countryQuestions,
   fieldValue,
@@ -25,6 +24,7 @@ import {
   missingKey,
   permitCount,
   permitEntry,
+  withCitizenshipList,
   withCitizenships,
   withField,
   withPermit,
@@ -150,11 +150,21 @@ export function NextUp({
 
   if (current.kind === "citizenship") {
     const hintId = `${controlId}-hint`;
+    const entries = citizenshipEntries(profile);
+    // Next waits for the save, which reads the questions again, so the next one is never a permit the
+    // citizenship just settled. A citizenship stored as a plain string (an older save, a hand edit) shows in the
+    // picker and is not a list yet: Next stores it as one, and the server turns its names into codes.
+    const saving = saveState(SURFACE).pending;
+    const loose = typeof groupValues(profile, "personal").citizenships === "string";
+    const nextAfterSaving = () => {
+      if (loose) update(SURFACE, (profileNow) => withCitizenshipList(profileNow));
+      next();
+    };
     return (
       <LeadCard
         eyebrow={`Next up · ${SECTION.citizenship}`}
         aside={aside}
-        action={{ label: "Next", onClick: next, disabled: !citizenshipAnswered(profile, questionSet) }}
+        action={{ label: "Next", onClick: nextAfterSaving, disabled: entries.length === 0 || saving }}
         secondary={
           <>
             {skipButton}
@@ -173,7 +183,7 @@ export function NextUp({
             id={controlId}
             label={current.field.label}
             describedBy={hintId}
-            value={citizenshipEntries(profile)}
+            value={entries}
             onChange={(codes) => {
               setHeld(current);
               update(SURFACE, (profileNow) => withCitizenships(profileNow, codes));

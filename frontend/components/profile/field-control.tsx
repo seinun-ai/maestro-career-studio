@@ -81,6 +81,9 @@ export function FieldControl({
         className="h-8 text-body-medium"
         value={value}
         type={field.type === "date" || field.type === "number" ? field.type : contact?.type}
+        // A count of days, years or months is never negative, and months run to 11 beside the years.
+        min={field.type === "number" ? 0 : undefined}
+        max={field.type === "number" && field.key.endsWith("_months") ? 11 : undefined}
         autoComplete={contact?.autoComplete}
         {...control}
         onChange={(e) => {
@@ -99,17 +102,21 @@ export function FieldControl({
 /**
  * A group's fields in the editor's grid, each with its label, its hint (a stale answer's "Answer again"
  * instead, while the question is empty) and its control. A field shown only for one answer of another
- * (`when`), or hidden by one (`unless`), follows that answer. A field in `settled` shows that instead of its
- * hint and control: an answer your citizenship settles, with its way to answer differently.
+ * (`when`), or hidden by one (`unless`), follows that answer (`shownBy`: the answers as the fill reads them,
+ * when they differ from what is stored). A field in `settled` shows that instead of its hint and control: an
+ * answer your citizenship settles, with its way to answer differently; one in `hints` says that in place of
+ * its own hint.
  */
 export function FieldGrid({
   idPrefix,
   group,
   fields,
   values,
+  shownBy = values,
   stale = [],
   voluntary = false,
   settled = {},
+  hints = {},
   onChange,
 }: {
   /** Each control's id is `${idPrefix}-${field.key}` (`af-personal-email`): deep links resolve by prefix. */
@@ -118,12 +125,17 @@ export function FieldGrid({
   group: string;
   fields: readonly FieldDef[];
   values: Record<string, unknown>;
+  /** What `when` and `unless` read, if not `values`: a country's permit answers with what your citizenship
+   *  settles (`permitAnswers`). */
+  shownBy?: Record<string, unknown>;
   /** The keys of this group the backend dropped because their question changed. */
   stale?: readonly string[];
   /** A voluntary group (diversity): no field says "(optional)" of its own. */
   voluntary?: boolean;
   /** By key: what a field shows in place of its control (its label stays). */
   settled?: Readonly<Record<string, ReactNode>>;
+  /** By key: a hint in place of the field's own. */
+  hints?: Readonly<Record<string, string>>;
   onChange: (key: string, next: string | boolean | undefined) => void;
 }) {
   return (
@@ -131,13 +143,13 @@ export function FieldGrid({
     // otherwise push its control below its neighbours'.
     <div className="grid items-end gap-4 @lg/setting:grid-cols-2 @3xl/setting:grid-cols-3">
       {fields.map((field) => {
-        if (!fieldShown(field, values)) {
+        if (!fieldShown(field, shownBy)) {
           return null;
         }
         const id = `${idPrefix}-${field.key}`;
         if (settled[field.key]) {
           return (
-            <div key={field.key} className="grid gap-1.5">
+            <div key={field.key} role="group" aria-labelledby={`${id}-label`} className="grid gap-1.5">
               <span id={`${id}-label`} className="text-label-large">
                 {field.label}
               </span>
@@ -148,7 +160,7 @@ export function FieldGrid({
         const rawValue = values[field.key];
         const value = fieldValue(field, rawValue);
         const isStale = Boolean(field.staleHint) && isBlank(rawValue) && stale.includes(field.key);
-        const hint = isStale ? field.staleHint : field.hint;
+        const hint = hints[field.key] ?? (isStale ? field.staleHint : field.hint);
         const hintId = hint ? `${id}-hint` : undefined;
         return (
           <div key={field.key} className="grid gap-1.5">

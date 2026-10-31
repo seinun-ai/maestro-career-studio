@@ -107,10 +107,10 @@ def test_the_country_answers_tile_asks_one_set_per_country_in_its_own_words():
     tile = _src("components/profile/work-permits.tsx")
     # One set per country the served set lists (in apply-in order), never a newer market list's country.
     assert "questionSet.countries.map((country) => ( <CountrySet key={country.market} country={country}" in _flat(tile)
-    assert "const fields = country.permits.filter((field) => fieldShown(field, answers));" in tile
+    assert "const fields = shownPermitFields(profile, questionSet, market, answering);" in tile
     # Each country's answers are its own entry, keyed by market ("UK", not "GB"): its permits, then its own.
-    assert "withPermit(current, questionSet, country.market, key, next)" in tile
-    assert "withCountryAnswer(current, country.market, key, next)" in tile
+    assert "withPermit(current, questionSet, market, key, next)" in tile
+    assert "withCountryAnswer(current, market, key, next)" in tile
     assert "fields={country.answers}" in tile
     # The frontend never words a question from a market's vocabulary: the market list carries none for it.
     option = _between(_src("lib/types.ts"), "export interface MarketOption {", "\n}")
@@ -125,18 +125,33 @@ def test_country_answers_asks_citizenship_first_and_shows_what_it_settles():
     tile = _src("components/profile/work-permits.tsx")
     assert tile.index('<Label htmlFor="af-citizenships"') < tile.index("<CountrySet key={country.market}")
     assert "onChange={(codes) => update(SURFACE, (current) => withCitizenships(current, codes))}" in tile
-    assert "names={CITIZEN_NAMES}" in tile and 'GB: "United Kingdom (British citizen)"' in tile
+    # One picker for Profile, Next up and Setup.
+    picker = _src("components/profile/citizenship-picker.tsx")
+    assert "names={CITIZEN_NAMES}" in picker and 'GB: "United Kingdom (British citizen)"' in picker
+    for rel in ("components/profile/work-permits.tsx", "components/profile/next-up.tsx"):
+        assert 'from "@/components/profile/citizenship-picker";' in _src(rel), rel
     assert "const open = !citizenDone || rows.some((row) => !row.done);" in tile
-    assert "if (!by || answered(field, entry[field.key]) || answering.includes(field.key)) return [];" in tile
+    # Words only where nothing is given and you are not answering it yourself; a control in use stays one.
+    assert "if (!by || answered(field, entry[field.key])) continue;" in tile
+    assert "hints[field.key] = `Left unset, your citizenship answers ${answerWords(field, by.value)}.`;" in tile
+    assert "answerYourself(key);" in tile
     assert "From your citizenship ({nameOf(by.via)})" in tile and "Answer differently" in tile
+    # A right to work from citizenship does not run out: the expiry is not asked while it settles the country.
+    options = _src("lib/autofill-options.ts")
+    assert "!(citizen && field.key === PERMIT_EXPIRY && isBlank(stored[field.key]))" in options
+    # What the server settled, only ever narrowed here: by your citizenships now, and by an answer that differs.
+    narrowed = _between(options, "export function derivedPermits(", "\n}\n")
+    assert "stillCitizen(profile, countryQuestions(questionSet, market)?.derived ?? {})" in narrowed
     provider = _flat(_src("components/profile/autofill-profile.tsx"))
     assert (
         "if (settles(before) !== settles(result.value)) { await qc.invalidateQueries({ queryKey: "
         "formQuestionsQuery.queryKey }); }"
     ) in provider
-    options = _src("lib/autofill-options.ts")
     assert 'if (citizenship && !citizenship.optional && !citizenshipAnswered(profile, questionSet)) {' in options
     assert 'out.push({ kind: "citizenship", field: citizenship });' in options
+    # One rule for what is still open, for the count, Next up and Setup's done card.
+    assert "for (const field of openPermitFields(profile, questionSet, market)) out.push(" in options
+    assert "const [open] = openPermitFields(editing, questionSet, q.market);" in _src("components/setup/setup-done.tsx")
 
 
 def test_the_market_list_carries_each_markets_work_permit_vocabulary():

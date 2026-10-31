@@ -1223,9 +1223,13 @@
   (the visa status only for `us_visa`), each answer that country's own entry in `work_auth_by_country`,
   then its own answers (`answers_by_country`, all optional). A permit answer the served `derived` settles,
   where you gave none, shows as words with "From your citizenship (India)" and **Answer differently**, which
-  brings the control back; an answer that differs settles nothing else there (`derivedPermits`), and a save
-  that changes citizenship or a permit reads the questions again before it counts as saved. With no country
-  chosen it shows Citizen of and a link to Where you apply. Contact's state line follows where you live
+  brings the control back (a control you have changed stays one, and left unset says what your citizenship
+  answers), and that country asks no expiry (a right from citizenship does not run out; a stored one shows).
+  An answer that differs settles nothing else there, and a note says why the rest are asked; removing a
+  citizenship stops what it settled at once (`derivedPermits` only narrows the served `derived`), and a save
+  that changes citizenship or a permit reads the questions again before it counts as saved. One rule says
+  what is still open (`openPermitFields`: the count, Next up, Setup's done card). With no country chosen it
+  shows Citizen of and a link to Where you apply. Contact's state line follows where you live
   (served named and counted for that home); Contact never shows citizenship. Every question, its words and
   whether it counts come from the served set (`GET /api/settings/autofill/questions`, read with
   `useFormQuestions` by Profile and Setup alike, the `lib/autofill-options.ts` helpers taking it as

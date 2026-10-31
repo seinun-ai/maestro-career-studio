@@ -144,8 +144,10 @@ test("next up asks citizenship first, with its country picker, in Country answer
   assert.match(html, /Next up · Country answers</);
   assert.match(html, /<h2[^>]*><label for="[^"]+">Citizen of<\/label><\/h2>/);
   assert.match(html, /aria-label="Citizen of"/);
-  // Next is the view's one filled button, as for a typed answer.
+  // Next is the view's one filled button, as for a typed answer, and waits for a country.
   assert.equal((html.match(FILLED) ?? []).length, 1);
+  const lead = html.slice(html.indexOf("Next up · Country answers"));
+  assert.match(lead.match(/<button[^>]*>Next<\/button>/)?.[0] ?? "", /aria-disabled="true"/);
 });
 
 test("country answers: one set per country you apply in, the visa status only for the United States", () => {
@@ -240,7 +242,7 @@ test("country answers: Citizen of at the top, then each country's permits and it
   assert.deepEqual(sets.map((m) => m[1]), ["India", "United Arab Emirates", "Germany", "Netherlands"]);
   const [india, uae, germany, netherlands] = sets.map((m) => m[2]);
   // India's own pay, after its permits; the UAE's status list and its own questions.
-  assert.ok(india.indexOf("Expected CTC") > india.indexOf("Authorization expires on"));
+  assert.ok(india.indexOf("Expected CTC") > india.indexOf("Will you need visa sponsorship later?"));
   assert.match(india, /id="af-answer-IN-current_ctc"/);
   assert.match(uae, /Immigration status/);
   assert.match(uae, /Are you in the UAE now\?/);
@@ -256,11 +258,39 @@ test("India's three permit answers come from the citizenship, each with a way to
   assert.equal((india.match(/>Answer differently</g) ?? []).length, 3);
   for (const key of ["authorized_now", "sponsorship_now", "sponsorship_future"]) {
     assert.doesNotMatch(india, new RegExp(`id="af-permit-IN-${key}"`), `${key} shows as words, not a control`);
-    assert.match(india, new RegExp(`aria-describedby="af-permit-IN-${key}-label"`));
+    // Each row is a group named by its question, so Answer differently is read with it.
+    assert.match(india, new RegExp(`role="group" aria-labelledby="af-permit-IN-${key}-label"`));
   }
   assert.match(india, /<span id="af-permit-IN-authorized_now-label"[^>]*>Can you work in this country now\?<\/span><p class="text-body-medium">Yes<\/p>/);
-  assert.match(india, /id="af-permit-IN-authorization_expires_on"/, "the expiry is still yours to give");
+  // A right to work from citizenship does not run out: India asks no expiry; the UAE, settled by nothing, does.
+  assert.doesNotMatch(india, /Authorization expires on/);
+  assert.match(others[0], /id="af-permit-AE-authorization_expires_on"/);
   for (const set of others) assert.doesNotMatch(set, /From your citizenship/);
+  assert.doesNotMatch(india, /Your answer differs/);
+});
+
+test("an answer that differs from what the citizenship settles: the rest are asked, and a note says why", () => {
+  // Saved, the server has not been asked again yet: it still serves India as settled.
+  const html = renderIndia({ ...ASHA, work_auth_by_country: { IN: { authorized_now: false } } });
+  const [india] = [...html.matchAll(/<fieldset class="space-y-4"><legend[^>]*>.*?<\/svg>India<\/legend>(.*?)<\/fieldset>/g)].map((m) => m[1]);
+  assert.match(india, /Your answer differs from what your citizenship settles, so these are asked\./);
+  assert.doesNotMatch(india, /From your citizenship \(India\)/);
+  for (const key of ["authorized_now", "sponsorship_now", "sponsorship_future", "authorization_expires_on"]) {
+    assert.match(india, new RegExp(`id="af-permit-IN-${key}"`), key);
+  }
+  assert.match(html, /Next up · Country answers · India/);
+});
+
+test("a citizenship stored as a plain string shows in the picker, and Next stores it as a list", () => {
+  const { citizenships: _citizenships, ...personal } = PERSONAL;
+  void _citizenships;
+  const html = render({ profile: { personal: { ...personal, citizenships: "India" } } });
+  assert.match(html, /Next up · Country answers</);
+  const lead = html.slice(html.indexOf("Next up · Country answers"));
+  assert.match(lead, /India<button[^>]*aria-label="Remove India"/);
+  // Next is not held back: it writes the list, and the server turns the name into a code.
+  const next = lead.match(/<button[^>]*>Next<\/button>/)?.[0] ?? "";
+  assert.match(next, /aria-disabled="false"/);
 });
 
 test("an answer you gave the same way shows as yours, not as from your citizenship", () => {
@@ -301,5 +331,6 @@ test("with no country chosen: nothing picked, no country's questions, and a way 
   assert.match(html, /No country chosen yet\. Choose where you apply/);
   assert.match(html, />Where you apply<\/button>/);
   assert.doesNotMatch(html, /<fieldset class="space-y-4">/);
-  assert.match(tileButton(html, "permits"), /No country chosen yet/);
+  // Said on one tile only: Where you apply.
+  assert.doesNotMatch(tileButton(html, "permits"), /No country chosen yet/);
 });

@@ -9,14 +9,7 @@ import { Button } from "@/components/ui/button";
 import { LeadCard } from "@/components/ui/lead-card";
 import { CheckDraw, NextStep } from "@/components/visual";
 import { COMPANION_GUIDE_URL, CONNECTED_AGENTS_SETTINGS } from "@/lib/agent-links";
-import {
-  answered,
-  groupCount,
-  permitAnswered,
-  permitEntry,
-  permitQuestions,
-  profileForEditing,
-} from "@/lib/autofill-options";
+import { groupCount, openPermitFields, permitAnswered, profileForEditing } from "@/lib/autofill-options";
 import { SETUP_STEPS, type AutofillProfile, type FormQuestion, type StepsDone } from "@/lib/setup-flow";
 import { anchorHref } from "@/lib/settings-tabs";
 import type { QuestionSet, SetupStatus } from "@/lib/types";
@@ -57,10 +50,10 @@ export function SetupDone({
   const editing = profileForEditing(profile);
   const permitsLeft = questions.flatMap((q) => {
     if (q.kind !== "permit" || permitAnswered(editing, questionSet, q.market)) return [];
-    const entry = permitEntry(editing, q.market);
-    const open = permitQuestions(questionSet, q.market).find((field) => !answered(field, entry[field.key]));
-    // The country's own control in Profile's Country answers tile (`af-permit-<market>-<key>`); a country served no
-    // questions is still open, and its link opens the tile.
+    // The first question still open, never one your citizenship settled (a row of words, with no control): its
+    // own control in Profile's Country answers tile (`af-permit-<market>-<key>`); a country served no questions
+    // is still open, and its link opens the tile.
+    const [open] = openPermitFields(editing, questionSet, q.market);
     const href = open
       ? anchorHref("/profile", `af-permit-${q.market}-${open.key}`)
       : anchorHref("/profile", `af-permit-${q.market}`);

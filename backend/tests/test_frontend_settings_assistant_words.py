@@ -784,7 +784,7 @@ def test_the_covenant_question_explains_its_legal_term():
     assert field.label == "Subject to a restrictive covenant?"
     assert field.hint == "Such as a non-compete or non-solicit agreement."
     renderer = _between(_FIELDS, "export function FieldGrid(", "\n}\n")
-    assert 'const hint = isStale ? field.staleHint : field.hint;' in renderer
+    assert 'const hint = hints[field.key] ?? (isStale ? field.staleHint : field.hint);' in renderer
     assert 'const hintId = hint ? `${id}-hint` : undefined;' in renderer
     assert "<p id={hintId}" in renderer
     assert "hintId={hintId}" in renderer  # handed to the shared control …
@@ -816,7 +816,7 @@ def test_the_self_description_shows_only_for_self_describe_and_goes_with_it():
     assert field.optional is True
     assert field.hint == "The Companion types this where a form asks you to self-describe."
     renderer = _between(_FIELDS, "export function FieldGrid(", "\n}\n")
-    assert "if (!fieldShown(field, values)) {" in renderer
+    assert "if (!fieldShown(field, shownBy)) {" in renderer and "shownBy = values," in renderer
     shown = _between(_AUTOFILL, "export function fieldShown(", "\n}\n")
     assert "if (field.when && values[field.when[0]] !== field.when[1]) return false;" in shown
     set_field = _between(_AUTOFILL, "export function withField(", "\n}\n")

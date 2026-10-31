@@ -133,7 +133,7 @@ _ELIGIBILITY = 'const fields = groupFields(questionSet, "eligibility");'
 # Country answers: one set per served country, its permits shown by the answers as the fill reads them.
 _PERMITS = (
     "questionSet.countries.map((country) => ( <CountrySet key={country.market} country={country}",
-    "const fields = country.permits.filter((field) => fieldShown(field, answers));",
+    "const fields = shownPermitFields(profile, questionSet, market, answering);",
 )
 _APPLY_IN = ("frontend/components/profile/country-fields.tsx", "You apply in </span>")
 _ADD = "onClick={() => setEntries([...entries, newEntry()])}"

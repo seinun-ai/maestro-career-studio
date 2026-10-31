@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 
-import { CountryPicker, useCountries } from "@/components/country-picker";
+import { useCountries } from "@/components/country-picker";
 import { useAutofillProfile } from "@/components/profile/autofill-profile";
+import { CITIZEN_HINT, CitizenshipPicker } from "@/components/profile/citizenship-picker";
 import { FieldGrid } from "@/components/profile/field-control";
 import { TileCard, type TileView } from "@/components/profile/tile";
 import { useAutofillQuery } from "@/components/profile/use-autofill-query";
@@ -12,6 +13,7 @@ import { SettingCardAction } from "@/components/settings/setting-card";
 import { GROUP_HEADING } from "@/components/settings/setting-layout";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
 import {
   answered,
   answerWords,
@@ -20,30 +22,24 @@ import {
   citizenshipField,
   countryAnswerEntry,
   derivedPermits,
-  fieldShown,
+  differsFromSettled,
   permitAnswered,
   permitAnswers,
   permitCount,
   permitEntry,
+  shownPermitFields,
   withCitizenships,
   withCountryAnswer,
   withPermit,
   type Count,
   type CountryQuestions,
-  type FieldDef,
+  type DerivedAnswer,
 } from "@/lib/autofill-options";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import type { MarketSettingResponse, QuestionSet } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 const SURFACE = "permits";
-
-/** Citizen of names the United Kingdom by the citizenship its forms mean (British citizen, not every British
- *  nationality). */
-const CITIZEN_NAMES: Readonly<Record<string, string>> = { GB: "United Kingdom (British citizen)" };
-
-/** What a citizenship does, said under "Citizen of" here and in Next up. */
-export const CITIZEN_HINT = "Where your citizenship lets you work in a country without a permit, its work-permit answers follow from it.";
 
 /** A country's name by its ISO code: the country list's, else a market's, else the code. */
 function useCountryName(market: MarketSettingResponse): (code: string) => string {
@@ -110,7 +106,6 @@ export function useWorkPermitsTile(
         {rows.map((row) => (
           <SummaryRow key={row.key} done={row.done} label={row.label} words={row.words} />
         ))}
-        {questionSet.countries.length ? null : <span>No country chosen yet</span>}
       </span>
     ),
     note: "Never guessed for you",
@@ -137,33 +132,6 @@ function CountryAnswersCard({
     >
       {() => <CountryAnswersEditor market={market} questionSet={questionSet} onChooseCountries={onChooseCountries} />}
     </TileCard>
-  );
-}
-
-/** Citizen of: a country picker valued as ISO codes, the United Kingdom read as British citizen. Profile's
- *  Country answers and Next up both ask it. */
-export function CitizenshipPicker({
-  id,
-  label,
-  value,
-  onChange,
-  describedBy,
-}: {
-  id: string;
-  label: string;
-  value: readonly string[];
-  onChange: (codes: string[]) => void;
-  describedBy?: string;
-}) {
-  return (
-    <CountryPicker
-      id={id}
-      aria-label={label}
-      aria-describedby={describedBy}
-      names={CITIZEN_NAMES}
-      value={value}
-      onChange={onChange}
-    />
   );
 }
 
@@ -226,8 +194,9 @@ function CountryAnswersEditor({
 
 /**
  * One country: its work permits, then its own answers. A permit answer your citizenship settles shows as words,
- * "From your citizenship (India)", with Answer differently, which brings its control back; an answer you give
- * wins over it, and one that differs settles nothing else there (`derivedPermits`).
+ * "From your citizenship (India)", with Answer differently, which brings its control back, and the expiry is not
+ * asked (that right does not run out). An answer you give wins over it; one that differs settles nothing else
+ * there (`derivedPermits`), and a note says why those are asked.
  */
 function CountrySet({
   country,
@@ -239,26 +208,39 @@ function CountrySet({
   nameOf: (code: string) => string;
 }) {
   const { profile, update } = useAutofillProfile();
-  // The settled answers you chose to answer differently, and the one whose control takes focus once it shows.
+  const market = country.market;
+  // What a citizenship settled here while this was open, kept across the questions read again: a later answer
+  // that differs from it says so.
+  const served = country.derived ?? {};
+  const [settledBefore, setSettledBefore] = useState<Record<string, DerivedAnswer>>(served);
+  if (Object.entries(served).some(([key, d]) => settledBefore[key]?.via !== d.via || settledBefore[key]?.value !== d.value)) {
+    setSettledBefore({ ...settledBefore, ...served });
+  }
+  // The settled questions you answer yourself: from Answer differently, and from any change to one, so a control
+  // in use never turns back into words under you (an answer set to Not set, the questions read again).
   const [answering, setAnswering] = useState<readonly string[]>([]);
-  const focusNext = useRef<string | null>(null);
-  const idPrefix = `af-permit-${country.market}`;
-  useEffect(() => {
-    const key = focusNext.current;
-    if (!key) return;
-    focusNext.current = null;
-    document.getElementById(`${idPrefix}-${key}`)?.focus();
-  }, [answering, idPrefix]);
+  const answerYourself = (key: string) => {
+    if (key in served || key in settledBefore) setAnswering((keys) => (keys.includes(key) ? keys : [...keys, key]));
+  };
+  const focusNext = useFocusOnNextCommit();
+  const idPrefix = `af-permit-${market}`;
 
-  const entry = permitEntry(profile, country.market);
-  const derived = derivedPermits(profile, questionSet, country.market);
-  // Shown by the answers as the fill reads them: a status your citizenship settles hides its expiry too.
-  const answers = permitAnswers(profile, questionSet, country.market);
-  const fields = country.permits.filter((field) => fieldShown(field, answers));
-  const settled = (field: FieldDef) => {
+  const entry = permitEntry(profile, market);
+  const derived = derivedPermits(profile, questionSet, market);
+  const answers = permitAnswers(profile, questionSet, market);
+  const fields = shownPermitFields(profile, questionSet, market, answering);
+  const differs = Object.keys(derived).length === 0 && differsFromSettled(profile, questionSet, market, settledBefore);
+  const settled: Record<string, ReactNode> = {};
+  const hints: Record<string, string> = {};
+  for (const field of fields) {
     const by = derived[field.key];
-    if (!by || answered(field, entry[field.key]) || answering.includes(field.key)) return [];
-    const node = (
+    if (!by || answered(field, entry[field.key])) continue;
+    if (answering.includes(field.key)) {
+      hints[field.key] = `Left unset, your citizenship answers ${answerWords(field, by.value)}.`;
+      continue;
+    }
+    const controlId = `${idPrefix}-${field.key}`;
+    settled[field.key] = (
       <>
         <p className="text-body-medium">{answerWords(field, by.value)}</p>
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -268,10 +250,14 @@ function CountrySet({
             variant="link"
             size="sm"
             className="h-auto p-0"
-            aria-describedby={`${idPrefix}-${field.key}-label`}
             onClick={() => {
-              focusNext.current = field.key;
-              setAnswering((keys) => [...keys, field.key]);
+              answerYourself(field.key);
+              // The button goes with its row: its control takes focus once it shows.
+              focusNext({
+                get current() {
+                  return document.getElementById(controlId);
+                },
+              });
             }}
           >
             Answer differently
@@ -279,29 +265,38 @@ function CountrySet({
         </span>
       </>
     );
-    return [[field.key, node] as const];
-  };
+  }
   return (
     <fieldset className="space-y-4">
       <legend className={cn(GROUP_HEADING, "flex items-center gap-1.5")}>
         <CONCEPT_ICONS.workAuthorization aria-hidden="true" className="size-4" />
         {country.label}
       </legend>
+      {differs ? (
+        <p className="text-body-small text-muted-foreground">
+          Your answer differs from what your citizenship settles, so these are asked.
+        </p>
+      ) : null}
       <FieldGrid
         idPrefix={idPrefix}
-        group={`permit-${country.market}`}
+        group={`permit-${market}`}
         fields={fields}
         values={entry}
-        settled={Object.fromEntries(fields.flatMap(settled))}
-        onChange={(key, next) => update(SURFACE, (current) => withPermit(current, questionSet, country.market, key, next))}
+        shownBy={answers}
+        settled={settled}
+        hints={hints}
+        onChange={(key, next) => {
+          answerYourself(key);
+          update(SURFACE, (current) => withPermit(current, questionSet, market, key, next));
+        }}
       />
       {country.answers.length ? (
         <FieldGrid
-          idPrefix={`af-answer-${country.market}`}
-          group={`answer-${country.market}`}
+          idPrefix={`af-answer-${market}`}
+          group={`answer-${market}`}
           fields={country.answers}
-          values={countryAnswerEntry(profile, country.market)}
-          onChange={(key, next) => update(SURFACE, (current) => withCountryAnswer(current, country.market, key, next))}
+          values={countryAnswerEntry(profile, market)}
+          onChange={(key, next) => update(SURFACE, (current) => withCountryAnswer(current, market, key, next))}
         />
       ) : null}
     </fieldset>
