@@ -150,8 +150,7 @@ icon works from Chrome 114).
 
 1. Start the app — `maestro start` (uv install) or `docker compose up` (Docker): backend on `:8001`, app on `:3000`.
 2. Open [Maestro CS Companion on the Chrome Web Store](https://chromewebstore.google.com/detail/maestro-cs-companion/bppkeipififkepldkogmfpkkhoakgndl)
-   and click **Add to Chrome**. The listing is unlisted, so search won't find
-   it; use this link.
+   and click **Add to Chrome**.
 3. Pin the extension, then click its icon on a job posting or application form.
 
 **From a source checkout** (development, or to run Companion changes not yet in

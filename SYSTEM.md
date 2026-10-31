@@ -779,6 +779,7 @@ exception, so ingest lands drafts and consent-gated `kb_approve_points` is the o
 - 2026-10-28 — The Companion installs from its unlisted Chrome Web Store listing first, Load unpacked for a source checkout; the manifest
   keeps the unpacked `key` and the backend admits both ids (docs/RELEASING.md, "Chrome Web Store"); superseded the planned
   `extension-id-swap` (store key into the manifest), which would have left unpacked installs to Remove and reinstall.
+- 2026-10-30 — The Companion's Chrome Web Store listing is public from 0.12.0; superseded unlisted (reachable only by its link).
 - 2026-10-30 — The form questions are served from one catalog, `data/form_questions.yaml`, resolved for where you live and apply
   (`GET /api/settings/autofill/questions`; readiness counts the same set); superseded the frontend's hand-written list, mirrored by
   readiness and kept by a parity test because labels were presentation, since per-country wording makes the labels country data.

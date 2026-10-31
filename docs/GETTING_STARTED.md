@@ -282,8 +282,7 @@ mark it applied — without leaving the tab. The app must be running. With **Ful
 review page. Submit is always yours.
 
 1. Open [Maestro CS Companion on the Chrome Web Store](https://chromewebstore.google.com/detail/maestro-cs-companion/bppkeipififkepldkogmfpkkhoakgndl)
-   and click **Add to Chrome**. The listing is unlisted, so search won't
-   find it; use this link.
+   and click **Add to Chrome**.
 2. Pin the icon, then click it on any job page to open the panel.
 
 This works the same on a uv install and on Docker, and Chrome keeps it updated.
