@@ -128,7 +128,9 @@
   validated before any lands, so a 422 saves none. `services/countries.normalize` is the one parser
   (codes in any case, English short names with or without accents, and common variants such as "UK",
   "USA", "Holland", "Ivory Coast" and "Viet Nam"; anything else is unknown); the list is vendored in
-  `services/data/countries.yaml` and served by `GET /api/countries`. Create, import, `from-kb`, PUT and
+  `services/data/countries.yaml` and served by `GET /api/countries`, each country with its variants
+  (`aliases`, folded), so the web app reads a name as the server does (`lib/autofill-options.ts`
+  `countryCodes`: Setup and Next up store a citizenship as codes). Create, import, `from-kb`, PUT and
   edits never take anchors; duplicate copies `countries`, `company` and `focus` once, like the role pair.
   Anchors are metadata like role: no ResumeVersion, no disk rewrite, no render, no score change.
   `base_resume_data.anchors(row)` returns `{countries, role, company, focus}` (role is `role_label`, else

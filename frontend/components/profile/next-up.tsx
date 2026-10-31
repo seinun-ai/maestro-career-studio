@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check } from "lucide-react";
 
+import { useCountries } from "@/components/country-picker";
 import { useAutofillProfile } from "@/components/profile/autofill-profile";
 import { FieldControl } from "@/components/profile/field-control";
 import { diversityCountries } from "@/components/profile/diversity";
@@ -16,7 +17,7 @@ import {
   answered,
   booleanAnswer,
   citizenshipEntries,
-  citizenshipIsLoose,
+  countryCodes,
   countryQuestions,
   fieldValue,
   groupCount,
@@ -32,6 +33,7 @@ import {
   type MissingAnswer,
 } from "@/lib/autofill-options";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
+import { citizenshipNext } from "@/lib/setup-answers";
 import type { MarketSettingResponse, QuestionSet } from "@/lib/types";
 
 const SURFACE = "next-up";
@@ -88,6 +90,18 @@ export function NextUp({
     shown.current = currentKey;
   }, [currentKey]);
 
+  // Names, aliases and codes from the country list the citizenship picker reads, so a citizenship is stored as codes.
+  const countries = useCountries();
+  const codes = useMemo(() => (countries.data ? countryCodes(countries.data) : null), [countries.data]);
+  const { pending: saving, failed } = saveState(SURFACE);
+  // A Next pressed on citizenship while its save was on its way moves on once that save lands (resolved during
+  // render, not in an effect), unless it failed: Not saved says so, and Next is there to press again.
+  const [nextAfterSave, setNextAfterSave] = useState(false);
+  if (nextAfterSave && !saving) {
+    setNextAfterSave(false);
+    if (!failed) setHeld(null);
+  }
+
   if (!current) {
     if (!missing.length) return null;
     return (
@@ -108,6 +122,7 @@ export function NextUp({
   };
   const skip = () => {
     moved.current = true;
+    setNextAfterSave(false);
     setHeld(null);
     setSkipped((list) => [...list, missingKey(current)]);
   };
@@ -153,15 +168,16 @@ export function NextUp({
     const hintId = `${controlId}-hint`;
     const entries = citizenshipEntries(profile);
     // Next waits for the save, which reads the questions again, so the next one is never a permit the
-    // citizenship is about to settle. A citizenship stored as a plain string (an older save, a hand edit) shows in
-    // the picker and is not a list yet: Next stores it as one (the server turns its names into codes) and stays
-    // while that saves; pressed again, it moves on.
-    const saving = saveState(SURFACE).pending;
-    const loose = citizenshipIsLoose(profile);
+    // citizenship is about to settle. A citizenship not held as codes (a plain string from an older save or a hand
+    // edit, a name) shows in the picker: Next stores it as codes first (`citizenshipNext`). One press does it:
+    // the question stays while that saves, then moves on.
     const nextAfterSaving = () => {
-      if (!loose) return next();
+      const step = citizenshipNext(profile, codes, saving);
+      if (step === "move on") return next();
+      moved.current = true;
       setHeld(current);
-      update(SURFACE, (profileNow) => withCitizenshipList(profileNow));
+      if (step === "store") update(SURFACE, (profileNow) => withCitizenshipList(profileNow, codes));
+      setNextAfterSave(true);
     };
     return (
       <LeadCard

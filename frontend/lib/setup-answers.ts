@@ -9,6 +9,7 @@ import {
   answered,
   booleanAnswer,
   citizenshipAnswered,
+  citizenshipIsLoose,
   declinedEeo,
   derivedPermits,
   forSaving,
@@ -22,6 +23,7 @@ import {
   withCitizenships,
   withField,
   withPermit,
+  type CountryCodes,
   type FieldDef,
   type Profile,
 } from "./autofill-options";
@@ -34,10 +36,25 @@ export function withCitizenshipAnswer(profile: Profile, codes: readonly string[]
   return forSaving(withCitizenships(profile, codes));
 }
 
-/** The profile with a citizenship stored as a plain string stored as a list (`withCitizenshipList`): what
- *  Continue does first, on the citizenship question, before it moves on. */
-export function withCitizenshipListed(profile: Profile): Profile {
-  return forSaving(withCitizenshipList(profile));
+/** The profile with a loose citizenship stored as codes (`withCitizenshipList`): what Continue does first, on
+ *  the citizenship question, before it moves on. */
+export function withCitizenshipListed(profile: Profile, codes: CountryCodes | null): Profile {
+  return forSaving(withCitizenshipList(profile, codes));
+}
+
+/** What a press of Setup's Continue or Next up's Next does on the citizenship question (`citizenshipNext`). */
+export type CitizenshipNext = "store" | "wait" | "move on";
+
+/**
+ * On the citizenship question, Setup's Continue and Next up's Next: "store" a citizenship not held as codes
+ * (`citizenshipIsLoose`: a plain string, a name, an alias) as codes first; "wait" while a save is on its way,
+ * since it reads the questions again and the next question must never be a permit the citizenship is about to
+ * settle; else "move on". A press that stores or waits is remembered, and moves on once the save lands (not
+ * when it failed: Not saved says so, and the button is there to press again).
+ */
+export function citizenshipNext(profile: Profile, codes: CountryCodes | null, pending: boolean): CitizenshipNext {
+  if (citizenshipIsLoose(profile, codes)) return "store";
+  return pending ? "wait" : "move on";
 }
 
 /**

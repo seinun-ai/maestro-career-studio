@@ -14,7 +14,9 @@ const { SetupFlow } = load("components/setup/setup-flow.tsx");
 const { SetupDone } = load("components/setup/setup-done.tsx");
 const { SetupAnswersStep } = load("components/setup/setup-answers-step.tsx");
 const { formQuestions, stepsDone } = load("lib/setup-flow.ts");
+const { countryCodes } = load("lib/autofill-options.ts");
 const {
+  citizenshipNext,
   permitAsks,
   questionAnswered,
   questionsToAsk,
@@ -65,10 +67,14 @@ const INFO = {
   json_mode: "auto",
   capabilities: {},
 };
+// GET /api/countries, a few of them, with the aliases the server's normalize reads.
 const COUNTRIES = [
-  { code: "AE", name: "United Arab Emirates" }, { code: "DE", name: "Germany" }, { code: "GB", name: "United Kingdom" },
-  { code: "IN", name: "India" }, { code: "NL", name: "Netherlands" }, { code: "US", name: "United States" },
+  { code: "AE", name: "United Arab Emirates", aliases: ["uae"] }, { code: "DE", name: "Germany" },
+  { code: "GB", name: "United Kingdom", aliases: ["uk", "great britain"] }, { code: "IE", name: "Ireland" },
+  { code: "IN", name: "India" }, { code: "NL", name: "Netherlands", aliases: ["holland"] },
+  { code: "US", name: "United States", aliases: ["usa"] },
 ];
+const CODES = countryCodes(COUNTRIES);
 const market = (applyIn = ["DE"], chosen = true) => ({
   key: "market",
   value: { home: "DE", apply_in: applyIn, market: "DE", chosen },
@@ -342,11 +348,52 @@ test("citizenship saves as codes, without the one-set view; a plain string is st
   assert.deepEqual(after.personal, { first_name: "Lena", citizenships: ["DE", "FR"] });
   assert.equal("work_auth" in after, false);
   assert.deepEqual(withCitizenshipAnswer({ personal: { citizenships: ["DE"] } }, []).personal, {});
-  assert.deepEqual(withCitizenshipListed({ personal: { citizenships: "Germany" } }).personal, { citizenships: ["Germany"] });
+  assert.deepEqual(withCitizenshipListed({ personal: { citizenships: "Germany" }, work_auth: {} }, CODES), {
+    personal: { citizenships: ["DE"] },
+  });
   // Answered once the picker stored a country; a plain string is no answer until it is a list.
   assert.equal(questionAnswered({ kind: "citizenship" }, { personal: { citizenships: ["DE"] } }, SERVED), true);
   assert.equal(questionAnswered({ kind: "citizenship" }, { personal: { citizenships: "Germany" } }, SERVED), false);
   assert.equal(questionAnswered({ kind: "citizenship" }, {}, SERVED), false);
+});
+
+test("one press on citizenship: store it as codes, wait for the save, then move on", () => {
+  // Stored as codes and nothing saving: Continue moves on at once.
+  assert.equal(citizenshipNext({ personal: { citizenships: ["IN"] } }, CODES, false), "move on");
+  // Saving (a pick reads the questions again): the press waits, and moves on once the save lands.
+  assert.equal(citizenshipNext({ personal: { citizenships: ["IN"] } }, CODES, true), "wait");
+  // A plain string: stored as codes first; once stored, the press only waits for that save.
+  const loose = { personal: { citizenships: "India" } };
+  assert.equal(citizenshipNext(loose, CODES, false), "store");
+  const stored = withCitizenshipListed(loose, CODES);
+  assert.deepEqual(stored.personal.citizenships, ["IN"]);
+  assert.equal(citizenshipNext(stored, CODES, true), "wait");
+  // A list mixing a code and names ("UK" is GB): stored as codes too.
+  const mixed = { personal: { citizenships: ["IN", "UK", "Holland"] } };
+  assert.equal(citizenshipNext(mixed, CODES, false), "store");
+  assert.deepEqual(withCitizenshipListed(mixed, CODES).personal.citizenships, ["IN", "GB", "NL"]);
+  // Before the country list is read, a list is left as it is; a plain string still goes out as its parts.
+  assert.equal(citizenshipNext(mixed, null, false), "move on");
+  assert.equal(citizenshipNext(loose, null, false), "store");
+});
+
+test("a citizenship that names no country is dropped, and the done screen asks for it", () => {
+  const stored = withCitizenshipListed({ personal: { first_name: "Lena", citizenships: "Narnia" } }, CODES);
+  assert.deepEqual(stored.personal, { first_name: "Lena" });
+  assert.equal(questionAnswered({ kind: "citizenship" }, stored, SERVED), false);
+  const germany = servedQuestions("DE", ["DE"]);
+  const html = renderElement(
+    React.createElement(SetupDone, {
+      questionSet: germany,
+      status: PERMITTED,
+      done: stepsDone(PERMITTED, germany),
+      profile: { ...stored, work_auth_by_country: { DE: PERMITS } },
+      diversity: null,
+      headingRef: { current: null },
+      go: () => {},
+    }),
+  );
+  assert.match(html, /href="\/profile#af-citizenships"[^>]*>Add your citizenship/);
 });
 
 test("diversity: only for a country with a set, named, and nothing stored before the consent", () => {

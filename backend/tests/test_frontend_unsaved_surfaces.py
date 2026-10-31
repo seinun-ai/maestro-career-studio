@@ -63,7 +63,7 @@ def test_autofill_save_keeps_text_typed_while_it_ran():
     # A save landing re-seeds nothing while an edit is queued or in flight (`adopt` refuses), so text typed
     # while it ran stays and goes out next; the server copy is taken only once every edit is on it.
     src = _flat(_AUTOFILL)
-    assert "adopt(profileForEditing(served));" in src
+    assert "if (adopt(profileForEditing(served))) seen.current = served;" in src
     hook = _flat(_read("lib/use-autosave.ts"))
-    assert "if (inFlight.current !== null || failedNow.current) return;" in hook
+    assert "if (inFlight.current !== null || failedNow.current) return false;" in hook
     assert "if (queued.current !== inFlight.current) { flush(); return; }" in hook

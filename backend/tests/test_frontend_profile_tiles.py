@@ -231,11 +231,16 @@ def test_an_open_page_reads_the_answers_again_when_you_come_back():
     assert others == [], others
     provider = _src("components/profile/autofill-profile.tsx")
     adopt = _between(provider, "export function useAdoptServed(", "\n}\n")
-    assert "if (served === seen.current) return;" in adopt and "adopt(profileForEditing(served));" in adopt
+    assert "if (served === seen.current) return;" in adopt
+    # A copy declined while a save was on its way (that save's own result, citizenships as codes) is offered
+    # again once nothing is: `seen` moves only when adopt takes it.
+    assert "if (adopt(profileForEditing(served))) seen.current = served;" in adopt
+    assert "}, [served, adopt, pending]);" in adopt
+    assert "return false;" in _between(_src("lib/use-autosave.ts"), "const adopt = useCallback(", "}, []);")
     # Profile's provider and Setup's Form answers both take a newer copy through it, and save the same way.
-    assert "useAdoptServed(served, answers.adopt);" in provider
+    assert "useAdoptServed(served, answers.adopt, answers.pending);" in provider
     setup = _between(_src("components/setup/setup-answers-step.tsx"), "export function useSetupAnswers(", "\n}\n")
-    assert "useAdoptServed(served, answers.adopt);" in setup and "const save = useSaveAnswers();" in setup
+    assert "useAdoptServed(served, answers.adopt, answers.pending);" in setup and "const save = useSaveAnswers();" in setup
     assert "const answers = useSetupAnswers(data.profile);" in _src("components/setup/setup-flow.tsx")
     # Last, because it skips where the web app's packages are not installed (the backend CI job).
     result = run_node_render_test("components/profile/use-autofill-query.test.mjs")

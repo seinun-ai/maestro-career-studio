@@ -10,6 +10,7 @@ import { DiversityConsentSwitch, useDiversityConsent } from "@/components/profil
 import { FieldGrid } from "@/components/profile/field-control";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import type { DiversityChoice } from "@/components/setup/setup-flow";
+import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,7 +43,7 @@ import {
   withPermitAnswer,
   withPreference,
 } from "@/lib/setup-answers";
-import { preference, type AutofillProfile, type FormQuestion } from "@/lib/setup-flow";
+import { preference, questionKey, type AutofillProfile, type FormQuestion } from "@/lib/setup-flow";
 import type { EeoConsent, QuestionSet } from "@/lib/types";
 import { useAutosave } from "@/lib/use-autosave";
 import { cn } from "@/lib/utils";
@@ -64,12 +65,15 @@ export type SetupAnswers = {
  * The form answers, held by the flow (components/setup/setup-flow.tsx) so Continue can wait for a save, and
  * saved as Profile saves them (`useSaveAnswers`: a save that changes a citizenship reads the questions again
  * before it lands). Each country's legacy pair is read as typed answers, and a newer copy (the Companion learned
- * an answer while this tab was away) is taken only while every edit is on the server.
+ * an answer while this tab was away) is taken only while every edit is on the server, as is what the server made
+ * of a save (citizenships as codes) once it lands. A failed write leaves answers on screen the server lacks, so
+ * leaving asks first, as in Profile.
  */
 export function useSetupAnswers(served: AutofillProfile): SetupAnswers {
   const save = useSaveAnswers();
   const answers = useAutosave<AutofillProfile>(profileForEditing(served), (next) => save.mutateAsync(next));
-  useAdoptServed(served, answers.adopt);
+  useLeaveGuard(answers.failed);
+  useAdoptServed(served, answers.adopt, answers.pending);
   return answers;
 }
 
@@ -150,13 +154,15 @@ export function SetupAnswersStep({
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) {
   const current = questions[question];
+  const currentKey = current ? questionKey(current) : null;
   const questionRef = useRef<HTMLHeadingElement>(null);
-  const shown = useRef(question);
-  // The next question takes focus at its heading; the step's own heading has it on arrival.
+  const shown = useRef(currentKey);
+  // The next question takes focus at its heading; the step's own heading has it on arrival. A card added or
+  // dropped before this one moves its number, never the focus.
   useEffect(() => {
-    if (shown.current !== question) questionRef.current?.focus();
-    shown.current = question;
-  }, [question]);
+    if (shown.current !== currentKey) questionRef.current?.focus();
+    shown.current = currentKey;
+  }, [currentKey]);
 
   const advance = () => (question < questions.length - 1 ? onQuestion(question + 1) : onDone());
 

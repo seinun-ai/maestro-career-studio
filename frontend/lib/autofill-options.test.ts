@@ -4,8 +4,11 @@ import { test } from "node:test";
 import {
   answered,
   citizenshipEntries,
+  citizenshipIsLoose,
   contactFields,
   countryAnswerEntry,
+  countryCode,
+  countryCodes,
   declinedEeo,
   derivedPermits,
   differsFromSettled,
@@ -227,15 +230,50 @@ test("citizenships are saved as codes, each once, and none removes the answer", 
   assert.deepEqual(citizenshipEntries({}), []);
 });
 
-test("a citizenship stored as a plain string is stored as a list of its parts; a list stays as it is", () => {
-  assert.deepEqual(withCitizenshipList({ personal: { citizenships: "India, Ireland", city: "Pune" } }).personal, {
-    citizenships: ["India", "Ireland"],
+// GET /api/countries, a few of them, with the aliases the server's normalize reads (folded).
+const CODES = countryCodes([
+  { code: "CI", name: "Côte d’Ivoire", aliases: ["ivory coast"] },
+  { code: "FR", name: "France" },
+  { code: "GB", name: "United Kingdom", aliases: ["uk", "great britain", "england"] },
+  { code: "IE", name: "Ireland" },
+  { code: "IN", name: "India" },
+  { code: "US", name: "United States", aliases: ["usa", "america"] },
+]);
+
+test("a country is read by its code in any case, its name or an alias, folded as the server folds it", () => {
+  assert.equal(countryCode(CODES, "in"), "IN");
+  assert.equal(countryCode(CODES, " India "), "IN");
+  assert.equal(countryCode(CODES, "UK"), "GB");
+  assert.equal(countryCode(CODES, "USA"), "US");
+  assert.equal(countryCode(CODES, "Cote d'Ivoire"), "CI");
+  assert.equal(countryCode(CODES, "Narnia"), null);
+});
+
+test("a citizenship not held as codes is stored as codes: names, aliases and a code's case, each once", () => {
+  // A plain string from an older save or a hand edit.
+  assert.deepEqual(withCitizenshipList({ personal: { citizenships: "India, Ireland", city: "Pune" } }, CODES).personal, {
+    citizenships: ["IN", "IE"],
     city: "Pune",
   });
+  // A list mixing a code and names, "UK" read as GB, the same country once.
+  const mixed = { personal: { citizenships: ["IN", "UK", "india"] } };
+  assert.equal(citizenshipIsLoose(mixed, CODES), true);
+  assert.deepEqual(withCitizenshipList(mixed, CODES).personal, { citizenships: ["IN", "GB"] });
+  // An entry that names no country is dropped, as the server's save drops it; with none left, no answer.
+  assert.deepEqual(withCitizenshipList({ personal: { citizenships: ["FR", "Narnia"] } }, CODES).personal, { citizenships: ["FR"] });
+  assert.deepEqual(withCitizenshipList({ personal: { citizenships: "Narnia" } }, CODES).personal, {});
+  // Codes as the picker stores them stay as they are; so does no answer.
   const listed = { personal: { citizenships: ["IN"] } };
-  assert.equal(withCitizenshipList(listed), listed);
+  assert.equal(citizenshipIsLoose(listed, CODES), false);
+  assert.equal(withCitizenshipList(listed, CODES), listed);
   const none = { personal: { city: "Pune" } };
-  assert.equal(withCitizenshipList(none), none);
+  assert.equal(withCitizenshipList(none, CODES), none);
+  // Before the country list is read, a plain string is stored as its parts (the server turns them into codes),
+  // and a list is left for later.
+  assert.deepEqual(withCitizenshipList({ personal: { citizenships: "India, Ireland" } }, null).personal, {
+    citizenships: ["India", "Ireland"],
+  });
+  assert.equal(citizenshipIsLoose(mixed, null), false);
 });
 
 // An Indian citizen applying in the US and Germany, as the server serves it: nothing settled there. Applying in
@@ -294,15 +332,15 @@ test("removing the citizenship stops what it settled before the questions are re
   assert.equal(differsFromSettled({ work_auth_by_country: { DE: { authorized_now: false } } }, EU, "DE", SETTLED_DE), false);
 });
 
-test("a plain-string citizenship Next stored as a list keeps what the server settles once it holds the code", () => {
-  // Next up stores "France" as ["France"]; the server stores ["FR"] and serves what it settles. The copy on screen
-  // still holds the name, which matches no code here, so the served answer stands and Germany is not asked.
-  const named = withCitizenshipList({ personal: { citizenships: "France" } });
-  assert.deepEqual(derivedPermits(named, EU, "DE"), SETTLED_DE);
-  assert.deepEqual(openPermitFields(named, EU, "DE"), []);
-  assert.equal(missingAnswers(named, EU).map(missingKey).some((key) => key.startsWith("permit:DE:")), false);
-  // Codes still narrow at once: the picker saves codes, so removing one there stops what it settled.
-  assert.deepEqual(derivedPermits({ personal: { citizenships: ["IN"] } }, EU, "DE"), {});
+test("a citizenship held by name settles nothing, as on the server; stored as codes, it settles what it should", () => {
+  const named = { personal: { citizenships: ["France"] } };
+  assert.deepEqual(derivedPermits(named, EU, "DE"), {});
+  // Next up and Setup store it as codes first, so what the server settles applies on screen too.
+  const coded = withCitizenshipList({ personal: { citizenships: "France" } }, CODES);
+  assert.deepEqual(coded.personal, { citizenships: ["FR"] });
+  assert.deepEqual(derivedPermits(coded, EU, "DE"), SETTLED_DE);
+  assert.deepEqual(openPermitFields(coded, EU, "DE"), []);
+  assert.equal(missingAnswers(coded, EU).map(missingKey).some((key) => key.startsWith("permit:DE:")), false);
 });
 
 test("a status your citizenship settles hides the expiry, as a status you gave does", () => {

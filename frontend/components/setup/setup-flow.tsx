@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import { useCountries } from "@/components/country-picker";
 import { LoadErrorState } from "@/components/load-error-state";
 import { PageHeader, PageShell } from "@/components/page-shell";
 import { useEeoConsentQuery } from "@/components/profile/diversity-consent";
@@ -20,14 +21,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { loadErrorDetail } from "@/lib/error-text";
-import { citizenshipIsLoose, profileForEditing } from "@/lib/autofill-options";
+import { countryCodes, profileForEditing } from "@/lib/autofill-options";
 import { isLoadFailure } from "@/lib/query-state";
-import { questionsToAsk, withCitizenshipListed } from "@/lib/setup-answers";
+import { citizenshipNext, questionsToAsk, withCitizenshipListed } from "@/lib/setup-answers";
 import {
   SETUP_STEPS,
   firstOpenStep,
   formQuestions,
   progressWords,
+  questionKey,
   stepsDone,
   type AutofillProfile,
   type StepsDone,
@@ -136,16 +138,24 @@ function SetupScreens({ data }: { data: SetupData }) {
     data.questionSet,
     opened,
   );
+  // Names, aliases and codes from the country list the citizenship picker reads, so a citizenship is stored as codes.
+  const countries = useCountries();
+  const codes = useMemo(() => (countries.data ? countryCodes(countries.data) : null), [countries.data]);
   // The step shown: 0 to 3, and the done screen after them.
   const [step, setStep] = useState(() => firstOpenStep(done));
-  const [question, setQuestion] = useState(0);
+  // The question shown, kept by what it asks (`questionKey`), so a card added or dropped before it (answers
+  // changed in another window) never swaps it under you; where it was, if it is the one that went.
+  const [at, setAt] = useState<{ key: string | null; index: number }>({ key: null, index: 0 });
   const [diversity, setDiversity] = useState<DiversityChoice>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const moved = useRef(false);
+  // A Continue pressed on citizenship while its save was on its way: it moves on once that save lands.
+  const [continuing, setContinuing] = useState(false);
 
   const go = (next: number) => {
     moved.current = true;
-    setQuestion(0);
+    setContinuing(false);
+    setAt({ key: null, index: 0 });
     setStep(Math.max(0, Math.min(SETUP_STEPS.length, next)));
   };
   // A new step takes focus at its heading, so a keyboard or screen reader user starts there. Not on load.
@@ -154,22 +164,39 @@ function SetupScreens({ data }: { data: SetupData }) {
   }, [step]);
 
   const last = Math.max(0, questions.length - 1);
-  const atQuestion = Math.min(question, last);
-  // On citizenship, Continue waits for its save, which reads the questions again: the card after it is never a
-  // country the citizenship is about to settle. A citizenship stored as a plain string is stored as a list first,
-  // and Continue, pressed again once that lands, moves on.
+  const found = at.key === null ? -1 : questions.findIndex((q) => questionKey(q) === at.key);
+  const atQuestion = found >= 0 ? found : Math.min(at.index, last);
+  const placeAt = (index: number) => {
+    const shown = questions[index];
+    setAt({ key: shown ? questionKey(shown) : null, index });
+  };
+  const showQuestion = (index: number) => {
+    setContinuing(false);
+    placeAt(index);
+  };
+  const showNext = () => (atQuestion < last ? showQuestion(atQuestion + 1) : go(step + 1));
+  // On citizenship, Continue stores a citizenship not held as codes first, and waits for its save, which reads
+  // the questions again: the card after it is never a country the citizenship is about to settle. One press
+  // does it: the press is remembered and moves on once the save lands (resolved during render, not in an
+  // effect), unless it failed (Not saved says so, and Continue is there to press again). Notice and relocation
+  // always follow citizenship, so there is a next question.
   const onCitizenship = SETUP_STEPS[step]?.id === "answers" && questions[atQuestion]?.kind === "citizenship";
+  if (continuing && !answers.pending) {
+    setContinuing(false);
+    if (!answers.failed && atQuestion < last) placeAt(atQuestion + 1);
+  }
   const nav =
     SETUP_STEPS[step]?.id === "answers"
       ? {
-          onBack: () => (atQuestion > 0 ? setQuestion(atQuestion - 1) : go(step - 1)),
+          onBack: () => (atQuestion > 0 ? showQuestion(atQuestion - 1) : go(step - 1)),
           onContinue: () => {
-            if (onCitizenship && citizenshipIsLoose(answers.value)) {
-              answers.update((current) => withCitizenshipListed(current));
-            } else if (atQuestion < last) setQuestion(atQuestion + 1);
-            else go(step + 1);
+            if (!onCitizenship) return showNext();
+            const next = citizenshipNext(answers.value, codes, answers.pending);
+            if (next === "move on") return showNext();
+            if (next === "store") answers.update((current) => withCitizenshipListed(current, codes));
+            setContinuing(true);
           },
-          waiting: onCitizenship && answers.pending,
+          waiting: onCitizenship && answers.pending ? "Saving your citizenship…" : undefined,
         }
       : { onBack: step > 0 ? () => go(step - 1) : undefined, onContinue: () => go(step + 1) };
 
@@ -186,7 +213,7 @@ function SetupScreens({ data }: { data: SetupData }) {
           headingRef={headingRef}
           questions={questions}
           question={atQuestion}
-          onQuestion={setQuestion}
+          onQuestion={showQuestion}
           diversity={diversity}
           onDiversity={setDiversity}
           go={go}
@@ -332,18 +359,19 @@ function StepMark({ index, done, current }: { index: number; done: boolean; curr
 }
 
 /** Under every step: Back (none on the first), Skip for now, and Continue, the view's one filled button, which
- *  waits (`waiting`) while a save it must follow is on its way. */
+ *  waits while a save it must follow is on its way, saying why beside it (`waiting`, its words). */
 function StepNav({
   onBack,
   onSkip,
   onContinue,
-  waiting = false,
+  waiting,
 }: {
   onBack?: () => void;
   onSkip: () => void;
   onContinue: () => void;
-  waiting?: boolean;
+  waiting?: string;
 }) {
+  const waitingId = useId();
   return (
     <div className="flex flex-wrap items-center gap-2">
       {onBack ? (
@@ -352,10 +380,22 @@ function StepNav({
         </Button>
       ) : null}
       <span className="flex-1" />
+      {waiting ? (
+        <span id={waitingId} className="text-body-small text-muted-foreground">
+          {waiting}
+        </span>
+      ) : null}
       <Button type="button" variant="ghost" size="lg" className="text-muted-foreground" onClick={onSkip}>
         Skip for now
       </Button>
-      <Button type="button" size="lg" disabled={waiting} focusableWhenDisabled onClick={onContinue}>
+      <Button
+        type="button"
+        size="lg"
+        disabled={Boolean(waiting)}
+        focusableWhenDisabled
+        aria-describedby={waiting ? waitingId : undefined}
+        onClick={onContinue}
+      >
         Continue
       </Button>
     </div>

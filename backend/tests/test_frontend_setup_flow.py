@@ -35,6 +35,9 @@ _SHARED_FILES = (
     "components/profile/autofill-profile.tsx",
     "components/profile/country-fields.tsx",
     "hooks/use-save-consent.ts",
+    # Citizen of: Profile's picker, and the country list it reads (Continue stores names as its codes).
+    "components/profile/citizenship-picker.tsx",
+    "components/country-picker.tsx",
 )
 _SETUP_FILES = ("app/setup/page.tsx", "components/setup/setup-flow.tsx", *_STEP_FILES, *_SHARED_FILES)
 
@@ -66,6 +69,8 @@ _CALLS = {
     ("PUT", "/api/settings/eeo-consent"),
     # Career history's contact block, for Fill from career history.
     ("GET", "/api/kb/profile"),
+    # The country list, for Citizen of.
+    ("GET", "/api/countries"),
 }
 # The resume import goes through the import dialog's own hook and lib/api.ts's two calls.
 _IMPORT_CALLS = {("POST", "/api/kb/import"), ("POST", "/api/kb/import/consolidate")}
@@ -192,12 +197,22 @@ def test_citizenship_comes_first_and_settles_what_it_can():
     # A card with nothing left to ask is passed (`questionsToAsk`), and the step is done from the served countries.
     assert "const questions = questionsToAsk(" in flow
     assert "const done = stepsDone(data.status, data.questionSet);" in flow
-    # Continue waits for the citizenship's save (it reads the questions again), and stores a plain string as a
-    # list first.
-    assert "waiting: onCitizenship && answers.pending," in flow
-    assert "if (onCitizenship && citizenshipIsLoose(answers.value)) {" in flow
+    # One press: Continue stores a citizenship not held as codes, waits for its save (it reads the questions
+    # again), then moves on (`citizenshipNext`, shared with Next up); a failed save keeps it where it is.
+    assert "const next = citizenshipNext(answers.value, codes, answers.pending);" in flow
+    assert 'if (next === "store") answers.update((current) => withCitizenshipListed(current, codes));' in flow
+    assert "if (continuing && !answers.pending) {" in flow
+    assert "if (!answers.failed && atQuestion < last) placeAt(atQuestion + 1);" in flow
+    assert "const step = citizenshipNext(profile, codes, saving);" in _read("components/profile/next-up.tsx")
+    # While it waits, Continue is disabled, keeps focus, and is described by why.
+    assert 'waiting: onCitizenship && answers.pending ? "Saving your citizenship…" : undefined,' in flow
     nav = flow[flow.index("function StepNav(") :]
-    assert "disabled={waiting} focusableWhenDisabled" in nav
+    assert "disabled={Boolean(waiting)}" in nav and "focusableWhenDisabled" in nav
+    assert "aria-describedby={waiting ? waitingId : undefined}" in nav
+    # The question is kept by what it asks, so a card added or dropped before it never swaps it.
+    assert "const found = at.key === null ? -1 : questions.findIndex((q) => questionKey(q) === at.key);" in flow
+    # A failed save asks before leaving, as in Profile.
+    assert "useLeaveGuard(answers.failed);" in answers
     done = _read("components/setup/setup-done.tsx")
     assert 'anchorHref("/profile", "af-citizenships")' in done
 

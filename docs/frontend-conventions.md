@@ -1183,9 +1183,12 @@
   its resume lane), its counts only from the response (`importCounts`). **Where and what**: You live
   in, You apply in (chips; until you choose, none is pressed and the hint says no country is chosen), roles
   offered from your base resumes and the work mode, saving as you go.
-  **Form answers**, one question at a time: **Citizen of** first (Profile's `CitizenshipPicker`), where
-  Continue waits for its save, which reads the questions again, and stores a plain-string citizenship as a
-  list first; then a work-permit card per country the served set lists with something left to ask
+  **Form answers**, one question at a time: **Citizen of** first (Profile's `CitizenshipPicker`), where one
+  Continue stores a citizenship not held as codes as codes (names and aliases from `GET /api/countries`;
+  one that names no country is dropped, as the save drops it), waits for its save, which reads the questions
+  again (disabled, described by "Saving your citizenship…"), then moves on (`citizenshipNext`, shared with
+  Next up); the question shown is kept by what it asks, so a card added or dropped before it never swaps
+  it; then a work-permit card per country the served set lists with something left to ask
   (`lib/setup-answers.ts` `questionsToAsk`), headed by the country and asked in its own words
   (`work_auth_vocab`, the visa status for `us_visa`; the served set Profile asks from too). A card asks only
   the required questions your citizenship does not settle and that were not answered when Setup opened

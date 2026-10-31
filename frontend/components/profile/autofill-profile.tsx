@@ -59,14 +59,15 @@ export function useSaveAnswers() {
 
 /** A refetch that brings another writer's change (the Companion's pause row learns answers into this profile;
  *  `autofillQuery` reads again on focus) is taken only while every edit is already on the server (`adopt`):
- *  the next save carries it rather than erasing it. */
-export function useAdoptServed(served: Profile, adopt: (next: Profile) => void) {
+ *  the next save carries it rather than erasing it. A copy declined while a save was on its way (a save's own
+ *  result arrives then, with what the server made of it: citizenships as codes) is offered again once nothing
+ *  is (`pending`), so the screen holds what the server stored. */
+export function useAdoptServed(served: Profile, adopt: (next: Profile) => boolean, pending: boolean) {
   const seen = useRef(served);
   useEffect(() => {
     if (served === seen.current) return;
-    seen.current = served;
-    adopt(profileForEditing(served));
-  }, [served, adopt]);
+    if (adopt(profileForEditing(served))) seen.current = served;
+  }, [served, adopt, pending]);
 }
 
 /**
@@ -100,7 +101,7 @@ export function AutofillProfileProvider({ served, children }: { served: Profile;
   });
   // A failed write leaves answers on screen the server lacks.
   useLeaveGuard(answers.failed);
-  useAdoptServed(served, answers.adopt);
+  useAdoptServed(served, answers.adopt, answers.pending);
 
   const editing: AutofillEditing = {
     profile: answers.value,

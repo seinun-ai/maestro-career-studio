@@ -224,10 +224,11 @@ def test_an_idle_autosave_takes_another_writers_change_and_a_busy_one_never_does
     """The Companion's pause row learns answers into the autofill profile while Profile is open: `adopt` takes
     the newer server copy only while nothing is in flight and nothing failed, so it never overwrites an edit."""
     adopt = _flat(_HOOK[_HOOK.index("const adopt = useCallback(") : _HOOK.index("}, []);", _HOOK.index("const adopt"))])
-    assert "if (inFlight.current !== null || failedNow.current) return;" in adopt
-    assert "queued.current = next; setValue(next);" in adopt
+    assert "if (inFlight.current !== null || failedNow.current) return false;" in adopt
+    assert "queued.current = next; setValue(next); return true;" in adopt
     settle = _arrow(_HOOK, "const settle = (")
     assert "failedNow.current = !ok;" in settle
     provider = _read("components/profile/autofill-profile.tsx")
-    assert "adopt(profileForEditing(served));" in provider
+    # A declined copy is offered again once nothing is saving: `seen` moves only when adopt takes it.
+    assert "if (adopt(profileForEditing(served))) seen.current = served;" in provider
     assert "if (served === seen.current) return;" in provider

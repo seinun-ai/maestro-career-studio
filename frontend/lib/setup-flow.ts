@@ -57,6 +57,7 @@ export type FormQuestion =
  *  diversity only when a country you apply in has a checked set (`offers_eeo`, from the served set and the
  *  market list; never decided here). Which permit cards are passed is lib/setup-answers.ts `questionsToAsk`. */
 export function formQuestions(questionSet: QuestionSet, markets: readonly MarketOption[]): FormQuestion[] {
+  // lib/autofill-options.ts `citizenshipField`, spelled out: a node-tested lib file imports no other's values.
   const asksCitizenship = questionSet.groups.some(
     (group) => group.key === "personal" && group.fields.some((field) => field.type === "countries"),
   );
@@ -70,6 +71,11 @@ export function formQuestions(questionSet: QuestionSet, markets: readonly Market
   const rest: FormQuestion[] = [{ kind: "notice" }, { kind: "relocate" }];
   if (questionSet.offers_eeo && withSet.length > 0) rest.push({ kind: "diversity", countries: [...withSet].sort() });
   return [...(asksCitizenship ? [{ kind: "citizenship" } as const] : []), ...permits, ...rest];
+}
+
+/** What a question asks, the same however many cards come before it: Setup keeps its place by it. */
+export function questionKey(question: FormQuestion): string {
+  return question.kind === "permit" ? `permit:${question.market}` : question.kind;
 }
 
 export type StepsDone = Record<SetupStepId, boolean>;

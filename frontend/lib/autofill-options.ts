@@ -5,7 +5,7 @@
  * every helper that needs a question takes that set. Nothing here mirrors a backend question list. Pure, so
  * `node --test` loads it (lib/autofill-options.test.ts): it imports only types, which the loader erases.
  */
-import type { CountryQuestions, DerivedAnswer, FieldDef, QuestionSet } from "./types";
+import type { Country, CountryQuestions, DerivedAnswer, FieldDef, QuestionSet } from "./types";
 
 export type { CountryQuestions, DerivedAnswer, FieldDef } from "./types";
 
@@ -337,17 +337,60 @@ export function citizenshipEntries(profile: Profile): string[] {
   return parts.filter((part): part is string => !isBlank(part)).map((part) => part.trim());
 }
 
-/** Whether citizenship is stored as a plain string (an older save, a hand edit): it shows in the picker, but it
- *  is not a list yet, so it counts as no answer until it is stored as one (`withCitizenshipList`). */
-export function citizenshipIsLoose(profile: Profile): boolean {
-  return typeof groupValues(profile, "personal").citizenships === "string";
+/** Each way a country is named, folded, to its ISO code: its name, its aliases ("uk" for GB) and its code, from
+ *  the country list (`GET /api/countries`), read as the server's `countries.normalize` reads them. */
+export type CountryCodes = ReadonlyMap<string, string>;
+
+/** Folded as the server's `countries._fold`: lower case, without accents, with straight apostrophes. */
+function foldCountry(text: string): string {
+  return text
+    .trim()
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .replace(/[\u2018\u2019\u02bc]/g, "'");
 }
 
-/** The profile with a citizenship stored as a plain string (an older save, a hand edit) stored as the list of
- *  its parts, which the server turns into codes (an entry that names no country is dropped there); unchanged
- *  when it is a list already, or absent. */
-export function withCitizenshipList(profile: Profile): Profile {
-  return citizenshipIsLoose(profile) ? withCitizenships(profile, citizenshipEntries(profile)) : profile;
+/** The country list as `CountryCodes`. A code wins over a name or alias spelled the same, then an alias over a
+ *  name, as the server reads them. */
+export function countryCodes(countries: readonly Country[]): CountryCodes {
+  const codes = new Map<string, string>();
+  for (const country of countries) codes.set(foldCountry(country.name), country.code);
+  for (const country of countries) for (const alias of country.aliases ?? []) codes.set(foldCountry(alias), country.code);
+  for (const country of countries) codes.set(foldCountry(country.code), country.code);
+  return codes;
+}
+
+/** The ISO code an entry names (its code in any case, its name, or an alias: "UK" is GB), or null. */
+export function countryCode(codes: CountryCodes, entry: string): string | null {
+  return codes.get(foldCountry(entry)) ?? null;
+}
+
+/**
+ * Whether citizenship is stored other than as the picker stores it, as codes: a plain string (an older save, a
+ * hand edit), or, once the country list is read (`codes`), a list naming a country by name or alias ("India",
+ * "UK") or by a code in another case. It shows in the picker, and `withCitizenshipList` stores it as codes.
+ */
+export function citizenshipIsLoose(profile: Profile, codes: CountryCodes | null): boolean {
+  const stored = groupValues(profile, "personal").citizenships;
+  if (typeof stored === "string") return true;
+  if (!codes || !Array.isArray(stored)) return false;
+  return citizenshipEntries(profile).some((entry) => countryCode(codes, entry) !== entry);
+}
+
+/**
+ * The profile with a loose citizenship (`citizenshipIsLoose`) stored as codes, each once: each entry by its code,
+ * name or alias, and an entry that names no country dropped, as the server's save does ("Narnia"). Before the
+ * country list is read (`codes` null) a plain string is stored as the list of its parts, which the server turns
+ * into codes. Unchanged when it is stored as codes already, or absent.
+ */
+export function withCitizenshipList(profile: Profile, codes: CountryCodes | null): Profile {
+  if (!citizenshipIsLoose(profile, codes)) return profile;
+  const entries = citizenshipEntries(profile);
+  return withCitizenships(
+    profile,
+    codes ? entries.flatMap((entry) => countryCode(codes, entry) ?? []) : entries,
+  );
 }
 
 /** The profile with these citizenships (ISO codes, each once; none removes the answer). The server stores
@@ -361,13 +404,10 @@ export function withCitizenships(profile: Profile, codes: readonly string[]): Pr
 }
 
 /** The served `settled` answers whose citizenship is still among yours: removing one stops what it settled at
- *  once, before the questions are read again. A citizenship held by name (a plain string stored as a list:
- *  "India", which the server stores as its code) cannot be matched to a code here, so what the server settled
- *  stands. */
+ *  once, before the questions are read again. A citizenship held by name settles nothing, as on the server
+ *  (`withCitizenshipList` stores codes). */
 function stillCitizen(profile: Profile, settled: Record<string, DerivedAnswer>): Record<string, DerivedAnswer> {
-  const entries = citizenshipEntries(profile);
-  if (entries.some((entry) => !/^[a-z]{2}$/i.test(entry))) return settled;
-  const codes = new Set(entries.map((entry) => entry.toUpperCase()));
+  const codes = new Set(citizenshipEntries(profile).map((entry) => entry.toUpperCase()));
   return Object.fromEntries(Object.entries(settled).filter(([, answer]) => codes.has(answer.via.toUpperCase())));
 }
 

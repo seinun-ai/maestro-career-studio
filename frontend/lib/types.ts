@@ -657,6 +657,8 @@ export interface BaseResumeSummary {
 export interface Country {
   code: string;
   name: string;
+  /** The other ways a save reads as this code, folded ("uk", "great britain" for GB); none for most. */
+  aliases?: string[];
 }
 
 /** GET /api/ats-scores/candidates: which base resumes the job's country left out.

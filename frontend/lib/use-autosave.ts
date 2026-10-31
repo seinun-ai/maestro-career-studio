@@ -30,7 +30,7 @@ import { useCallback, useRef, useState } from "react";
  * way. `adopt` is the one safe moment, for a value another writer also changes
  * (the Companion's pause row learns answers into the autofill profile): it takes
  * a newer server copy only while nothing is in flight and nothing failed, so
- * every edit is already on the server it came from.
+ * every edit is already on the server it came from, and says whether it did.
  */
 export function useAutosave<T>(initial: T, commit: (next: T) => Promise<unknown>) {
   const [value, setValue] = useState(initial);
@@ -79,11 +79,13 @@ export function useAutosave<T>(initial: T, commit: (next: T) => Promise<unknown>
     if (inFlight.current === null) flush();
   };
 
-  /** Take a newer server copy, only while every edit is on the server: nothing in flight, nothing failed. */
-  const adopt = useCallback((next: T) => {
-    if (inFlight.current !== null || failedNow.current) return;
+  /** Take a newer server copy, only while every edit is on the server: nothing in flight, nothing failed.
+   *  Says whether it took it, so a caller can offer the copy again once that is so. */
+  const adopt = useCallback((next: T): boolean => {
+    if (inFlight.current !== null || failedNow.current) return false;
     queued.current = next;
     setValue(next);
+    return true;
   }, []);
 
   return { value, update, pending, failed, retry, adopt };

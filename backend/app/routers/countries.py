@@ -15,9 +15,15 @@ router = APIRouter(prefix="/api/countries", tags=["countries"])
 class Country(BaseModel):
     code: str
     name: str
+    # The input-only variants `normalize` reads as this code, folded ("GB": "uk", "great britain", ...),
+    # so a picker turns a typed "UK" into GB as a save would; empty for most.
+    aliases: list[str] = []
 
 
 @router.get("", response_model=list[Country])
 def list_countries():
-    """Every ISO 3166-1 alpha-2 country, in file (alphabetical by code) order."""
-    return [Country(code=code, name=name) for code, name in countries.labels().items()]
+    """Every ISO 3166-1 alpha-2 country, in file (alphabetical by code) order, with its aliases."""
+    return [
+        Country(code=code, name=name, aliases=countries.aliases_for(code))
+        for code, name in countries.labels().items()
+    ]

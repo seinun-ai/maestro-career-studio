@@ -57,8 +57,14 @@ def test_names_are_unambiguous():
 
 def test_get_countries_route():
     body = TestClient(app).get("/api/countries").json()
-    assert {"code": "GB", "name": "United Kingdom"} in body
+    by_code = {c["code"]: c for c in body}
+    assert by_code["GB"]["name"] == "United Kingdom"
     assert [c["code"] for c in body] == list(countries.labels())
+    # Each country carries the variants normalize reads as it, folded, so a picker reads them as a save does.
+    assert by_code["GB"]["aliases"] == countries.aliases_for("GB") and "uk" in by_code["GB"]["aliases"]
+    assert "usa" in by_code["US"]["aliases"] and by_code["IN"]["aliases"] == []
+    for code, country in by_code.items():
+        assert all(countries.normalize(alias) == code for alias in country["aliases"]), code
 
 
 def test_country_spellings_collapse_to_one_code():
