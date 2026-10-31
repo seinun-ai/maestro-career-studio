@@ -292,12 +292,18 @@ def test_next_up_asks_the_first_missing_answer_in_place_and_never_guesses():
     assert "Work-permit and diversity answers only ever come from you." not in nxt
     # Diversity is answered in its fold, beside its consent (D10): Next up only opens it.
     assert 'if (current.kind === "diversity") {' in nxt and "onClick: onOpenDiversity" in nxt
-    # While no country is chosen, where you apply comes first, answered in its tile: Next up only opens it.
-    assert 'if (current.kind === "where") {' in nxt and "onClick: onChooseCountries" in nxt
+    assert "update(SURFACE, (profileNow) =>" in nxt
+
+
+def test_next_up_opens_where_you_apply_first_while_no_country_is_chosen():
+    """Unchosen, no country's permits are asked, so every form pauses on them: Next up asks where you apply first,
+    answered in its tile, which it only opens."""
+    nxt = _src("components/profile/next-up.tsx")
+    assert 'if (current.kind === "where") {' in nxt
+    assert "onClick: onChooseCountries" in nxt
     assert 'onChooseCountries={() => focus("market")}' in _src("components/profile/profile-view.tsx")
     missing = _between(_src("lib/autofill-options.ts"), "export function missingAnswers(", "\n}\n")
     assert 'const out: MissingAnswer[] = questionSet.chosen ? [] : [{ kind: "where" }];' in missing
-    assert "update(SURFACE, (profileNow) =>" in nxt
 
 
 # ------------------------------------------------------------------------------- The folds
