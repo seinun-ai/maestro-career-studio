@@ -364,7 +364,7 @@
   redaction every country's; the answer flags (`filled_answers.flag_context`) the job's. The knock-out scan screens with the job's
   country's set, and a job with no country with the home set (an advisory check, not an answer given); its pay check reads the generic
   desired salary, a yearly figure, never a country's own. `get_job_search_brief` serves each
-  apply-in market's set as readers see it in the brief's yes/no keys, with its `expected_pay` when given, its warnings led by the country's name unless the user lives and applies in one
+  apply-in market's set as readers see it in the brief's yes/no keys, with its `expected_pay` and that market's pay wording (`expected_pay_label`) when given, its warnings led by the country's name unless the user lives and applies in one
   country, and the home set for one release (`job_search_brief._work_permits`; SYSTEM.md §13 `brief-work-auth-home`); the job-hunt and
   referral-pages prompts judge a posting by its own country's set and leave one from an unknown or not-applied-in country unfiltered on
   permits, saying so in its proposal. Setup status counts each apply-in

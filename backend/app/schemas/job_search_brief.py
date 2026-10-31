@@ -8,11 +8,17 @@ class BriefWorkAuth(BaseModel):
     requires_sponsorship: str | None = None
 
 
+def _absent(value: Any) -> bool:
+    return value is None
+
+
 class BriefCountry(BriefWorkAuth):
     """One apply-in market's answers as readers see them (a citizenship's settled ones included), and
-    the user's expected pay there in that country's own terms, absent when they gave none."""
+    the user's expected pay there as given, with `expected_pay_label` naming that country's terms
+    ("Expected gross monthly salary, …"); both absent when they gave none."""
 
-    expected_pay: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    expected_pay: str | None = Field(default=None, exclude_if=_absent)
+    expected_pay_label: str | None = Field(default=None, exclude_if=_absent)
 
 
 class BriefProfile(BaseModel):

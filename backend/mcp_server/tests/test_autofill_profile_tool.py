@@ -229,8 +229,9 @@ async def test_the_tool_says_how_citizenships_and_the_jobs_view_read():
     assert "current pay only while the user lets the Companion fill agreements" in doc
     application = tool.input_schema["properties"]["application_id"]["description"]
     for words in ("country_answered", "answers_by_country holds each market's own answers",
-                  "not preferences"):
+                  "not preferences", "country is unknown", "folds none"):
         assert words in application, words
+    assert "employment and skills come from it" in tool.input_schema["properties"]["base"]["description"]
     write = next(t for t in await srv.mcp.list_tools() if t.name == "set_autofill_profile")
     personal = write.input_schema["$defs"]["PersonalAnswers"]["description"]
     assert 'ISO codes ("IN") or English names' in personal and "shows names" in personal

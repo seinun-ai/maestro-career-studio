@@ -124,21 +124,26 @@ def _market_work_auth(profile: dict[str, Any], market: str) -> dict[str, str | N
     )
 
 
+def _expected_pay(country_answers: dict[str, dict[str, Any]], market: str) -> dict[str, str | None]:
+    """The user's expected pay in `market` as given, and the market's own words for its terms
+    (markets.yaml `pay.label`: "Expected gross monthly salary, …"), so a monthly figure is never read
+    as a yearly one; both None when they gave none."""
+    pay = _str_or_none(country_answers.get(market, {}).get("expected_pay"))
+    return {"expected_pay": pay, "expected_pay_label": markets.get(market)["pay"]["label"] if pay else None}
+
+
 def _work_permits(db: Session, profile: dict[str, Any]) -> dict[str, Any]:
     """The home market's answers (`work_auth`, kept for one release, named by `work_auth_market`),
     each apply-in market's (`work_auth_by_country`, keyed by market: "UK", not "GB") with its
-    expected pay when the user gave one (a country answer: pay in that country's own terms, never
-    current pay), and the warnings for the markets applied in. Every set reads a citizenship's
+    expected pay and its terms when the user gave one (a country answer: pay in that country's own
+    terms, never current pay), and the warnings for the markets applied in. Every set reads a citizenship's
     settled answers too. Living and applying in one country words the warnings as before;
     otherwise each warning names its country. The home is judged only when applied in. With no
     country chosen none is applied in (`MarketSetting.applied`): no country's answers, no warnings."""
     place = market_settings.peek_market(db)
     country_answers = autofill_profile.answers_entries(profile)
     by_country = {
-        market: {
-            **_market_work_auth(profile, market),
-            "expected_pay": _str_or_none(country_answers.get(market, {}).get("expected_pay")),
-        }
+        market: {**_market_work_auth(profile, market), **_expected_pay(country_answers, market)}
         for market in place.applied
     }
     one_country = place.applied == [place.home]

@@ -156,7 +156,8 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   mail-status automation read in the user's mail. `get_autofill_profile` returns `work_auth` resolved for the job's country (none
   without one), every country's permits under `work_auth_by_country` (market keys, "UK") and `work_auth_market` naming whose set
   `work_auth` is (§6 inv-work-permit-per-country); with an application its country's own answers are folded into the slots they
-  fill (`country_answered`), and without one every market's come under `answers_by_country`, through the consent gate (current pay
+  fill (`country_answered`; a job in no known country folds none), and with none and no question every market's come under
+  `answers_by_country`, through the consent gate (current pay
   only under `consent_forms`); `personal.citizenships` reads as country names. Its `questions` is GET
   `/api/settings/autofill/questions` made compact (`client._agent_questions`): `chosen`, and per apply-in market its permit keys with
   their choices, its own answers in its words and `derived`; null when that read fails. `store_extracted_jd` stores `work_mode` and `level` as keys (`on_site`, `senior`)
@@ -182,7 +183,8 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   call is refused. `save_referral` (hunt, apply, track) POSTs a new referral (company and careers_url required) or PUTs only the
   fields given onto `referral_id`'s; it is `destructive=True`, since an edit keeps no earlier value.
   **The brief** (`get_job_search_brief`) carries `profile.work_auth_by_country` (each apply-in market's yes/no answers, keyed by market,
-  read through `autofill_derive.answers_for` so a citizenship's settled answers count, with that country's `expected_pay` when given),
+  read through `autofill_derive.answers_for` so a citizenship's settled answers count, with that country's `expected_pay` when given
+  and `expected_pay_label`, its markets.yaml pay wording, so a monthly figure reads as one),
   the home set `profile.work_auth` named by `work_auth_market` for one release (SYSTEM.md §13 `brief-work-auth-home`), warnings each led
   by its country's name unless the user lives and applies in one country, `last_runs` (each automation's newest run that did not fail,
   by finish time, `agent_runs.last_finished`) and `roles` (the catalog as `{key, label}`). A role the catalog does not know

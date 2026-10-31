@@ -58,6 +58,17 @@ async def test_country_answers_are_the_catalogs_and_each_market_is_a_market_key(
     assert "preferences" in schema["properties"]["answers_by_country"]["description"]
 
 
+def test_a_catalog_without_cefr_levels_fails_by_name(monkeypatch):
+    """The server's schema reads the catalog at import, so a broken one fails the app's boot: with a
+    sentence naming the file, not a bare error from building an empty Literal."""
+    from app.services import form_questions
+
+    stripped = form_questions.catalog().model_copy(update={"language_fields": []})
+    monkeypatch.setattr(form_questions, "catalog", lambda: stripped)
+    with pytest.raises(RuntimeError, match="form_questions.yaml: the cefr language field lists no levels"):
+        srv._cefr_levels()
+
+
 async def test_a_status_is_any_text_and_says_where_each_markets_list_is():
     """Each market has its own statuses, so the schema takes a string and names where they are listed;
     the backend refuses one outside the market's list."""

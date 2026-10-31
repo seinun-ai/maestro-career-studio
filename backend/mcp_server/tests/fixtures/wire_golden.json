@@ -1746,7 +1746,7 @@
          }
         ],
         "default": null,
-        "description": "An application id: the profile is then that job's view, its country's work permits as work_auth (work_auth_market names the market) and its own answers folded into the slots they fill (country_answered lists them; pay there is in that country's terms, saved under answers_by_country, not preferences). Without one nothing is folded, and answers_by_country holds each market's own answers.",
+        "description": "An application id: the profile is then that job's view, its country's work permits as work_auth (work_auth_market names the market) and its own answers folded into the slots they fill (country_answered lists them; pay there is in that country's terms, saved under answers_by_country, not preferences). A job whose country is unknown, or one Maestro keeps no answers for, folds none: its work_auth holds no country's permits and no country's own answers reach it. Without an application nothing is folded either, and answers_by_country holds each market's own answers.",
         "title": "Application Id"
        },
        "base": {
@@ -1759,6 +1759,7 @@
          }
         ],
         "default": null,
+        "description": "A base resume slug: employment and skills come from it. With application_id instead, they come from that application's resume; with neither, both are null.",
         "title": "Base"
        }
       },

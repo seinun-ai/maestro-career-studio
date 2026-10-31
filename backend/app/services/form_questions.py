@@ -2,7 +2,9 @@
 
 Domain data, like markets.yaml: the questions Profile, Setup and setup readiness ask, in the words
 they ask them. Loaded on first use, then cached, and validated; a malformed file fails that first
-load, which a test makes (tests/test_form_questions.py), not a user's first Profile visit.
+load, which a test makes (tests/test_form_questions.py), not a user's first Profile visit. The MCP
+server's write schema (`mcp_server/server.py`: `CountryAnswers`, `CefrLevel`) reads it at import,
+and the app imports that server at startup, so a broken file fails the app's boot.
 """
 
 from functools import cache

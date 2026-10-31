@@ -593,6 +593,29 @@ def test_only_a_profile_read_with_no_job_carries_every_countrys_answers(db_sessi
         assert view["work_auth_by_country"] == {"US": {"authorized_now": True}}
 
 
+@pytest.mark.parametrize("country_code", [None, "BR"], ids=["no-country", "no-market"])
+def test_a_job_in_no_known_country_folds_none_and_gets_no_countrys_answers(db_session, client, country_code):
+    """A job whose country is unknown, or one no market covers, is still one job's form: nothing is folded
+    over the generic slots, and neither every market's answers nor any market's permits as work_auth."""
+    from app.models.application import Application
+    from tests.test_proposals_models import _mk_job
+
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US", "NL"]), db_session)
+    autofill_profile.set_profile({"preferences": {"desired_salary": "150000"},
+                                  "work_auth_by_country": {"US": {"authorized_now": True}},
+                                  "answers_by_country": {"NL": {"expected_pay": "4500"}}}, db_session)
+    job = _mk_job(db_session, company="Acme", country_code=country_code)
+    application = Application(job_id=job.id, base_resume="hybrid", customized_json={"contact": {"name": "Ada"}})
+    db_session.add(application)
+    db_session.commit()
+
+    view = client.get("/api/autofill/context", params={"application_id": str(application.id)}).json()["profile"]
+    assert view[autofill_country.COUNTRY_ANSWERED] == []
+    assert view["preferences"]["desired_salary"] == "150000"
+    assert view["work_auth_market"] is None and "authorized_now" not in view["work_auth"]
+    assert "answers_by_country" not in view and "4500" not in json.dumps(view)
+
+
 def test_a_setting_read_saves_back_as_it_was(db_session, tmp_path, client):
     """The read the Companion's pause row and the web send back is no job's view."""
     market_settings.set_market(MarketSetting(home="US", apply_in=["US", "NL"]), db_session)

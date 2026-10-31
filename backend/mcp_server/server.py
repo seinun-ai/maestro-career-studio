@@ -408,12 +408,22 @@ class EducationEntry(TypedDict, total=False):
 
 
 LanguageLevel = Literal["Basic", "Intermediate", "Fluent"]
-# The CEFR levels, as the catalog's language field offers them (A1 to C2).
-CefrLevel = Literal[tuple(
-    option.value
-    for field in form_questions.catalog().language_fields if field.key == "cefr"
-    for option in field.options or ()
-)]
+
+
+def _cefr_levels() -> tuple[str, ...]:
+    """The CEFR levels the catalog's `cefr` language field offers (A1 to C2). A catalog without them
+    fails here, by name, rather than in a bare `Literal[()]` while the app boots."""
+    levels = tuple(
+        option.value
+        for field in form_questions.catalog().language_fields if field.key == "cefr"
+        for option in field.options or ()
+    )
+    if not levels:
+        raise RuntimeError("form_questions.yaml: the cefr language field lists no levels")
+    return levels
+
+
+CefrLevel = Literal[_cefr_levels()]
 
 
 @with_config(ConfigDict(extra="forbid"))
@@ -937,10 +947,10 @@ def get_job_search_brief() -> Any:
     captured in the last 30 days by role category. profile.work_auth_by_country
     holds those yes/no answers for each market the user applies in, keyed by
     market ("UK", not "GB"), a citizenship's settled answers included, with
-    expected_pay when the user gave that country one (as given, in that country's
-    own pay terms, which are monthly in some); profile.work_auth is the home
-    market's set, named by work_auth_market and kept for one release
-    (read the same way); unless the user lives and applies
+    expected_pay when the user gave that country one, with expected_pay_label
+    naming its terms; profile.work_auth is the home market's set, named by
+    work_auth_market and kept for one release (read the same way); unless the
+    user lives and applies
     in one country, each warning names its country. last_runs maps each automation to
     when its newest run that did not fail finished (UTC ISO; a failed run does not
     count; absent when none has).
@@ -1454,8 +1464,14 @@ _CONTEXT_APPLICATION_FIELD = Field(description=(
     "An application id: the profile is then that job's view, its country's work permits as "
     "work_auth (work_auth_market names the market) and its own answers folded into the slots "
     "they fill (country_answered lists them; pay there is in that country's terms, saved under "
-    "answers_by_country, not preferences). Without one nothing is folded, and "
-    "answers_by_country holds each market's own answers."
+    "answers_by_country, not preferences). A job whose country is unknown, or one Maestro keeps "
+    "no answers for, folds none: its work_auth holds no country's permits and no country's own "
+    "answers reach it. Without an application nothing is folded either, and answers_by_country "
+    "holds each market's own answers."
+))
+_CONTEXT_BASE_FIELD = Field(description=(
+    "A base resume slug: employment and skills come from it. With application_id instead, they "
+    "come from that application's resume; with neither, both are null."
 ))
 
 
@@ -1463,23 +1479,22 @@ _CONTEXT_APPLICATION_FIELD = Field(description=(
 @_guard
 def get_autofill_profile(
     application_id: Annotated[str | None, _CONTEXT_APPLICATION_FIELD] = None,
-    base: str | None = None,
+    base: Annotated[str | None, _CONTEXT_BASE_FIELD] = None,
 ) -> Any:
     """Read the user's application-form answers: `profile` (contact, address,
     `personal.citizenships` as country names; work permits per market key, e.g.
-    UK, in `work_auth_by_country`, and `work_auth`, the job's country's, none
-    without one (a question naming a country takes its); preferences;
-    education; `languages`; custom Q&A presets, all as set_autofill_profile takes
-    them), `questions` (`chosen`: whether the user chose where they apply; per
-    apply-in market its permit keys with their choices, its own answers in its
-    words and what a citizenship settles there; null when that read fails), and
-    `employment` and `skills` from the resume application_id or base selects.
+    UK, in `work_auth_by_country` (a question naming a country takes its);
+    preferences; education; `languages`; custom Q&A presets, all as
+    set_autofill_profile takes them), `questions` (`chosen`: whether the user
+    chose where they apply; per apply-in market its permit keys with their
+    choices, its own answers in its words and what a citizenship settles there;
+    null when that read fails), and `employment` and `skills`.
     Labeled `source: "profile"`; `canonical_identity` (`legal_first`,
     `legal_last`, `preferred`, from stored personal fields only) for form identity
     fields takes precedence over ATS-parsed values. The Companion fills from this
     feed. EEO answer values (`profile.eeo`) are returned ONLY under Profile
-    standing consent (`eeo_consent.enabled`), and current pay only
-    while the user lets the Companion fill agreements; returned, they are the
+    standing consent (`eeo_consent.enabled`), and current pay only while the
+    user lets the Companion fill agreements; returned, they are the
     user's stored answers, for Playwright/agent fill verbatim with no inference
     or model-authored values. `eeo.veteran_status` is no, yes or decline: one
     question, "Are you a veteran?" (a no also answers "not a protected veteran";

@@ -521,11 +521,30 @@ def test_a_citizenship_answers_the_brief_and_each_country_carries_its_expected_p
     body = _get_brief(db_session).json()
 
     assert body["profile"]["work_auth_by_country"] == {
-        "DE": {**_YES_NO_CITIZEN, "expected_pay": "70000"},
+        "DE": {**_YES_NO_CITIZEN, "expected_pay": "70000",
+               "expected_pay_label": "Expected gross annual salary (EUR)"},
         "UK": {"authorized_to_work": "no", "requires_sponsorship": "yes"},
     }
     assert body["warnings"] == []
     assert "1800000" not in json.dumps(body)
+
+
+def test_a_monthly_expected_pay_says_it_is_monthly(db_session, tmp_path, monkeypatch):
+    """A hunting agent compares pay with a yearly floor: the Dutch and UAE figures are monthly, and the
+    label beside each says so in that country's words."""
+    from app.schemas.market_settings import MarketSetting
+    from app.services import market_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    market_settings.set_market(MarketSetting(home="IN", apply_in=["NL", "AE"]), db_session)
+    autofill_profile.set_profile({"answers_by_country": {
+        "NL": {"expected_pay": "4500"}, "AE": {"expected_pay": "25000"}}}, db_session)
+
+    by_country = _get_brief(db_session).json()["profile"]["work_auth_by_country"]
+
+    for market, pay in (("NL", "4500"), ("AE", "25000")):
+        assert by_country[market]["expected_pay"] == pay
+        assert "monthly" in by_country[market]["expected_pay_label"], market
 
 
 def test_the_home_set_reads_a_citizenship_as_its_country_entry_does(db_session, tmp_path, monkeypatch):

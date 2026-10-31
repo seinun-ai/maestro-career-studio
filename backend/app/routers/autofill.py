@@ -361,10 +361,12 @@ def get_autofill_context(
     gated = sections["profile"]
     sections["profile"] = autofill_job.profile_for_job(db, gated, application_id, question)
     # The job's view holds one country's answers; agents also read every market's permits here, and
-    # with no job and no question (no country to fold) every market's own answers, gated like the rest.
+    # with no job and no question every market's own answers, gated like the rest. A job whose country
+    # Maestro does not know folds none and gets no country's answers: it is still one job's form.
+    no_country_to_fold = application_id is None and question is None
     if isinstance(gated, dict) and isinstance(sections["profile"], dict):
         added = [autofill_profile.BY_COUNTRY]
-        if application_id is None and question is None:
+        if no_country_to_fold:
             added.append(autofill_profile.ANSWERS_BY_COUNTRY)
         sections["profile"].update({key: gated[key] for key in added if key in gated})
     return sections
