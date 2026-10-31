@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   answered,
+  citizenshipAnswered,
   citizenshipEntries,
   citizenshipIsLoose,
   contactFields,
@@ -330,6 +331,26 @@ test("removing the citizenship stops what it settled before the questions are re
   assert.deepEqual(derivedPermits(FRENCH, EU, "US"), {});
   // A differing answer under a citizenship you removed differs from nothing.
   assert.equal(differsFromSettled({ work_auth_by_country: { DE: { authorized_now: false } } }, EU, "DE", SETTLED_DE), false);
+});
+
+test("a citizenship held by name is not answered once the country list is read, so next up asks it first", () => {
+  // A hand edit left names: they settle nothing here, so citizenship is asked again and Next stores codes.
+  const named = { personal: { citizenships: ["France", "IE"] } };
+  const set = servedFor(["DE"]);
+  const withCitizenship: QuestionSet = {
+    ...set,
+    groups: set.groups.map((group) =>
+      group.key === "personal"
+        ? { ...group, fields: [...group.fields, { key: "citizenships", label: "Citizen of", type: "countries" as const }] }
+        : group,
+    ),
+  };
+  assert.equal(citizenshipAnswered(named, withCitizenship, CODES), false);
+  assert.equal(missingAnswers(named, withCitizenship, CODES).map(missingKey)[0], "citizenship");
+  // Before the list is read it cannot tell, so it counts as given; codes count either way.
+  assert.equal(citizenshipAnswered(named, withCitizenship, null), true);
+  assert.equal(citizenshipAnswered({ personal: { citizenships: ["FR", "IE"] } }, withCitizenship, CODES), true);
+  assert.equal(missingAnswers({ personal: { citizenships: ["FR"] } }, withCitizenship, CODES).map(missingKey).includes("citizenship"), false);
 });
 
 test("a citizenship held by name settles nothing, as on the server; stored as codes, it settles what it should", () => {

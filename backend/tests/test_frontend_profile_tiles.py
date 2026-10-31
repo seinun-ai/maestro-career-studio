@@ -147,7 +147,9 @@ def test_country_answers_asks_citizenship_first_and_shows_what_it_settles():
         "if (settles(before) !== settles(result.value)) { await qc.invalidateQueries({ queryKey: "
         "formQuestionsQuery.queryKey }); }"
     ) in provider
-    assert 'if (citizenship && !citizenship.optional && !citizenshipAnswered(profile, questionSet)) {' in options
+    assert 'if (citizenship && !citizenship.optional && !citizenshipAnswered(profile, questionSet, codes)) {' in options
+    # A citizenship held by name (a hand edit) is unanswered once the country list is read, as it settles nothing.
+    assert "&& !citizenshipIsLoose(profile, codes));" in options
     assert 'out.push({ kind: "citizenship", field: citizenship });' in options
     # One rule for what is still open, for the count, Next up and Setup's done card.
     assert "for (const field of openPermitFields(profile, questionSet, market)) out.push(" in options
@@ -283,7 +285,7 @@ def test_the_header_counts_only_what_setup_status_says():
 
 def test_next_up_asks_the_first_missing_answer_in_place_and_never_guesses():
     nxt = _src("components/profile/next-up.tsx")
-    assert "const missing = missingAnswers(profile, questionSet);" in nxt
+    assert "const missing = missingAnswers(profile, questionSet, codes);" in nxt
     assert "Never guessed for you" in nxt
     assert "Work-permit and diversity answers only ever come from you." in nxt
     # Diversity is answered in its fold, beside its consent (D10): Next up only opens it.

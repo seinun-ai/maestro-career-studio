@@ -355,6 +355,9 @@ test("citizenship saves as codes, without the one-set view; a plain string is st
   assert.equal(questionAnswered({ kind: "citizenship" }, { personal: { citizenships: ["DE"] } }, SERVED), true);
   assert.equal(questionAnswered({ kind: "citizenship" }, { personal: { citizenships: "Germany" } }, SERVED), false);
   assert.equal(questionAnswered({ kind: "citizenship" }, {}, SERVED), false);
+  // Names left by a hand edit: not answered once the country list is read, so its dot stays open.
+  assert.equal(questionAnswered({ kind: "citizenship" }, { personal: { citizenships: ["Germany"] } }, SERVED, CODES), false);
+  assert.equal(questionAnswered({ kind: "citizenship" }, { personal: { citizenships: ["DE"] } }, SERVED, CODES), true);
 });
 
 test("one press on citizenship: store it as codes, wait for the save, then move on", () => {

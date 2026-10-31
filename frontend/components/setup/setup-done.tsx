@@ -2,6 +2,7 @@
 
 import type { RefObject } from "react";
 
+import { useCountryCodes } from "@/components/country-picker";
 import { GuardedLink as Link } from "@/components/guarded-link";
 import { NewTabCue } from "@/components/new-tab-link";
 import type { DiversityChoice } from "@/components/setup/setup-flow";
@@ -52,7 +53,8 @@ export function SetupDone({
   const name = typeof personal?.first_name === "string" ? personal.first_name.trim() : "";
   const open = SETUP_STEPS.flatMap((s, i) => (done[s.id] ? [] : [{ ...s, index: i }]));
   const editing = profileForEditing(profile);
-  const citizenshipLeft = citizenshipAnswered(editing, questionSet)
+  const codes = useCountryCodes();
+  const citizenshipLeft = citizenshipAnswered(editing, questionSet, codes)
     ? []
     : [{ label: "Add your citizenship", href: anchorHref("/profile", "af-citizenships") }];
   const permitsLeft = questionSet.countries.flatMap((country) => {

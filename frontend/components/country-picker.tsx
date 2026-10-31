@@ -7,6 +7,7 @@ import { CheckIcon, XIcon } from "lucide-react";
 
 import { PICKER_ITEM_CLASS, PickerPopup } from "@/components/role-picker";
 import { apiFetch } from "@/lib/api";
+import { countryCodes, type CountryCodes } from "@/lib/autofill-options";
 import type { Country } from "@/lib/types";
 
 /** The country list, fetched once. It lives in backend/app/services/data/countries.yaml and is not
@@ -18,6 +19,12 @@ export function useCountries({ enabled = true }: { enabled?: boolean } = {}) {
     staleTime: 60 * 60 * 1000, // the list changes only on deploy
     enabled,
   });
+}
+
+/** The country list as names, aliases and codes to ISO codes (`countryCodes`), or null until it is read. */
+export function useCountryCodes(): CountryCodes | null {
+  const { data } = useCountries();
+  return useMemo(() => (data ? countryCodes(data) : null), [data]);
 }
 
 /**

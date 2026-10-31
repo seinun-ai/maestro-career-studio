@@ -123,10 +123,15 @@ export function withDiversityDeclined(profile: Profile, questionSet: QuestionSet
 
 /** Whether a question holds its answer, for its progress dot: a passed or skipped question is not answered
  *  (round means a state, so a dot never says done for a question you left). */
-export function questionAnswered(question: FormQuestion, profile: Profile, questionSet: QuestionSet): boolean {
+export function questionAnswered(
+  question: FormQuestion,
+  profile: Profile,
+  questionSet: QuestionSet,
+  codes: CountryCodes | null = null,
+): boolean {
   switch (question.kind) {
     case "citizenship":
-      return citizenshipAnswered(profile, questionSet);
+      return citizenshipAnswered(profile, questionSet, codes);
     case "permit":
       return permitAnswered(profile, questionSet, question.market);
     case "notice":

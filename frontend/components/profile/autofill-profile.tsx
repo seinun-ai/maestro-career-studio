@@ -1,9 +1,10 @@
 "use client";
 
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { autofillQuery } from "@/components/profile/use-autofill-query";
 import { formQuestionsQuery } from "@/components/profile/use-form-questions";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { apiFetch } from "@/lib/api";
@@ -33,19 +34,22 @@ function settles(profile: Profile | undefined): string {
 }
 
 /** `PUT /api/settings/autofill`: the whole profile without the one-set `work_auth` view (`forSaving`), the
- *  read it returns cached and readiness refetched. A save that changes what a citizenship settles (your
- *  citizenships, a permit answer) reads the questions again before it counts as saved, as a market save does,
- *  so an answer never shows as settled once the server no longer settles it, nor the other way round. No toast
- *  on a save, a toast on a failure. Profile's editors and Setup's Form answers both save through it. */
-export function useSaveAnswers() {
-  const qc = useQueryClient();
-  return useMutation({
+ *  read it returns cached and readiness refetched. A read of the answers still on its way when a save starts (a
+ *  window-focus refetch) is cancelled: it would land after the save's result with the copy from before it, and
+ *  the editor, taking it once nothing is saving, would send it back and undo the save. A save that changes what
+ *  a citizenship settles (your citizenships, a permit answer) reads the questions again before it counts as
+ *  saved, as a market save does, so an answer never shows as settled once the server no longer settles it, nor
+ *  the other way round. No toast on a save, a toast on a failure. Profile's editors and Setup's Form answers
+ *  both save through it (`useSaveAnswers`). */
+export function saveAnswersMutation(qc: QueryClient) {
+  return {
     mutationFn: (next: Profile) =>
       apiFetch<SettingEnvelope<Profile>>("/api/settings/autofill", {
         method: "PUT",
         body: JSON.stringify({ value: forSaving(next) }),
       }),
-    onSuccess: async (result) => {
+    onMutate: () => qc.cancelQueries({ queryKey: autofillQuery.queryKey }),
+    onSuccess: async (result: SettingEnvelope<Profile>) => {
       const before = qc.getQueryData<SettingEnvelope<Profile>>(["settings", "autofill"])?.value;
       qc.setQueryData(["settings", "autofill"], result);
       void qc.invalidateQueries({ queryKey: ["setup-status"] });
@@ -54,7 +58,12 @@ export function useSaveAnswers() {
       }
     },
     onError: (err: Error) => toast.error(couldnt("save your answers", err)),
-  });
+  };
+}
+
+export function useSaveAnswers() {
+  const qc = useQueryClient();
+  return useMutation(saveAnswersMutation(qc));
 }
 
 /** A refetch that brings another writer's change (the Companion's pause row learns answers into this profile;

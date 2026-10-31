@@ -546,11 +546,12 @@ export function permitCount(profile: Profile, questionSet: QuestionSet, market: 
   return { answered: answerable - openPermitFields(profile, questionSet, market).length, answerable };
 }
 
-/** Whether citizenship is answered: at least one country, as the picker saves it. A set that does not ask it
- *  has nothing to answer. */
-export function citizenshipAnswered(profile: Profile, questionSet: QuestionSet): boolean {
+/** Whether citizenship is answered: at least one country, as the picker saves it (codes). Once the country list
+ *  is read (`codes`), a list naming a country by name or alias (a hand edit) is not, since it settles nothing
+ *  here until it is stored as codes (`citizenshipIsLoose`). A set that does not ask it has nothing to answer. */
+export function citizenshipAnswered(profile: Profile, questionSet: QuestionSet, codes: CountryCodes | null = null): boolean {
   const field = citizenshipField(questionSet);
-  return !field || answered(field, groupValues(profile, "personal")[field.key]);
+  return !field || (answered(field, groupValues(profile, "personal")[field.key]) && !citizenshipIsLoose(profile, codes));
 }
 
 /** Whether every required work-permit answer of one country is given or settled. A country the set serves no
@@ -636,12 +637,17 @@ export function missingKey(item: MissingAnswer): string {
  * permit, in the order you apply in (`permitMarkets`; the knockout answers, never guessed, and none your
  * citizenship settles), then contact, then start and pay, then the diversity questions where a country you
  * apply in has a checked set (`offers_eeo`). The fields are the ones setup readiness counts, as served for
- * where you live.
+ * where you live. A citizenship held by name is missing once the country list is read (`codes`): Next stores
+ * it as codes.
  */
-export function missingAnswers(profile: Profile, questionSet: QuestionSet): MissingAnswer[] {
+export function missingAnswers(
+  profile: Profile,
+  questionSet: QuestionSet,
+  codes: CountryCodes | null = null,
+): MissingAnswer[] {
   const out: MissingAnswer[] = [];
   const citizenship = citizenshipField(questionSet);
-  if (citizenship && !citizenship.optional && !citizenshipAnswered(profile, questionSet)) {
+  if (citizenship && !citizenship.optional && !citizenshipAnswered(profile, questionSet, codes)) {
     out.push({ kind: "citizenship", field: citizenship });
   }
   for (const market of permitMarkets(questionSet)) {

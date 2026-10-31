@@ -5,6 +5,7 @@ import { Check } from "lucide-react";
 
 import { useAdoptServed, useSaveAnswers } from "@/components/profile/autofill-profile";
 import { FillFromResumeButton, useFillFromResume } from "@/components/profile/contact";
+import { useCountryCodes } from "@/components/country-picker";
 import { CITIZEN_HINT, CitizenshipPicker } from "@/components/profile/citizenship-picker";
 import { DiversityConsentSwitch, useDiversityConsent } from "@/components/profile/diversity-consent";
 import { FieldGrid } from "@/components/profile/field-control";
@@ -153,6 +154,7 @@ export function SetupAnswersStep({
   onDiversity: (choice: DiversityChoice) => void;
   headingRef: RefObject<HTMLHeadingElement | null>;
 }) {
+  const codes = useCountryCodes();
   const current = questions[question];
   const currentKey = current ? questionKey(current) : null;
   const questionRef = useRef<HTMLHeadingElement>(null);
@@ -197,7 +199,7 @@ export function SetupAnswersStep({
                     "size-1.5 rounded-full",
                     i === question
                       ? "bg-primary"
-                      : questionAnswered(q, answers.value, questionSet)
+                      : questionAnswered(q, answers.value, questionSet, codes)
                         ? "bg-success"
                         : "bg-surface-container-high",
                   )}

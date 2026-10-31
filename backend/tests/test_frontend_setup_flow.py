@@ -286,7 +286,7 @@ def test_a_progress_dot_says_done_only_for_an_answered_question():
     answers = _read("components/setup/setup-answers-step.tsx")
     dots = answers[answers.index("{questions.map((q, i) => (") : answers.index("))}", answers.index("{questions.map((q, i) => ("))]
     assert "i < question" not in dots
-    assert 'questionAnswered(q, answers.value, questionSet)\n                        ? "bg-success"' in dots
+    assert 'questionAnswered(q, answers.value, questionSet, codes)\n                        ? "bg-success"' in dots
 
 
 def test_blocked_storage_never_bounces_today_to_setup():

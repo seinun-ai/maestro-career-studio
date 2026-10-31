@@ -1227,8 +1227,9 @@
   resume that stores its country, its name read with it); until you choose (`value.chosen` false) no chip is
   pressed, though the stored default is the US, and the first press is the choice (`useCountriesAutosave`,
   shared with Setup). **Country answers** asks **Citizen of** first (`CountryPicker`, ISO codes, the United
-  Kingdom read as "United Kingdom (British citizen)"; a stored plain string still shows and is replaced by
-  codes when the picker saves), which it counts beside the permits it settles, as readiness does. Then one
+  Kingdom read as "United Kingdom (British citizen)"; a stored plain string or a name still shows and is
+  replaced by codes when the picker saves, and once the country list is read it counts as unanswered, so Next
+  up asks it and its Next stores codes), which it counts beside the permits it settles, as readiness does. Then one
   fieldset per served country under its name: its work permits, worded by the market's `work_auth_vocab`
   (the visa status only for `us_visa`), each answer that country's own entry in `work_auth_by_country`,
   then its own answers (`answers_by_country`, all optional). A permit answer the served `derived` settles,
@@ -1252,8 +1253,10 @@
   and two open editors never both announce one save. The Companion's pause row learns answers into the
   same profile from another window and a save sends the whole profile, so the answers are read again each
   time you come back to the tab (`autofillQuery`, `refetchOnWindowFocus: "always"`: a learn within the
-  30 s a read stays fresh counts too) and `adopt` takes that copy only while every edit is on the server;
-  Setup's form answers do the same. The
+  30 s a read stays fresh counts too) and `adopt` takes that copy only while every edit is on the server
+  (offered again once nothing is saving, so a save's own result lands); a save cancels a read still on its
+  way, which would otherwise land after it with the copy from before (`saveAnswersMutation`). Setup's form
+  answers do the same. The
   persona keeps Save and Discard, because a drafted persona is read before it is saved. A deep link
   (`anchorHref("/profile", card)` is `/profile#card`, an old `?tab=autofill#…` bookmark too) opens the tile
   or fold that holds the card (`useProfileSections`, the hash), and the page's one `useFocusSection` lands

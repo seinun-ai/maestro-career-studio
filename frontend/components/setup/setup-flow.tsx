@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { useCountries } from "@/components/country-picker";
+import { useCountryCodes } from "@/components/country-picker";
 import { LoadErrorState } from "@/components/load-error-state";
 import { PageHeader, PageShell } from "@/components/page-shell";
 import { useEeoConsentQuery } from "@/components/profile/diversity-consent";
@@ -21,7 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { loadErrorDetail } from "@/lib/error-text";
-import { countryCodes, profileForEditing } from "@/lib/autofill-options";
+import { profileForEditing } from "@/lib/autofill-options";
 import { isLoadFailure } from "@/lib/query-state";
 import { citizenshipNext, questionsToAsk, withCitizenshipListed } from "@/lib/setup-answers";
 import {
@@ -139,8 +139,7 @@ function SetupScreens({ data }: { data: SetupData }) {
     opened,
   );
   // Names, aliases and codes from the country list the citizenship picker reads, so a citizenship is stored as codes.
-  const countries = useCountries();
-  const codes = useMemo(() => (countries.data ? countryCodes(countries.data) : null), [countries.data]);
+  const codes = useCountryCodes();
   // The step shown: 0 to 3, and the done screen after them.
   const [step, setStep] = useState(() => firstOpenStep(done));
   // The question shown, kept by what it asks (`questionKey`), so a card added or dropped before it (answers

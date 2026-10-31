@@ -10,9 +10,10 @@ import { createRequire } from "node:module";
 import { load } from "../render-harness.mjs";
 
 const require = createRequire(import.meta.url);
-const { QueryClient, QueryObserver, focusManager } = require("@tanstack/react-query");
+const { MutationObserver, QueryClient, QueryObserver, focusManager } = require("@tanstack/react-query");
 
 const { autofillQuery } = load("components/profile/use-autofill-query.ts");
+const { saveAnswersMutation } = load("components/profile/autofill-profile.tsx");
 
 const SERVED = { key: "autofill_profile", value: { personal: { phone: "" } } };
 const LEARNED = {
@@ -68,4 +69,36 @@ test("the app's defaults alone would keep the old copy: the override is what rea
 
 test("the key is the one every reader and writer of the answers uses", () => {
   assert.deepEqual(autofillQuery.queryKey, ["settings", "autofill"]);
+});
+
+/** A focus read starts, then a save lands before it returns: what the cache holds once both are done. */
+async function readThenSave(options = {}) {
+  const client = appClient();
+  client.mount();
+  client.setQueryData(autofillQuery.queryKey, SERVED);
+  let release = () => {};
+  const read = client.fetchQuery({
+    ...autofillQuery,
+    staleTime: 0,
+    queryFn: () => new Promise((resolve) => (release = () => resolve(SERVED))),
+  });
+  const saved = { key: "autofill_profile", value: { personal: { phone: "+44 20 0000 0000" } } };
+  const save = new MutationObserver(client, { ...saveAnswersMutation(client), ...options, mutationFn: async () => saved });
+  await save.mutate(saved.value);
+  release();
+  await read.catch(() => {});
+  const data = client.getQueryData(autofillQuery.queryKey);
+  client.unmount();
+  client.clear();
+  return { data, saved };
+}
+
+test("a save cancels a read of the answers still on its way, so the copy from before it never lands after it", async () => {
+  const { data, saved } = await readThenSave();
+  assert.deepEqual(data, saved);
+});
+
+test("without the cancel, the read from before the save lands last and would be sent back", async () => {
+  const { data } = await readThenSave({ onMutate: undefined });
+  assert.deepEqual(data, SERVED);
 });

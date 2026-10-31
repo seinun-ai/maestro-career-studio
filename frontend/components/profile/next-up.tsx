@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Check } from "lucide-react";
 
-import { useCountries } from "@/components/country-picker";
+import { useCountryCodes } from "@/components/country-picker";
 import { useAutofillProfile } from "@/components/profile/autofill-profile";
 import { FieldControl } from "@/components/profile/field-control";
 import { diversityCountries } from "@/components/profile/diversity";
@@ -17,7 +17,6 @@ import {
   answered,
   booleanAnswer,
   citizenshipEntries,
-  countryCodes,
   countryQuestions,
   fieldValue,
   groupCount,
@@ -76,8 +75,11 @@ export function NextUp({
   const headingRef = useRef<HTMLHeadingElement>(null);
   const questionId = useId();
   const controlId = useId();
+  // Names, aliases and codes from the country list the citizenship picker reads: a citizenship held by name is
+  // asked again, and Next stores it as codes.
+  const codes = useCountryCodes();
 
-  const missing = missingAnswers(profile, questionSet);
+  const missing = missingAnswers(profile, questionSet, codes);
   const open = missing.filter((item) => !skipped.includes(missingKey(item)));
   const current = held ?? open[0] ?? null;
   const currentKey = current ? missingKey(current) : null;
@@ -90,9 +92,6 @@ export function NextUp({
     shown.current = currentKey;
   }, [currentKey]);
 
-  // Names, aliases and codes from the country list the citizenship picker reads, so a citizenship is stored as codes.
-  const countries = useCountries();
-  const codes = useMemo(() => (countries.data ? countryCodes(countries.data) : null), [countries.data]);
   const { pending: saving, failed } = saveState(SURFACE);
   // A Next pressed on citizenship while its save was on its way moves on once that save lands (resolved during
   // render, not in an effect), unless it failed: Not saved says so, and Next is there to press again.

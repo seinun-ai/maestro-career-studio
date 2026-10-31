@@ -2,7 +2,7 @@
 
 import { useId, useState, type ReactNode } from "react";
 
-import { useCountries } from "@/components/country-picker";
+import { useCountries, useCountryCodes } from "@/components/country-picker";
 import { useAutofillProfile } from "@/components/profile/autofill-profile";
 import { CITIZEN_HINT, CitizenshipPicker } from "@/components/profile/citizenship-picker";
 import { FieldGrid } from "@/components/profile/field-control";
@@ -83,8 +83,10 @@ export function useWorkPermitsTile(
 ): TileView {
   const { profile } = useAutofillProfile();
   const nameOf = useCountryName(market);
+  const codes = useCountryCodes();
   const asksCitizenship = citizenshipField(questionSet) !== undefined;
-  const citizenDone = citizenshipAnswered(profile, questionSet);
+  // A citizenship held by name (a hand edit) settles nothing until it is stored as codes, so it is not done.
+  const citizenDone = citizenshipAnswered(profile, questionSet, codes);
   const citizens = citizenshipEntries(profile).map(nameOf);
   const rows = questionSet.countries.map((country) => ({
     key: country.market,
