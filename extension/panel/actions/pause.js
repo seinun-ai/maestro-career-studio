@@ -135,7 +135,16 @@
    * answers for must never become the generic answer every other form gets. The
    * panel never decides the country and never guesses it; `answerCountryFor`
    * asks. The served one-set `work_auth` is left exactly as it came, and the
-   * server keeps the map edit (`autofill_profile._as_stored`). */
+   * server keeps the map edit (`autofill_profile._as_stored`).
+   *
+   * ONLY A BACKEND THAT FOLDS COUNTRY ANSWERS GETS ONE (docs/RELEASING.md rule
+   * 2: the store updates this panel, the user updates the backend by hand). A
+   * backend from before them (0.12.0) stores `answers_by_country` and never
+   * reads it back, so an answer kept there would be "saved" and asked on every
+   * form. Its /context profile carries no `country_answered` (`folds` false):
+   * there expected pay keeps its generic key and a country answer goes to the
+   * custom list, both where they went before. Work permits are per country on
+   * both. */
   const BY_COUNTRY = "work_auth_by_country";
   const ANSWERS_BY_COUNTRY = "answers_by_country";
   // The table's section, and the per-market map its answers are learned into.
@@ -148,17 +157,21 @@
    * nobody asked). Not learned (`store: "unsaved"`; `permit` says which kind,
    * for the note): a country-scoped answer with no market, and a `countryKey`
    * row for a country no market covers. A `countryKey` row with no country
-   * known keeps its generic key. Any other target is as it was. */
+   * known keeps its generic key. On a backend that does not fold country
+   * answers (`place.folds` false) a country answer is a custom one and a
+   * `countryKey` row keeps its generic key. Any other target is as it was. */
   function inCountry(target, place) {
     const market = place?.market;
-    const unsaved = { store: "unsaved", permit: isCountryScoped(target) && target.path[0] === "work_auth" };
+    const permit = isCountryScoped(target) && target.path[0] === "work_auth";
+    const unsaved = { store: "unsaved", permit };
     if (isCountryScoped(target)) {
+      if (!permit && !place?.folds) return { store: "custom" };
       return market ? { ...target, path: [BY_MARKET[target.path[0]], market, ...target.path.slice(1)], market }
         : unsaved;
     }
-    if (!target.countryKey) return target;
+    if (!target.countryKey || !place?.folds) return target;
     if (market) return { ...target, path: [ANSWERS_BY_COUNTRY, market, target.countryKey], market };
-    return place?.country ? unsaved : target;
+    return place.country ? unsaved : target;
   }
 
   /** Where an answer to `label` is learned, once `place` is known: never
@@ -197,15 +210,18 @@
    * the next form asks again — with no application and no country in the
    * question, for a country no market covers, or for a question naming two
    * countries; `country` is null only when no one country is known, so a
-   * country Profile keeps no set for is told apart from an unclear one. Only
-   * these two are read: that profile is the job's view and is never PUT back
-   * (see `learnAnswer`). */
+   * country Profile keeps no set for is told apart from an unclear one. `folds`
+   * is whether this backend folds a country's own answers into its forms: only
+   * one that does serves `country_answered` (always, `[]` for none; see
+   * `inCountry`). Only these three are read: that profile is the job's view and
+   * is never PUT back (see `learnAnswer`). */
   async function answerCountryFor(store, question, applicationId) {
     const params = new URLSearchParams({ question });
     if (applicationId) params.set("application_id", applicationId);
-    const context = await store.api(`/api/autofill/context?${params}`);
+    const profile = (await store.api(`/api/autofill/context?${params}`))?.profile;
     const text = (value) => (typeof value === "string" && value ? value : null);
-    return { market: text(context?.profile?.work_auth_market), country: text(context?.profile?.work_auth_country) };
+    return { market: text(profile?.work_auth_market), country: text(profile?.work_auth_country),
+             folds: Array.isArray(profile?.country_answered) };
   }
 
   const valueAt = (profile, path) => path.reduce((at, key) => (at && typeof at === "object" ? at[key] : undefined), profile);
@@ -355,8 +371,9 @@
    * (`answerCountryFor`), and is learned into that entry only; with no market a
    * work permit or country answer is not learned at all, and no profile is read,
    * nor is expected pay for a country no market covers, while expected pay with
-   * no country known is learned as the generic desired salary. Current pay is
-   * never learned (`targetFor`).
+   * no country known is learned as the generic desired salary. A backend that
+   * does not fold country answers gets them where it reads them (`inCountry`).
+   * Current pay is never learned (`targetFor`).
    *
    * THROWS on failure, and the caller treats that as a NOTE rather than a
    * rollback — see `submitAnswer`.

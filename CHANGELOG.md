@@ -81,7 +81,9 @@ once, and each country hears only its own.
   UAE now?" learned on a job is saved for that job's country, so "Expected CTC" on an Indian job never
   fills a form somewhere else. With no country known, a country answer is filled and not kept, and expected
   pay falls back to your expected salary. The note says "Saved to Profile › Country answers (India)."
-  Current pay is never learned. This reaches the Chrome Web Store with the next Companion release.
+  Current pay is never learned. This reaches the Chrome Web Store with the next Companion release; until
+  you update Maestro itself, the Companion keeps expected pay as your expected salary and a UAE answer as a
+  saved answer, as before.
 
 ### Fixed
 

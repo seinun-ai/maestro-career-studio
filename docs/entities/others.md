@@ -379,7 +379,9 @@
   writes `work_auth_by_country[<market>]` (promoting that entry's legacy pair first, `workAuthForWrite`) or `answers_by_country[<market>]`,
   leaving the served `work_auth` as it came. Expected pay ("Expected CTC" on an Indian job) is that market's `expected_pay`, the
   generic `desired_salary` only when no country is known, and not learned for a country no market covers (a Singapore job), so it never
-  becomes every other form's answer. Current pay is never learned (`ns.currentPayRe`: "current and expected CTC" often holds both
+  becomes every other form's answer. A backend that does not fold country answers (0.12.0: its job's view has no `country_answered`)
+  gets expected pay as `desired_salary` and a country answer as a custom one, where it reads them (docs/RELEASING.md rule 2; work permits
+  are per country on both). Current pay is never learned (`ns.currentPayRe`: "current and expected CTC" often holds both
   figures). Undo puts back each key, and sends a country's entry the learn made as null, so the save removes it. `work_auth_country` names that question's one country in words, a country no market
   covers too (null: none known), and the note says "Saved to Profile › Country answers (United Kingdom)." by that name, never the market
   key. With no market (no job and no country named, a country no market covers, two countries) a work permit or country answer is

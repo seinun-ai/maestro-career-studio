@@ -1868,17 +1868,19 @@ def test_a_learned_answer_names_the_profile_fold_that_shows_it(tmp_path):
 
 
 def _work_permit_answer(tmp_path, market, served, label="Do you currently require sponsorship?", text="Yes",
-                        country=None, options=("Yes", "No")):
+                        country=None, options=("Yes", "No"), folds=True):
     """One pause row answered (a work permit by default, a text box with `options=None`), on a job
     `/api/autofill/context` says is `market`'s (None: no market), the question's country named `country`
-    in words (None: no one country), with `served` as `GET /api/settings/autofill` reads."""
+    in words (None: no one country), with `served` as `GET /api/settings/autofill` reads. `folds=False`
+    is a backend from before country answers (0.12.0): its job's view has no `country_answered`."""
     question = {"qid": "wa1", "label": label, "kind": "select", "options": list(options)} if options else {
         "qid": "wa1", "label": label, "kind": "text"}
     frames = {"collect_open_questions": [{"frameId": 0, "result": {
         "host": "job-boards.greenhouse.io", "questions": [question], "retryables": [],
     }}]}
     context = {**FILL_CONTEXT, "profile": {**FILL_CONTEXT["profile"], "work_auth_market": market,
-                                           "work_auth_country": country}}
+                                           "work_auth_country": country,
+                                           **({"country_answered": []} if folds else {})}}
     return _answer(tmp_path, answer={"qid": "wa1", "text": text}, frames=frames,
                    api={"/api/settings/autofill": _reply({"key": "autofill_profile", "value": served}),
                         "/api/autofill/context": _reply(context)})
@@ -2083,6 +2085,32 @@ def test_expected_pay_with_no_country_is_the_generic_desired_salary(tmp_path):
     assert "Saved to Profile › Start and pay." in note["text"]
 
 
+def test_on_a_backend_that_does_not_fold_country_answers_they_go_where_it_reads_them(tmp_path):
+    """A store-updated Companion on a 0.12.0 backend (docs/RELEASING.md rule 2): its /context has no
+    `country_answered`, and it never folds `answers_by_country` into a form. Expected pay on an Indian job is
+    the generic desired salary there, and a UAE question a custom answer, both as before country answers, so
+    neither is "saved" and asked again on every form. A work permit is still that country's."""
+    pay = _work_permit_answer(tmp_path, "IN", SERVED_INDIA, label="Expected CTC", text="2500000",
+                              country="India", options=None, folds=False)
+    [body] = _profile_put(pay)
+    assert body["value"]["preferences"] == {"desired_salary": "2500000"}
+    assert body["value"]["answers_by_country"] == SERVED_INDIA["answers_by_country"]
+    [note] = _by_class(pay["answered"]["foot"], "note")
+    assert "Saved to Profile › Start and pay." in note["text"]
+
+    uae = _work_permit_answer(tmp_path, "AE", SERVED_INDIA, label="Are you currently in the UAE?",
+                              country="United Arab Emirates", folds=False)
+    [body] = _profile_put(uae)
+    assert body["value"]["custom"] == [{"question": "Are you currently in the UAE?", "answer": "Yes"}]
+    assert body["value"]["answers_by_country"] == SERVED_INDIA["answers_by_country"]
+    [note] = _by_class(uae["answered"]["foot"], "note")
+    assert "Saved. It won't ask again." in note["text"]
+
+    permit = _work_permit_answer(tmp_path, "UK", SERVED_HOME_US, country="United Kingdom", folds=False)
+    [body] = _profile_put(permit)
+    assert body["value"]["work_auth_by_country"] == {"US": US_ANSWERS, "UK": {"sponsorship_now": "Yes"}}
+
+
 def test_a_paused_uae_question_on_a_uae_job_learns_into_the_uae(tmp_path):
     out = _work_permit_answer(tmp_path, "AE", SERVED_INDIA, label="Are you currently in the UAE?",
                               country="United Arab Emirates")
@@ -2166,9 +2194,11 @@ main(async () => {
     read: () => ({ job: spec.job }),
     api: async (path, init) => {
       if (init?.method === "PUT") { profile = JSON.parse(init.body).value; return {}; }
-      // The country `/context` names for a question (`spec.market`, in words `spec.country`).
+      // The country `/context` names for a question (`spec.market`, in words `spec.country`); a
+      // backend that folds country answers marks its view (`spec.folds === false`: one from before).
       if (path.startsWith("/api/autofill/context")) {
-        return { profile: { work_auth_market: spec.market ?? null, work_auth_country: spec.country ?? null } };
+        return { profile: { work_auth_market: spec.market ?? null, work_auth_country: spec.country ?? null,
+                            ...(spec.folds === false ? {} : { country_answered: [] }) } };
       }
       return { value: profile };
     },
