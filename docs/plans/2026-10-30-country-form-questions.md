@@ -1768,6 +1768,13 @@ Expected: fail.
   {citizenships: ["IN"]})`: fixture names carry the citizenships since Task 3.5.
 - **Given beats derived.** `derived` can also hold keys the user answered the same way. Show the
   given answer there, and "From your citizenship" only where nothing is given.
+- **The Companion's saved note.** A learned country answer is announced as "Saved to Profile ›
+  Work permits (India)" (`extension/panel/actions/pause.js`). It becomes "Country answers (India)"
+  with the rename. The tile now shows `answers_by_country`, so the note points to a place the user
+  can see.
+- **`eligibility.in_country_now` is a generic slot that only the UAE rule reads.** If another
+  market joins the `gulf` pack, a UAE question on that country's job would get that country's
+  answer. Name the country in the rule when that happens.
 - **Citizenship counts in Country answers.** Since Task 3.6, readiness counts `citizenships` in the
   `work_auth` group, the Country answers tile. So:
   - that tile's count includes it;
