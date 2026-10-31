@@ -158,3 +158,9 @@
     store added, edited and removed bullet counts per entry on the report (an additive field, passed through by
     `run_health_check` and `get_health_report`), and the line says "5 bullets reworded. 1 in Northwind Analytics now needs
     work." Do when the health report is next changed, or a change line is reported as missing what was edited.
+65. An answer kept for a country Profile does not list: the Companion learns a work permit or a country answer into the entry of
+    the market /context names for its question, which can be a market outside `apply_in` (a UK question on a German job) or any
+    market while no country is chosen. The fill reads that entry on that country's jobs, but Country answers lists only the served
+    countries (`questionSet.countries`: the apply-in ones, none while unchosen), so the answer is used and never shown, and is
+    changed only by adding the country or by hand. Permits were kept so before country answers too. Do when a user reports a filled
+    answer they cannot find in Profile, or Country answers is next changed.
