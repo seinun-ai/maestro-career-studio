@@ -287,7 +287,9 @@ def test_next_up_asks_the_first_missing_answer_in_place_and_never_guesses():
     nxt = _src("components/profile/next-up.tsx")
     assert "const missing = missingAnswers(profile, questionSet, codes);" in nxt
     assert "Never guessed for you" in nxt
-    assert "Work-permit and diversity answers only ever come from you." in nxt
+    # A work permit can come from your citizenship (derived when read, never stored): still never a guess.
+    assert "Work-permit answers come only from you or your citizenship. Diversity answers only ever come from you." in nxt
+    assert "Work-permit and diversity answers only ever come from you." not in nxt
     # Diversity is answered in its fold, beside its consent (D10): Next up only opens it.
     assert 'if (current.kind === "diversity") {' in nxt and "onClick: onOpenDiversity" in nxt
     assert "update(SURFACE, (profileNow) =>" in nxt
@@ -297,7 +299,16 @@ def test_next_up_asks_the_first_missing_answer_in_place_and_never_guesses():
 
 def test_diversity_sits_with_its_consent_and_only_where_a_set_is_checked():
     fold = _src("components/profile/diversity.tsx")
-    assert "return m?.offers_eeo ? [m.label] : [];" in fold
+    # The countries come from the served set, never the market setting's `apply_in`, which still stores the
+    # US while no country is chosen: none while the set offers no diversity questions.
+    helper = _between(_src("lib/autofill-options.ts"), "export function diversityCountries(", "\n}\n")
+    assert "if (!questionSet.offers_eeo) return [];" in helper
+    assert "questionSet.countries.flatMap((country) =>" in helper
+    assert "markets.find((m) => m.key === country.market)?.offers_eeo ? [country.label] : []" in helper
+    nxt = _src("components/profile/next-up.tsx")
+    for src in (fold, nxt):
+        assert "diversityCountries(questionSet, market.markets ?? [])" in src
+        assert "market.apply_in" not in src
     assert '<div id="autofill-eeo">' in fold and '<Fold title="Diversity questions"' in fold
     consent = _src("components/profile/diversity-consent.tsx")
     switch = _between(consent, "export function DiversityConsentSwitch(", "\n}\n")

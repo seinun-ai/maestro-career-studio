@@ -5,7 +5,7 @@
  * every helper that needs a question takes that set. Nothing here mirrors a backend question list. Pure, so
  * `node --test` loads it (lib/autofill-options.test.ts): it imports only types, which the loader erases.
  */
-import type { Country, CountryQuestions, DerivedAnswer, FieldDef, QuestionSet } from "./types";
+import type { Country, CountryQuestions, DerivedAnswer, FieldDef, MarketOption, QuestionSet } from "./types";
 
 export type { CountryQuestions, DerivedAnswer, FieldDef } from "./types";
 
@@ -574,6 +574,17 @@ export function withField(
     keepBlank: true,
   });
   return { ...profile, [group]: values };
+}
+
+/** The countries the diversity questions are asked for, named as served: each country the served set lists
+ *  (`countries`, the ones you chose, in the order you apply in) whose market has a checked set (`offers_eeo`,
+ *  from the market list; never decided here). None while the set offers none, so with no country chosen it
+ *  names none, though the market setting still stores its default. */
+export function diversityCountries(questionSet: QuestionSet, markets: readonly MarketOption[]): string[] {
+  if (!questionSet.offers_eeo) return [];
+  return questionSet.countries.flatMap((country) =>
+    markets.find((m) => m.key === country.market)?.offers_eeo ? [country.label] : [],
+  );
 }
 
 /** What "Decline the rest" leaves to you, said beside it in Profile and Setup: `declinedEeo` declines selects

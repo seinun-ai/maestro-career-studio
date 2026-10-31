@@ -110,6 +110,8 @@ function WhereEditor({ market }: { market: MarketSettingResponse }) {
   const { value: place, pending, failed, retry, setHome, toggleCountry } = useCountriesAutosave(market);
   useLeaveGuard(failed);
 
+  // The chips as pressed, never the stored default: none while no country is chosen (`useCountriesAutosave`),
+  // so the note follows each press before its save lands.
   const withoutSet = place.apply_in.flatMap((key) => {
     const m = options.find((o) => o.key === key);
     return m && !m.offers_eeo ? [m.label] : [];

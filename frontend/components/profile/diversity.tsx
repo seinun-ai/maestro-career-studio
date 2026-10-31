@@ -11,6 +11,7 @@ import { Fold } from "@/components/ui/fold";
 import {
   RACE_STAYS_YOURS,
   declinedEeo,
+  diversityCountries,
   groupCount,
   groupFields,
   groupValues,
@@ -22,21 +23,12 @@ import type { EeoConsent, MarketSettingResponse, QuestionSet } from "@/lib/types
 
 const SURFACE = "diversity";
 
-/** The countries you apply in whose market has a checked diversity set (`offers_eeo`, from the API; never
- *  decided here). */
-export function diversityCountries(market: MarketSettingResponse): string[] {
-  const options = market.markets ?? [];
-  return market.apply_in.flatMap((key) => {
-    const m = options.find((o) => o.key === key);
-    return m?.offers_eeo ? [m.label] : [];
-  });
-}
-
 /**
  * Diversity questions, folded: voluntary, asked only where a country you apply in has a checked set, with
  * the permission that lets the Companion use them beside them (owner decision D10) and the date it was
  * given. The answers are one set, the one the Companion maps to each checked form's own words
- * (`content/eeo.js`); the fold names the countries it serves. Saves as you go.
+ * (`content/eeo.js`); the fold names the countries it serves, from the served set (`diversityCountries`), so
+ * with no country chosen it names none. Saves as you go.
  */
 export function DiversityFold({
   market,
@@ -54,7 +46,7 @@ export function DiversityFold({
   const { profile, update, saveState } = useAutofillProfile();
   const { pending, setEeoConsentEnabled } = useDiversityConsent(consent);
   const declineHintId = useId();
-  const countries = diversityCountries(market);
+  const countries = diversityCountries(questionSet, market.markets ?? []);
   const eeo = groupValues(profile, "eeo");
   const count = groupCount(profile, questionSet, "eeo");
   const hasAnswers = groupFields(questionSet, "eeo").some((field) => !isBlank(eeo[field.key]));
@@ -69,7 +61,9 @@ export function DiversityFold({
         allDeclined ? "set to decline" : `${count.answered} of ${count.answerable} answered`,
         ...(consent.enabled ? [] : ["the Companion won't fill these until you let it"]),
       ].join(" · ")
-    : "Not asked where you apply";
+    : questionSet.chosen
+      ? "Not asked where you apply"
+      : "No country chosen yet";
   const stale = staleAnswers(profile).flatMap((item) => (item.startsWith("eeo.") ? [item.slice(4)] : []));
 
   const declineAllEeo = () => {
@@ -87,7 +81,9 @@ export function DiversityFold({
             <p className="max-w-[65ch] text-body-small text-muted-foreground">
               {countries.length
                 ? `Asked only where a set is checked against official forms: ${countries.join(", ")}.`
-                : "None of the countries you apply in has a checked set of these questions, so the Companion won't ask them."}
+                : questionSet.chosen
+                  ? "None of the countries you apply in has a checked set of these questions, so the Companion won't ask them."
+                  : "No country chosen yet. These are asked only where a country you apply in has a checked set."}
             </p>
             <AutosaveStatus {...saveState(SURFACE)} />
           </div>

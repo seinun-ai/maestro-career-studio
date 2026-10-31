@@ -6,7 +6,6 @@ import { Check } from "lucide-react";
 import { useCountryCodes } from "@/components/country-picker";
 import { useAutofillProfile } from "@/components/profile/autofill-profile";
 import { FieldControl } from "@/components/profile/field-control";
-import { diversityCountries } from "@/components/profile/diversity";
 import { tileTitle } from "@/components/profile/tile";
 import { CITIZEN_HINT, CitizenshipPicker } from "@/components/profile/citizenship-picker";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
@@ -18,6 +17,7 @@ import {
   booleanAnswer,
   citizenshipEntries,
   countryQuestions,
+  diversityCountries,
   fieldValue,
   groupCount,
   groupValues,
@@ -54,7 +54,8 @@ const YES_NO = [
 /**
  * Next up, the Lead: the first required answer still missing (lib/autofill-options.ts `missingAnswers`:
  * citizenship, then each country's work permit), answered in place and saved as you go, beside the promise
- * that these answers only ever come from you. A Yes or No moves on by itself; a typed answer, or a country
+ * that none is guessed: a work permit comes only from you or your citizenship (derived when read, never stored),
+ * and a diversity answer only from you. A Yes or No moves on by itself; a typed answer, or a country
  * picked, stays until Next, so it never jumps away mid-word. Skip leaves one for later in this visit. Diversity
  * is answered in its fold, beside its consent (D10), so Next up only opens it. Nothing missing, nothing shown:
  * the ring says so.
@@ -132,7 +133,7 @@ export function NextUp({
         Never guessed for you
       </span>
       <span className="text-body-small text-muted-foreground">
-        Work-permit and diversity answers only ever come from you.
+        Work-permit answers come only from you or your citizenship. Diversity answers only ever come from you.
       </span>
     </>
   );
@@ -144,7 +145,7 @@ export function NextUp({
   );
 
   if (current.kind === "diversity") {
-    const countries = diversityCountries(market);
+    const countries = diversityCountries(questionSet, market.markets ?? []);
     return (
       <LeadCard
         eyebrow="Next up · Diversity questions"

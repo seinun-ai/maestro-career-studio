@@ -13,6 +13,7 @@ import {
   declinedEeo,
   derivedPermits,
   differsFromSettled,
+  diversityCountries,
   fieldShown,
   forSaving,
   groupCount,
@@ -36,7 +37,7 @@ import {
   withField,
   withPermit,
 } from "./autofill-options.ts";
-import type { DerivedAnswer, FieldDef, QuestionSet } from "./types.ts";
+import type { DerivedAnswer, FieldDef, MarketOption, QuestionSet } from "./types.ts";
 
 // A small set in the served shape (GET /api/settings/autofill/questions; the backend resolves it and its tests
 // pin the words). A node-tested lib file cannot import another lib file's values, so it is built here.
@@ -450,6 +451,38 @@ test("decline the rest declines every blank diversity select, the veteran questi
   const declines = declinedEeo({ eeo: { gender: "female" } }, ALL);
   assert.deepEqual(declines, { veteran_status: "decline", disability_status: "decline", hispanic_latino: "decline" });
   assert.deepEqual(declinedEeo({ eeo: { ...declines, gender: "male" } }, ALL), {});
+});
+
+// The market list (GET /api/settings/market `markets`): which markets have a checked diversity set.
+const MARKETS: MarketOption[] = [
+  { key: "US", label: "United States", country_code: "US", currency: "USD", date_format: "MDY", offers_eeo: true },
+  { key: "UK", label: "United Kingdom", country_code: "GB", currency: "GBP", date_format: "DMY", offers_eeo: true },
+  { key: "DE", label: "Germany", country_code: "DE", currency: "EUR", date_format: "DMY", offers_eeo: false },
+  { key: "IN", label: "India", country_code: "IN", currency: "INR", date_format: "DMY", offers_eeo: false },
+  { key: "AE", label: "United Arab Emirates", country_code: "AE", currency: "AED", date_format: "DMY", offers_eeo: false },
+  { key: "NL", label: "Netherlands", country_code: "NL", currency: "EUR", date_format: "DMY", offers_eeo: false },
+];
+
+test("diversity names the served countries with a checked set, and none while no country is chosen", () => {
+  // Unchosen: the market setting still stores the US, but the served set lists no country and offers none.
+  const unchosen: QuestionSet = { ...servedFor([], { offersEeo: false }), chosen: false };
+  assert.deepEqual(diversityCountries(unchosen, MARKETS), []);
+  assert.deepEqual(diversityCountries(servedFor(["US"]), MARKETS), ["United States"]);
+  // In the order you apply in, only the countries with a set.
+  assert.deepEqual(diversityCountries(servedFor(["DE", "UK", "US"]), MARKETS), ["United Kingdom", "United States"]);
+  const india: QuestionSet = {
+    ...servedFor([], { offersEeo: false }),
+    countries: MARKETS.filter((m) => ["IN", "AE", "DE", "NL"].includes(m.key)).map((m) => ({
+      market: m.key,
+      label: m.label,
+      permits: [],
+      answers: [],
+    })),
+  };
+  assert.deepEqual(diversityCountries(india, MARKETS), []);
+  // The served set decides: one that offers none names none, whatever the market list says.
+  assert.deepEqual(diversityCountries(servedFor(["US"], { offersEeo: false }), MARKETS), []);
+  assert.deepEqual(diversityCountries(servedFor(["US"]), []), [], "a market the list lacks has no set");
 });
 
 test("a group's fields are the served group's, by key; a group the set lacks has none", () => {

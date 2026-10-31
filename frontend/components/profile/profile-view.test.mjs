@@ -106,6 +106,7 @@ test("next up asks the first country's work permit in place, in that country's w
   assert.match(html, /Next up · Country answers · Germany/);
   assert.match(html, /<h2[^>]*>Can you work in this country now\?<\/h2>/);
   assert.match(html, /Never guessed for you/);
+  assert.match(html, /Work-permit answers come only from you or your citizenship\. Diversity answers only ever come from you\./);
   // A Yes or No moves on by itself: nothing on the page is filled.
   assert.equal((html.match(FILLED) ?? []).length, 0);
 });
@@ -178,6 +179,13 @@ test("a country chip carries the square of a base resume made for it", () => {
   assert.match(html, /bg-resume/);
 });
 
+// The Diversity questions fold: its summary, then what it says when opened.
+const diversityFold = (html) => {
+  const fold = html.slice(html.indexOf('<div id="autofill-eeo">'), html.indexOf('<div id="autofill-eligibility">'));
+  const summary = fold.match(/>Diversity questions<\/span><span[^>]*>([^<]*)<\/span>/)?.[1];
+  return { fold, summary };
+};
+
 test("diversity is folded beside its consent, and only where a country has a checked set", () => {
   const html = render();
   assert.match(html, /<div id="autofill-eeo">/);
@@ -186,6 +194,35 @@ test("diversity is folded beside its consent, and only where a country has a che
   const germanyOnly = render({ applyIn: ["DE"] });
   assert.match(germanyOnly, /Not asked where you apply/);
   assert.doesNotMatch(germanyOnly, /id="eeo-standing-consent"/);
+});
+
+test("diversity names the countries the served set lists: the US chosen, the US named", () => {
+  const { fold, summary } = diversityFold(render({ applyIn: ["US"] }));
+  assert.match(summary, /^Voluntary · United States · 0 of 4 answered/);
+  assert.match(fold, /Asked only where a set is checked against official forms: United States\./);
+});
+
+test("diversity names none of India, the UAE, Germany and the Netherlands, which have no checked set", () => {
+  const html = render({ home: "IN", applyIn: ["IN", "AE", "DE", "NL"], citizenships: ["IN"] });
+  const { fold, summary } = diversityFold(html);
+  assert.equal(summary, "Not asked where you apply");
+  assert.match(fold, /None of the countries you apply in has a checked set of these questions/);
+  assert.doesNotMatch(fold, /United States|id="eeo-standing-consent"/);
+  // Where you apply says so for the countries picked.
+  assert.match(html, /no checked diversity questions for India, United Arab Emirates, Germany, and Netherlands, so/);
+});
+
+test("next up's diversity card names the served countries with a checked set", () => {
+  const permits = { status: "citizen", authorized_now: true, sponsorship_now: false, sponsorship_future: false };
+  const preferences = {
+    desired_salary: "x", notice_period: "x", earliest_start_date: "2026-11-01", willing_to_relocate: false, how_heard: "x",
+  };
+  const html = render({
+    applyIn: ["US"],
+    profile: { personal: PERSONAL, work_auth_by_country: { US: permits }, preferences },
+  });
+  assert.match(html, /Next up · Diversity questions/);
+  assert.match(html, /Asked where a set is checked against official forms: United States\. Answer them or decline/);
 });
 
 test("while the Companion may not use the diversity answers, the fold says it won't fill them", () => {
@@ -333,4 +370,12 @@ test("with no country chosen: nothing picked, no country's questions, and a way 
   assert.doesNotMatch(html, /<fieldset class="space-y-4">/);
   // Said on one tile only: Where you apply.
   assert.doesNotMatch(tileButton(html, "permits"), /No country chosen yet/);
+  // Diversity names no country (the stored US is a default, never a choice), and its summary says why.
+  const { fold, summary } = diversityFold(html);
+  assert.equal(summary, "No country chosen yet");
+  assert.match(fold, /No country chosen yet\. These are asked only where a country you apply in has a checked set\./);
+  assert.doesNotMatch(fold, /United States|Voluntary ·|id="eeo-standing-consent"/);
+  // Next up asks no diversity question, and the note under Where you apply names no country without a set.
+  assert.doesNotMatch(html, /Next up · Diversity questions/);
+  assert.doesNotMatch(html, /no checked diversity questions for/);
 });
