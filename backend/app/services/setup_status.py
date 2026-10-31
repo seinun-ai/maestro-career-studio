@@ -19,6 +19,8 @@ own. Rules:
   country's missing knockout answer blocks: a missing citizenship shows in the
   group and in readiness but blocks nothing. Each country's own count rides
   along for the setup flow's one-question-per-country step.
+- `chosen` rides along too: with no country chosen nothing asks a country's
+  questions, so readiness alone cannot say the countries are missing.
 """
 
 from sqlalchemy import func, select
@@ -133,7 +135,7 @@ def _autofill_step(db: Session) -> AutofillStep:
     readiness = round(answered / answerable, 3) if answerable else 1.0
     return AutofillStep(
         done=readiness >= 1.0, readiness=readiness, groups=groups, blocking=blocking,
-        work_auth_by_country=by_country,
+        work_auth_by_country=by_country, chosen=market.chosen,
     )
 
 

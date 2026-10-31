@@ -268,7 +268,10 @@ def get_autofill_context(
     gets (the country it names, else the job's). The Companion's pause row asks with `question` to
     learn an answer into that market's entry, and never learns one when it is null; with `question`,
     `profile.work_auth_country` names that question's one country in words (a country no market covers
-    too), so the panel can say why it kept nothing.
+    too), so the panel can say why it kept nothing. Every market's permits ride along as
+    `work_auth_by_country`; with no application and no question, no country's answers are folded into
+    the flat slots, and every market's own answers ride along as `answers_by_country` instead (MCP
+    `get_autofill_profile` without a job), through the same consent gate.
 
     Per-section nulls rather than a whole-request failure: the three feeds this
     replaces each degraded independently, and a skills outage must not stop an
@@ -357,9 +360,13 @@ def get_autofill_context(
     # form, so it would fill "Have you worked at Acme before?" at the next employer.
     gated = sections["profile"]
     sections["profile"] = autofill_job.profile_for_job(db, gated, application_id, question)
-    # The job's view holds one country's answers; agents also read every market's permits here.
-    if isinstance(gated, dict) and isinstance(sections["profile"], dict) and autofill_profile.BY_COUNTRY in gated:
-        sections["profile"][autofill_profile.BY_COUNTRY] = gated[autofill_profile.BY_COUNTRY]
+    # The job's view holds one country's answers; agents also read every market's permits here, and
+    # with no job and no question (no country to fold) every market's own answers, gated like the rest.
+    if isinstance(gated, dict) and isinstance(sections["profile"], dict):
+        added = [autofill_profile.BY_COUNTRY]
+        if application_id is None and question is None:
+            added.append(autofill_profile.ANSWERS_BY_COUNTRY)
+        sections["profile"].update({key: gated[key] for key in added if key in gated})
     return sections
 
 

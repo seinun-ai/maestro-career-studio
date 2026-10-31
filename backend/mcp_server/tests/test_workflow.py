@@ -1163,6 +1163,14 @@ def test_setup_next_step_leaves_the_diversity_answers_to_the_user():
     assert "diversity answers are the user's" in step["says"]
 
 
+def test_the_form_answers_step_names_citizenship():
+    """The work-permit group counts citizenship beside each country's permits, so an agent that sees it
+    one answer short reads what may be missing."""
+    step = workflow.setup_next_step(_setup(import_resumes=True, bases=1))
+    assert step["step"] == "form_answers"
+    assert "citizenship" in step["says"] and "each country the user applies in" in step["says"]
+
+
 def test_setup_next_step_never_asks_an_agent_for_the_key_or_the_template():
     """Both are the user's, in the app: reported by get_setup_status, never a next step."""
     seen = set()

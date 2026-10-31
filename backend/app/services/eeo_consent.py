@@ -155,15 +155,22 @@ def withhold_unconsented(profile: Any, consent: Any, *, outward: bool = True) ->
     return profile
 
 
+def withheld_for(session: Session, profile: Any, *, outward: bool = True) -> Any:
+    """`profile` through the gate with the stored consent, for a reader that holds the profile
+    already (an agent's save, handed back); unreadable consent withholds. `outward` as
+    `withhold_unconsented` takes it."""
+    try:
+        consent = get_consent(session).model_dump(mode="json")
+    except Exception:  # noqa: BLE001 — unreadable consent withholds, it never crashes a fill
+        logger.exception("eeo consent could not be read; withholding EEO answers")
+        consent = None
+    return withhold_unconsented(profile, consent, outward=outward)
+
+
 def disclosable_profile(session: Session, *, outward: bool = True) -> dict[str, Any]:
     """The autofill profile with the gate applied, for a reader that needs the
     whole profile and no separate consent section (the /choose prompt, the fill
     loop's catalog); `outward` as `withhold_unconsented` takes it."""
     from app.services import autofill_profile
 
-    try:
-        consent = get_consent(session).model_dump(mode="json")
-    except Exception:  # noqa: BLE001 — unreadable consent withholds, it never crashes a fill
-        logger.exception("eeo consent could not be read; withholding EEO answers")
-        consent = None
-    return withhold_unconsented(autofill_profile.get_profile(session), consent, outward=outward)
+    return withheld_for(session, autofill_profile.get_profile(session), outward=outward)

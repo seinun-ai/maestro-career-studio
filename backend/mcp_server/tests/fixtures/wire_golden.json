@@ -1746,6 +1746,7 @@
          }
         ],
         "default": null,
+        "description": "An application id: the profile is then that job's view, its country's work permits as work_auth (work_auth_market names the market) and its own answers folded into the slots they fill (country_answered lists them; pay there is in that country's terms, saved under answers_by_country, not preferences). Without one nothing is folded, and answers_by_country holds each market's own answers.",
         "title": "Application Id"
        },
        "base": {
@@ -1777,6 +1778,58 @@
      },
      "inputSchema": {
       "$defs": {
+       "CountryAnswers": {
+        "additionalProperties": false,
+        "description": "One country's own answers (true is Yes); a null removes one. A market takes only the ones it asks: get_autofill_profile's questions list each market's in its words, and a refused save names them.",
+        "properties": {
+         "current_ctc": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Current Ctc"
+         },
+         "expected_pay": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Expected Pay"
+         },
+         "in_country_now": {
+          "anyOf": [
+           {
+            "type": "boolean"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "In Country Now"
+         },
+         "uae_driving_licence": {
+          "anyOf": [
+           {
+            "type": "boolean"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Uae Driving Licence"
+         }
+        },
+        "title": "CountryAnswers",
+        "type": "object"
+       },
        "EducationEntry": {
         "additionalProperties": false,
         "description": "One school, most recent first in the list.",
@@ -1811,8 +1864,34 @@
        },
        "EligibilityAnswers": {
         "additionalProperties": false,
-        "description": "Yes/No eligibility answers (true is Yes); a null removes one.",
+        "description": "Yes/No eligibility answers (true is Yes), and total work experience as whole years plus\nthe months beyond them (0 to 11); a null removes one.",
         "properties": {
+         "experience_months": {
+          "anyOf": [
+           {
+            "maximum": 11,
+            "minimum": 0,
+            "type": "integer"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Experience Months"
+         },
+         "experience_years": {
+          "anyOf": [
+           {
+            "maximum": 60,
+            "minimum": 0,
+            "type": "integer"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Experience Years"
+         },
          "non_compete": {
           "anyOf": [
            {
@@ -1852,8 +1931,20 @@
        },
        "LanguageEntry": {
         "additionalProperties": false,
-        "description": "One language; native and fluent are separate answers, as forms ask them.",
+        "description": "One language; native and fluent are separate answers, as forms ask them, and cefr is its\nCEFR level.",
         "properties": {
+         "cefr": {
+          "enum": [
+           "A1",
+           "A2",
+           "B1",
+           "B2",
+           "C1",
+           "C2"
+          ],
+          "title": "Cefr",
+          "type": "string"
+         },
          "fluent": {
           "title": "Fluent",
           "type": "boolean"
@@ -1899,7 +1990,7 @@
        },
        "PersonalAnswers": {
         "additionalProperties": false,
-        "description": "Contact and address answers; a null removes one.",
+        "description": "Contact and address answers, and citizenships: the countries the user is a citizen of, as\nISO codes (\"IN\") or English names, stored as codes (get_autofill_profile shows names); a null\nremoves one.",
         "properties": {
          "address": {
           "anyOf": [
@@ -1922,6 +2013,20 @@
            }
           ],
           "title": "Address 2"
+         },
+         "citizenships": {
+          "anyOf": [
+           {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Citizenships"
          },
          "city": {
           "anyOf": [
@@ -2061,7 +2166,7 @@
        },
        "PreferenceAnswers": {
         "additionalProperties": false,
-        "description": "Start and pay answers, in the words a form gets; a null removes one.",
+        "description": "Start and pay answers, in the words a form gets; a null removes one. notice_days is the\nnotice period in whole days; last_working_day is YYYY-MM-DD, filled while serving_notice is\ntrue and the day has not passed; preferred_locations is cities separated by commas.",
         "properties": {
          "desired_salary": {
           "anyOf": [
@@ -2096,6 +2201,29 @@
           ],
           "title": "How Heard"
          },
+         "last_working_day": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Last Working Day"
+         },
+         "notice_days": {
+          "anyOf": [
+           {
+            "minimum": 0,
+            "type": "integer"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Notice Days"
+         },
          "notice_period": {
           "anyOf": [
            {
@@ -2106,6 +2234,28 @@
            }
           ],
           "title": "Notice Period"
+         },
+         "preferred_locations": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Preferred Locations"
+         },
+         "serving_notice": {
+          "anyOf": [
+           {
+            "type": "boolean"
+           },
+           {
+            "type": "null"
+           }
+          ],
+          "title": "Serving Notice"
          },
          "willing_to_relocate": {
           "anyOf": [
@@ -2156,7 +2306,7 @@
        },
        "WorkPermitAnswers": {
         "additionalProperties": false,
-        "description": "One country's work-permit answers (true is Yes); a null removes one. status is one of that\nmarket's own statuses (a refused save names them; a market with no list takes none);\nauthorization_expires_on is YYYY-MM-DD, absent when the right to work there does not run out.",
+        "description": "One country's work-permit answers (true is Yes); a null removes one. status is one of that\nmarket's own statuses (get_autofill_profile's questions list each market's, and a refused\nsave names them; a market with no list takes none); authorization_expires_on is YYYY-MM-DD,\nabsent when the right to work there does not run out.",
         "properties": {
          "authorization_expires_on": {
           "anyOf": [
@@ -2219,6 +2369,42 @@
        }
       },
       "properties": {
+       "answers_by_country": {
+        "anyOf": [
+         {
+          "additionalProperties": {
+           "anyOf": [
+            {
+             "$ref": "#/$defs/CountryAnswers"
+            },
+            {
+             "type": "null"
+            }
+           ]
+          },
+          "propertyNames": {
+           "enum": [
+            "US",
+            "UK",
+            "CA",
+            "AU",
+            "IE",
+            "IN",
+            "DE",
+            "NL",
+            "AE"
+           ]
+          },
+          "type": "object"
+         },
+         {
+          "type": "null"
+         }
+        ],
+        "default": null,
+        "description": "Each country's own answers by market key, merged like the work permits. On that country's jobs each fills its form slot (expected_pay over preferences.desired_salary), so pay in a country's own terms (monthly, CTC) belongs here, not in preferences.",
+        "title": "Answers By Country"
+       },
        "custom": {
         "anyOf": [
          {

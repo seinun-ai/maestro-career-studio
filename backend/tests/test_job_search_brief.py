@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
@@ -498,6 +499,48 @@ def test_one_country_reads_as_before(db_session, tmp_path, monkeypatch):
         "before filtering jobs on them. The brief never guesses."
     ]
     _assert_points_to_work_permits(body["warnings"])
+
+
+def test_a_citizenship_answers_the_brief_and_each_country_carries_its_expected_pay(
+    db_session, tmp_path, monkeypatch
+):
+    """A French citizen applying in Germany with nothing stored there: the brief reads Germany's answers as
+    every reader does (the citizenship settles them), so it warns about none. Each country's own expected
+    pay rides along when given; a country without one carries no key, and current pay never does."""
+    from app.schemas.market_settings import MarketSetting
+    from app.services import market_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    market_settings.set_market(MarketSetting(home="IN", apply_in=["DE", "UK"]), db_session)
+    autofill_profile.set_profile({
+        "personal": {"citizenships": ["FR"]},
+        "work_auth_by_country": {"UK": {"authorized_now": False, "sponsorship_future": True}},
+        "answers_by_country": {"DE": {"expected_pay": "70000"}, "IN": {"current_ctc": "1800000"}},
+    }, db_session)
+
+    body = _get_brief(db_session).json()
+
+    assert body["profile"]["work_auth_by_country"] == {
+        "DE": {**_YES_NO_CITIZEN, "expected_pay": "70000"},
+        "UK": {"authorized_to_work": "no", "requires_sponsorship": "yes"},
+    }
+    assert body["warnings"] == []
+    assert "1800000" not in json.dumps(body)
+
+
+def test_the_home_set_reads_a_citizenship_as_its_country_entry_does(db_session, tmp_path, monkeypatch):
+    """The one set kept for a release says what the home's own entry says, citizenship included."""
+    from app.schemas.market_settings import MarketSetting
+    from app.services import market_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    market_settings.set_market(MarketSetting(home="IN", apply_in=["IN"]), db_session)
+    autofill_profile.set_profile({"personal": {"citizenships": ["IN"]}}, db_session)
+
+    body = _get_brief(db_session).json()
+
+    assert body["profile"]["work_auth"] == body["profile"]["work_auth_by_country"]["IN"] == _YES_NO_CITIZEN
+    assert body["warnings"] == []
 
 
 def test_the_brief_says_when_each_automation_last_ran(db_session, tmp_path, monkeypatch):

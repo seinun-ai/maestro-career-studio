@@ -568,6 +568,31 @@ def test_a_job_view_is_never_saved(db_session, tmp_path, client):
     assert _nl_job_view(db_session, client)[autofill_country.COUNTRY_ANSWERED] == []
 
 
+def test_only_a_profile_read_with_no_job_carries_every_countrys_answers(db_session, client):
+    """With no application and no question there is no country to fold, so /context keeps the generic slots
+    and hands every market's own answers along (agents read them so); a job's view, or one question's,
+    holds one country's and no map. Every view carries every market's permits."""
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US", "NL"]), db_session)
+    autofill_profile.set_profile({"preferences": {"desired_salary": "150000"},
+                                  "work_auth_by_country": {"US": {"authorized_now": True}},
+                                  "answers_by_country": {"NL": {"expected_pay": "4500"}}}, db_session)
+
+    no_job = client.get("/api/autofill/context").json()["profile"]
+    assert no_job["answers_by_country"] == {"NL": {"expected_pay": "4500"}}
+    assert no_job["preferences"]["desired_salary"] == "150000"
+    assert no_job[autofill_country.COUNTRY_ANSWERED] == []
+
+    one_question = client.get("/api/autofill/context",
+                              params={"question": "Expected salary in the Netherlands?"}).json()["profile"]
+    assert "answers_by_country" not in one_question
+    assert one_question["preferences"]["desired_salary"] == "4500"
+
+    job = _nl_job_view(db_session, client)
+    assert "answers_by_country" not in job
+    for view in (no_job, one_question, job):
+        assert view["work_auth_by_country"] == {"US": {"authorized_now": True}}
+
+
 def test_a_setting_read_saves_back_as_it_was(db_session, tmp_path, client):
     """The read the Companion's pause row and the web send back is no job's view."""
     market_settings.set_market(MarketSetting(home="US", apply_in=["US", "NL"]), db_session)

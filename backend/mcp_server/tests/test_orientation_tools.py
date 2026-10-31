@@ -51,6 +51,13 @@ def test_setup_status_docstring_says_what_each_writer_means():
         assert term in doc, term
 
 
+def test_setup_status_says_whether_the_countries_are_chosen():
+    """Unchosen asks no country's questions, so form-answer readiness alone can read complete with the
+    countries missing; the steps' autofill block carries `chosen`, and the description names it."""
+    doc = " ".join((srv.get_setup_status.__doc__ or "").split())
+    assert "autofill.chosen, false while the user has not chosen where they apply" in doc
+
+
 def _tailoring_options(monkeypatch):
     stored = {"keywords_into_skills": False, "mirror_wording": True, "instruction": "Keep it short."}
     monkeypatch.setattr(srv._client, "get_quick_tailor_profile", lambda: stored)

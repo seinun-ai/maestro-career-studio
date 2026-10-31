@@ -154,8 +154,12 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   (`X-Maestro-CS-Origin: mcp` with `X-Maestro-CS-Origin-Detail`), which becomes the status event's source, "mcp" when the client
   gave none (docs/entities/application.md); `update_application(from_email=True)` sends `status_source: "mail"` for a change the
   mail-status automation read in the user's mail. `get_autofill_profile` returns `work_auth` resolved for the job's country (none
-  without one), every country's answers under `work_auth_by_country` (market keys, "UK") and `work_auth_market` naming whose set
-  `work_auth` is (§6 inv-work-permit-per-country). `store_extracted_jd` stores `work_mode` and `level` as keys (`on_site`, `senior`)
+  without one), every country's permits under `work_auth_by_country` (market keys, "UK") and `work_auth_market` naming whose set
+  `work_auth` is (§6 inv-work-permit-per-country); with an application its country's own answers are folded into the slots they
+  fill (`country_answered`), and without one every market's come under `answers_by_country`, through the consent gate (current pay
+  only under `consent_forms`); `personal.citizenships` reads as country names. Its `questions` is GET
+  `/api/settings/autofill/questions` made compact (`client._agent_questions`): `chosen`, and per apply-in market its permit keys with
+  their choices, its own answers in its words and `derived`; null when that read fails. `store_extracted_jd` stores `work_mode` and `level` as keys (`on_site`, `senior`)
   and reads a bare "$" as no currency, so the job's country's applies (`salary_currency_assumed`; docs/entities/job.md).
   `explore_trends(view)` reads each view from the REST route its old tool called (`client.EXPLORE_VIEWS`): `top_skills`, `heatmap`,
   `role_mix`, `fit_distribution`, `ats_over_time`, `tailoring_lift`. The job filters (`role_category`, `level`, `employment_type`) go
@@ -177,7 +181,8 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   `update_application(clear=[...])` empties `notes` or unlinks `referral_id` (an explicit null); a field given a value and cleared in one
   call is refused. `save_referral` (hunt, apply, track) POSTs a new referral (company and careers_url required) or PUTs only the
   fields given onto `referral_id`'s; it is `destructive=True`, since an edit keeps no earlier value.
-  **The brief** (`get_job_search_brief`) carries `profile.work_auth_by_country` (each apply-in market's yes/no answers, keyed by market),
+  **The brief** (`get_job_search_brief`) carries `profile.work_auth_by_country` (each apply-in market's yes/no answers, keyed by market,
+  read through `autofill_derive.answers_for` so a citizenship's settled answers count, with that country's `expected_pay` when given),
   the home set `profile.work_auth` named by `work_auth_market` for one release (SYSTEM.md §13 `brief-work-auth-home`), warnings each led
   by its country's name unless the user lives and applies in one country, `last_runs` (each automation's newest run that did not fail,
   by finish time, `agent_runs.last_finished`) and `roles` (the catalog as `{key, label}`). A role the catalog does not know
@@ -199,14 +204,17 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   written after the commit, a commit inside the block refused), so a save another writer made before the call (a Companion learn, a web
   edit) is kept and none lands between the read and the write (SYSTEM.md §6 inv-mcp-controls). The merge
   (`autofill_profile.patch_profile`, `job_preferences.patch_preferences`, `market_settings.patch_place`): answers key by key, a null
-  removing one; work permits per market, keyed from `markets.keys()`; education and languages replace the stored list whole; `custom`,
+  removing one; work permits and country answers (`answers_by_country`, its keys read from form_questions.yaml `answers`) per market,
+  keyed from `markets.keys()`, a status outside the market's list or an answer it does not ask refused with what it takes;
+  citizenships stored as ISO codes; education and languages replace the stored list whole; `custom`,
   the Companion's learn store, upserts by question (case and spacing ignored, same `only_for` and `only_for_kind`) and never removes a
   saved answer, which stays the user's, in Profile; each preference named replaces the stored one (`role_categories` follows
   `favored_roles`); `set_markets` writes the market and money's `home_currency` as one save, both validated before either lands.
   `set_persona` PUTs its text. The web's and the Companion's PUTs still replace the whole setting, and every agent route is a profile
   write, refused on the always-on copy. `set_autofill_profile` has no `eeo` field, the client and the server each refuse any other
   section, the stored `eeo` stays as it was and is never returned, and a call with nothing to save is refused (MCPServer drops undeclared
-  arguments). The writes return setup's form readiness. Human-only, with no tool: full automation and auto-apply (§6 inv-auto-consent-gated), EEO
+  arguments). The PATCH hands the saved profile back through `eeo_consent.withheld_for`, as a read would. The writes return setup's
+  form readiness (with `chosen`). Human-only, with no tool: full automation and auto-apply (§6 inv-auto-consent-gated), EEO
   consent and answers (inv-eeo-standing-consent), the job-site login (inv-job-site-password-local), the Screening answers dial, the
   hints switch, who writes, model keys, prompts and quick tailor (§6 inv-mcp-controls). After `create_base_resume_from_kb` the hint names
   `set_autofill_profile` while setup status reads the form answers as not done.

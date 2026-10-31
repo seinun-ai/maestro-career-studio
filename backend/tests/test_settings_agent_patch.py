@@ -565,3 +565,111 @@ def test_set_markets_with_a_bad_currency_moves_nothing(client, mcp_tools):
     assert _place(client) == before
     out = mcp_tools.set_markets()
     assert (out["home"], out["apply_in"], out["home_currency"]) == ("US", ["US", "CA"], "USD")
+
+
+# ---------- citizenships and each country's own answers, for agents (MCP, plan Task 3.9) ----------
+
+_COUNTRIES = {
+    "personal": {"first_name": "Ana", "citizenships": ["FR"]},
+    "preferences": {"desired_salary": "90000", "current_ctc": "1500000"},
+    "answers_by_country": {"IN": {"current_ctc": "1800000", "expected_pay": "2400000"},
+                           "NL": {"expected_pay": "4500"}},
+}
+
+
+def _apply_in(db_session, *markets_):
+    from app.schemas.market_settings import MarketSetting
+
+    market_settings.set_market(MarketSetting(home="IN", apply_in=list(markets_)), db_session)
+
+
+def _lets_the_companion_fill_agreements(db_session):
+    from app.schemas.eeo_consent import EeoConsent
+    from app.services import eeo_consent
+    from app.services.eeo_consent import CURRENT_POLICY_VERSION
+
+    eeo_consent.EEO_CONSENT.set(
+        EeoConsent(consent_forms=True, policy_version=CURRENT_POLICY_VERSION), db_session)
+
+
+def _dutch_application(db_session) -> str:
+    from app.models.application import Application
+    from tests.test_proposals_models import _mk_job
+
+    job = _mk_job(db_session, company="Acme", country_code="NL")
+    application = Application(job_id=job.id, base_resume="hybrid", customized_json={"contact": {"name": "Ana"}})
+    db_session.add(application)
+    db_session.commit()
+    return str(application.id)
+
+
+def test_without_a_job_an_agent_reads_every_countrys_answers_and_no_current_pay(client, mcp_tools, db_session):
+    """No job, no country to fold: the generic answers stay in their slots and every market's own answers
+    come under answers_by_country, through the same gate as the rest, so current pay (flat and India's) stays
+    behind the agreement permission. Citizenships read as country names."""
+    _apply_in(db_session, "IN", "NL")
+    client.put("/api/settings/autofill", json={"value": _COUNTRIES})
+
+    profile = mcp_tools.get_autofill_profile()["profile"]
+    assert profile["answers_by_country"] == {"IN": {"expected_pay": "2400000"}, "NL": {"expected_pay": "4500"}}
+    assert profile["preferences"] == {"desired_salary": "90000"}
+    assert profile["personal"]["citizenships"] == ["France"]
+    assert "1800000" not in json.dumps(profile) and "1500000" not in json.dumps(profile)
+
+    _lets_the_companion_fill_agreements(db_session)
+    profile = mcp_tools.get_autofill_profile()["profile"]
+    assert profile["answers_by_country"]["IN"] == {"current_ctc": "1800000", "expected_pay": "2400000"}
+    assert profile["preferences"]["current_ctc"] == "1500000"
+
+
+def test_with_a_job_an_agent_reads_that_countrys_view(client, mcp_tools, db_session):
+    """A Dutch job's view: the Dutch pay folded over the generic slot (country_answered names it), what the
+    French citizenship settles there, and no country's map of answers."""
+    _apply_in(db_session, "IN", "NL")
+    client.put("/api/settings/autofill", json={"value": _COUNTRIES})
+
+    out = mcp_tools.get_autofill_profile(application_id=_dutch_application(db_session))
+    profile = out["profile"]
+    assert profile["preferences"]["desired_salary"] == "4500"
+    assert profile["country_answered"] == ["preferences.desired_salary"]
+    assert profile["work_auth_market"] == "NL" and profile["work_auth"]["authorized_now"] is True
+    assert "answers_by_country" not in profile and "2400000" not in json.dumps(profile)
+    assert out["questions"]["chosen"] is True
+    assert out["questions"]["countries"]["NL"]["derived"]["authorized_now"] == {"value": True, "via": "FR"}
+
+
+def test_an_agent_saves_citizenships_and_country_answers(client, mcp_tools, db_session, settings_dir):
+    _apply_in(db_session, "IN", "AE")
+    mcp_tools.set_autofill_profile(
+        personal={"citizenships": ["in", "United Kingdom"]},
+        preferences={"notice_days": 60, "serving_notice": True, "last_working_day": "2026-12-31"},
+        eligibility={"experience_years": 7, "experience_months": 3},
+        answers_by_country={"AE": {"expected_pay": "25000", "in_country_now": False}},
+        languages=[{"language": "German", "cefr": "B1"}],
+    )
+    stored = _stored_profile(settings_dir)
+    assert stored["personal"]["citizenships"] == ["IN", "GB"]
+    assert stored["preferences"] == {"notice_days": 60, "serving_notice": True, "last_working_day": "2026-12-31"}
+    assert stored["eligibility"] == {"experience_years": 7, "experience_months": 3}
+    assert stored["answers_by_country"] == {"AE": {"expected_pay": "25000", "in_country_now": False}}
+    assert stored["languages"] == [{"language": "German", "cefr": "B1"}]
+
+
+def test_a_status_from_another_country_is_refused_naming_that_countrys(mcp_tools, settings_dir):
+    from mcp.server.mcpserver.exceptions import ToolError
+
+    with pytest.raises(ToolError, match="open_work_permit"):
+        mcp_tools.set_autofill_profile(work_auth_by_country={"CA": {"status": "h1b"}})
+    assert not (settings_dir / autofill_profile.AUTOFILL_FILE).exists()
+
+
+def test_a_saved_profile_comes_back_without_current_pay_unless_the_user_lets_it(client, db_session):
+    """Only agents save through the PATCH, so what it hands back goes through the consent gate as a read does."""
+    client.put("/api/settings/autofill", json={"value": _COUNTRIES})
+    echoed = _patch(client, "autofill", {"personal": {"city": "Pune"}}).json()["value"]
+    assert echoed["personal"]["city"] == "Pune"
+    assert "current_ctc" not in echoed["preferences"] and "current_ctc" not in echoed["answers_by_country"]["IN"]
+
+    _lets_the_companion_fill_agreements(db_session)
+    echoed = _patch(client, "autofill", {"personal": {"city": "Mumbai"}}).json()["value"]
+    assert echoed["answers_by_country"]["IN"]["current_ctc"] == "1800000"

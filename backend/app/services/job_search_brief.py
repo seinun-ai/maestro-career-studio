@@ -8,7 +8,8 @@ targets, and a 30-day capture ledger so the agent knows what is already
 well-covered. Playbook: docs/agentic-job-search.md.
 
 Work permits are per country (SYSTEM.md §6 inv-work-permit-per-country): the
-brief carries each apply-in market's answers (`work_auth_by_country`), and the
+brief carries each apply-in market's answers (`work_auth_by_country`, a
+citizenship's settled ones included, with that country's expected pay), and the
 one set from before (`work_auth`, the home market's, named by
 `work_auth_market` as the autofill profile names it) stays for one release.
 """
@@ -24,6 +25,7 @@ from app.schemas.autofill_profile import WorkAuth
 from app.services import (
     agent_runs,
     auto_apply_settings,
+    autofill_derive,
     autofill_profile,
     job_preferences,
     market_settings,
@@ -114,16 +116,29 @@ def _work_auth_warnings(work_auth: dict[str, Any], country: str | None = None) -
     return []
 
 
+def _market_work_auth(profile: dict[str, Any], market: str) -> dict[str, str | None]:
+    """One market's answers in the brief's yes/no keys, as readers see them: the stored ones over the
+    ones a citizenship settles there (`autofill_derive.answers_for`)."""
+    return _brief_work_auth(
+        autofill_profile.typed_work_auth(autofill_derive.answers_for(profile, market), market)
+    )
+
+
 def _work_permits(db: Session, profile: dict[str, Any]) -> dict[str, Any]:
     """The home market's answers (`work_auth`, kept for one release, named by `work_auth_market`),
-    each apply-in market's (`work_auth_by_country`, keyed by market: "UK", not "GB"), and the
-    warnings for the markets applied in. Living and applying in one country words them as before;
+    each apply-in market's (`work_auth_by_country`, keyed by market: "UK", not "GB") with its
+    expected pay when the user gave one (a country answer: pay in that country's own terms, never
+    current pay), and the warnings for the markets applied in. Every set reads a citizenship's
+    settled answers too. Living and applying in one country words the warnings as before;
     otherwise each warning names its country. The home is judged only when applied in. With no
     country chosen none is applied in (`MarketSetting.applied`): no country's answers, no warnings."""
     place = market_settings.peek_market(db)
-    stored = profile.get(autofill_profile.BY_COUNTRY) or {}
+    country_answers = autofill_profile.answers_entries(profile)
     by_country = {
-        market: _brief_work_auth(autofill_profile.typed_work_auth(stored.get(market), market))
+        market: {
+            **_market_work_auth(profile, market),
+            "expected_pay": _str_or_none(country_answers.get(market, {}).get("expected_pay")),
+        }
         for market in place.applied
     }
     one_country = place.applied == [place.home]
@@ -135,7 +150,7 @@ def _work_permits(db: Session, profile: dict[str, Any]) -> dict[str, Any]:
         )
     ]
     return {
-        "work_auth": _brief_work_auth(autofill_profile.work_auth_from_profile(profile)),
+        "work_auth": _market_work_auth(profile, place.home),
         "work_auth_market": place.home,
         "work_auth_by_country": by_country,
         "warnings": warnings,

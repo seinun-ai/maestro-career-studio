@@ -356,18 +356,19 @@
   name. **Readers.** Every fill reads one view, `autofill_country.for_market`: one market's answers, no per-country map,
   citizenships as country names and no notice that has ended; it carries `country_answered`, so a save of it is a 422
   (`autofill_profile.job_view_refusal`). `/context` through `profile_for_job` (the job's set; no job, no set), with
-  `work_auth_by_country` added back for agents; `/choose`, both engines (the fast model's prompt and Jev's slots), groups
+  `work_auth_by_country` added back for agents, and with no application and no question every market's `answers_by_country` too
+  (gated like the rest); `/choose`, both engines (the fast model's prompt and Jev's slots), groups
   its fields by the country each label names, else the job's, one view per group (`autofill_choose._by_country`); `/map` and `/pick`
   group their fields by the set each question gets and decide each group on its own catalog (a second model call only when a question
   names a country whose answers differ from the job's); `/step` takes its question's set; `/sections` and `/reason` the job's; run-trace
   redaction every country's; the answer flags (`filled_answers.flag_context`) the job's. The knock-out scan screens with the job's
   country's set, and a job with no country with the home set (an advisory check, not an answer given); its pay check reads the generic
   desired salary, a yearly figure, never a country's own. `get_job_search_brief` serves each
-  apply-in market's set in the brief's yes/no keys, its warnings led by the country's name unless the user lives and applies in one
+  apply-in market's set as readers see it in the brief's yes/no keys, with its `expected_pay` when given, its warnings led by the country's name unless the user lives and applies in one
   country, and the home set for one release (`job_search_brief._work_permits`; SYSTEM.md §13 `brief-work-auth-home`); the job-hunt and
   referral-pages prompts judge a posting by its own country's set and leave one from an unknown or not-applied-in country unfiltered on
   permits, saying so in its proposal. Setup status counts each apply-in
-  country (`work_auth_by_country` on the autofill step), the US visa status only where `work_auth_vocab` is `us_visa`. **Known limits.**
+  country (`work_auth_by_country` on the autofill step, beside `chosen`), the US visa status only where `work_auth_vocab` is `us_visa`. **Known limits.**
   The Companion's deterministic rule pass reads the resolved `work_auth` and cannot see which country a label names, so on a German job a
   question about the UK gets the German set there (`docs/deferred.md` item 52); the answer flags compare with the job's set whatever
   the question names. **The pause row learns per country.** A work-permit or country answer typed in the Companion (a pause row,
@@ -1457,8 +1458,8 @@
     `consent_forms` lifts label refusals for are the fill loop, a model included, never the old collector/pause rows; `derived.agrees_to_terms`
     is added only as served (lapsed or unreadable: absent). The same gate (`withhold_unconsented`) withholds the agreement slots
     (`AGREEMENT_SLOTS`, current pay; the fill loop's `AGREEMENT_SLOTS` is the same list, pinned by `test_autofill_fill_router.py`) from
-    /context, /choose (both engines) and the fill loop's catalog unless `consent_forms` is on as served: the flat slot and every country's
-    answer that fills it. Trace redaction alone reads them anyway (`outward=False`): a trace never leaves the machine.
+    /context, the agent PATCH's echo (`withheld_for`), /choose (both engines) and the fill loop's catalog unless `consent_forms` is on as
+    served: the flat slot and every country's answer that fills it. Trace redaction alone reads them anyway (`outward=False`): a trace never leaves the machine.
   - **PDF word-spacing details** (inv-pdf-word-spacing): pdfTeX 1.40.27 misplaces the inter-word space for many Type 1 fonts (e.g. Helvetica,
     Charter, Garamond, Fira); `engines` warns on that build, where boot re-validates ready LaTeX templates once
     (`template_registry.recheck_ready_latex_for_engine_warning`). A uv install uses the HOST's TeX, not Docker's TL 2026 — a PDF's

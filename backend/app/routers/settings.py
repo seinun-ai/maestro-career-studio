@@ -357,11 +357,11 @@ def _agent_save(save, changes: dict[str, Any], db: Session):
 @router.patch("/autofill", response_model=SettingEnvelope[dict[str, Any]])
 def patch_autofill(payload: SettingValueIn[dict[str, Any]], db: Annotated[Session, Depends(get_db)]):
     """Merge sections into the form answers (`autofill_profile.patch_profile`): answers key by key, a
-    null removing one; work permits per market; education, languages and custom whole. No `eeo`."""
-    return {
-        "key": "autofill_profile",
-        "value": _agent_save(autofill_profile.patch_profile, payload.value, db),
-    }
+    null removing one; work permits and country answers per market; education, languages and custom
+    whole. No `eeo`. Only agents save here, so the saved profile comes back through the consent gate
+    (`eeo_consent.withheld_for`): no EEO answer or current pay the user has not let out."""
+    saved = _agent_save(autofill_profile.patch_profile, payload.value, db)
+    return {"key": "autofill_profile", "value": eeo_consent.withheld_for(db, saved)}
 
 
 @router.get(

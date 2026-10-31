@@ -35,6 +35,13 @@ def test_fresh_install_every_step_pending(client):
     # citizenship, which counts beside them, is asked. Only a knockout answer blocks, so nothing does.
     assert body["autofill"]["groups"]["work_auth"] == {"answered": 0, "answerable": 1}
     assert body["autofill"]["blocking"] == []
+    # Says so, since readiness alone would read complete once the rest is answered.
+    assert body["autofill"]["chosen"] is False
+
+
+def test_choosing_where_you_apply_shows_on_the_autofill_step(client, db_session, tmp_path, monkeypatch):
+    _chose_us(db_session, tmp_path, monkeypatch)
+    assert _status(client)["autofill"]["chosen"] is True
 
 
 def test_status_read_does_not_seed_settings_or_mirrors(client, db_session, tmp_path, monkeypatch):

@@ -70,6 +70,44 @@ def _without_eeo_values(review: Any) -> Any:
     return review
 
 
+def _answer_choices(field: dict[str, Any]) -> Any:
+    """How a served question is answered in a write: a Yes/No as [true, false], a pick as its
+    option values, anything else as its kind ("date", "number", "text")."""
+    if field.get("boolean"):
+        return [True, False]
+    options = field.get("options")
+    if isinstance(options, list) and options:
+        return [o.get("value") for o in options if isinstance(o, dict)]
+    return field.get("type") or "text"
+
+
+def _by_key(fields: Any, value: Callable[[dict[str, Any]], Any]) -> dict[str, Any]:
+    """Served fields as {key: value(field)}; anything that is not a keyed field is left out."""
+    listed = fields if isinstance(fields, list) else []
+    return {f["key"]: value(f) for f in listed if isinstance(f, dict) and f.get("key")}
+
+
+def _agent_questions(served: Any) -> dict[str, Any] | None:
+    """GET /api/settings/autofill/questions, compact for an agent: `chosen` (whether the user chose
+    where they apply), and per apply-in market its permit keys with their choices, its own answers
+    in its words (the pay answer names its terms: monthly, CTC) and what a citizenship settles there
+    (`derived`, {key: {value, via}})."""
+    if not isinstance(served, dict):
+        return None
+    countries = [c for c in served.get("countries") or [] if isinstance(c, dict) and c.get("market")]
+    return {
+        "chosen": bool(served.get("chosen")),
+        "countries": {
+            c["market"]: {
+                "permits": _by_key(c.get("permits"), _answer_choices),
+                "answers": _by_key(c.get("answers"), lambda f: f.get("label")),
+                "derived": c.get("derived") or {},
+            }
+            for c in countries
+        },
+    }
+
+
 class ExploreView(NamedTuple):
     """One explore_trends view: the REST route its old tool read and what that route takes."""
 
@@ -740,11 +778,18 @@ class BackendClient:
         # consent is enabled (Playwright agents fill exact stored answers);
         # stripped when consent is off or missing. Consent metadata is always
         # normalized to the standing-consent shape. source + canonical_identity
-        # label the stored profile as identity source of truth.
+        # label the stored profile as identity source of truth. `questions` says
+        # what each apply-in country asks (`_agent_questions`); null when that
+        # read fails, so the profile still arrives.
         params = _drop_none(application_id=application_id, base=base)
         ctx = self._request("GET", "/api/autofill/context", params=params)
         if not isinstance(ctx, dict):
             return ctx
+        try:
+            ctx["questions"] = _agent_questions(self._request("GET", "/api/settings/autofill/questions"))
+        except BackendError as exc:
+            logger.warning("autofill questions unread: %s", exc)
+            ctx["questions"] = None
         consent = ctx.get("eeo_consent")
         consent_enabled = False
         if isinstance(consent, dict):

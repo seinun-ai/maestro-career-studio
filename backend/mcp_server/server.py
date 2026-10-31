@@ -18,7 +18,7 @@ from pydantic import BeforeValidator, ConfigDict, Field, with_config
 
 from app.schemas.quick_tailor import QuickTailorProfile
 from app.schemas.resume_edit import op_kinds_ordered, render_ops_shapes
-from app.services import http_client, markets
+from app.services import form_questions, http_client, markets
 from mcp_server import orientation, replaced, workflow
 from mcp_server.client import CLEAR_TAKES_A_LIST, EXPLORE_VIEWS, BackendClient, BackendError
 from mcp_server.profiles import allowed_tools, get_profile
@@ -331,7 +331,9 @@ MarketKey = Literal[tuple(markets.keys())]
 
 @with_config(ConfigDict(extra="forbid"))
 class PersonalAnswers(TypedDict, total=False):
-    """Contact and address answers; a null removes one."""
+    """Contact and address answers, and citizenships: the countries the user is a citizen of, as
+    ISO codes ("IN") or English names, stored as codes (get_autofill_profile shows names); a null
+    removes one."""
 
     first_name: str | None
     last_name: str | None
@@ -347,33 +349,44 @@ class PersonalAnswers(TypedDict, total=False):
     linkedin: str | None
     github: str | None
     website: str | None
+    citizenships: list[str] | None
 
 
 @with_config(ConfigDict(extra="forbid"))
 class EligibilityAnswers(TypedDict, total=False):
-    """Yes/No eligibility answers (true is Yes); a null removes one."""
+    """Yes/No eligibility answers (true is Yes), and total work experience as whole years plus
+    the months beyond them (0 to 11); a null removes one."""
 
     over_18: bool | None
     previously_employed_here: bool | None
     non_compete: bool | None
+    experience_years: Annotated[int, Field(ge=0, le=60)] | None
+    experience_months: Annotated[int, Field(ge=0, le=11)] | None
 
 
 @with_config(ConfigDict(extra="forbid"))
 class PreferenceAnswers(TypedDict, total=False):
-    """Start and pay answers, in the words a form gets; a null removes one."""
+    """Start and pay answers, in the words a form gets; a null removes one. notice_days is the
+    notice period in whole days; last_working_day is YYYY-MM-DD, filled while serving_notice is
+    true and the day has not passed; preferred_locations is cities separated by commas."""
 
     desired_salary: str | None
     notice_period: str | None
+    notice_days: Annotated[int, Field(ge=0)] | None
+    serving_notice: bool | None
+    last_working_day: str | None
     earliest_start_date: str | None
     willing_to_relocate: bool | None
+    preferred_locations: str | None
     how_heard: str | None
 
 
 @with_config(ConfigDict(extra="forbid"))
 class WorkPermitAnswers(TypedDict, total=False):
     """One country's work-permit answers (true is Yes); a null removes one. status is one of that
-    market's own statuses (a refused save names them; a market with no list takes none);
-    authorization_expires_on is YYYY-MM-DD, absent when the right to work there does not run out."""
+    market's own statuses (get_autofill_profile's questions list each market's, and a refused
+    save names them; a market with no list takes none); authorization_expires_on is YYYY-MM-DD,
+    absent when the right to work there does not run out."""
 
     status: str | None
     authorized_now: bool | None
@@ -395,11 +408,18 @@ class EducationEntry(TypedDict, total=False):
 
 
 LanguageLevel = Literal["Basic", "Intermediate", "Fluent"]
+# The CEFR levels, as the catalog's language field offers them (A1 to C2).
+CefrLevel = Literal[tuple(
+    option.value
+    for field in form_questions.catalog().language_fields if field.key == "cefr"
+    for option in field.options or ()
+)]
 
 
 @with_config(ConfigDict(extra="forbid"))
 class LanguageEntry(TypedDict, total=False):
-    """One language; native and fluent are separate answers, as forms ask them."""
+    """One language; native and fluent are separate answers, as forms ask them, and cefr is its
+    CEFR level."""
 
     language: str
     read: LanguageLevel
@@ -407,6 +427,29 @@ class LanguageEntry(TypedDict, total=False):
     write: LanguageLevel
     native: bool
     fluent: bool
+    cefr: CefrLevel
+
+
+def _country_answer_type(field: Any) -> Any:
+    """A country answer's value as the catalog asks it: a Yes/No as true or false, a number as a
+    whole number, else text."""
+    if field.boolean:
+        return bool | None
+    return int | None if field.type == "number" else str | None
+
+
+# One country's own answers (form_questions.yaml `answers`), keyed from the catalog, so a country
+# answer added there is writable here; each market takes only its own (the backend refuses the rest).
+CountryAnswers = with_config(ConfigDict(extra="forbid"))(TypedDict(
+    "CountryAnswers",
+    {field.key: _country_answer_type(field) for field in form_questions.catalog().answers},
+    total=False,
+))
+CountryAnswers.__doc__ = (
+    "One country's own answers (true is Yes); a null removes one. A market takes only the ones it "
+    "asks: get_autofill_profile's questions list each market's in its words, and a refused save "
+    "names them."
+)
 
 
 @with_config(ConfigDict(extra="forbid"))
@@ -443,6 +486,14 @@ WorkPermitsArg = Annotated[
     Field(description=(
         "Work-permit answers by market key. Each country's answers merge key by key; a "
         "country set to null loses its answers; a country left out keeps them."
+    )),
+]
+CountryAnswersArg = Annotated[
+    dict[MarketKey, CountryAnswers | None] | None,
+    Field(description=(
+        "Each country's own answers by market key, merged like the work permits. On that "
+        "country's jobs each fills its form slot (expected_pay over preferences.desired_salary), "
+        "so pay in a country's own terms (monthly, CTC) belongs here, not in preferences."
     )),
 ]
 
@@ -829,9 +880,10 @@ def get_setup_status() -> Any:
     user's own), next_step (the first setup step an agent can do that is not done,
     {step, tool_set, says}; null when none is left), tool_sets (each set's name,
     use_when and holds, in journey order) and steps (the full setup status: each step's
-    done and detail, form-answer readiness, suggested bases, PDF engines). The AI key,
-    the writer and the default resume design are set by the user in the app and are
-    never a next step."""
+    done and detail, form-answer readiness with autofill.chosen, false while the user has
+    not chosen where they apply, so no country's questions count; suggested bases, PDF
+    engines). The AI key, the writer and the default resume design are set by the user
+    in the app and are never a next step."""
     status = _client.get_setup_status()
     return {
         "ai_key": bool((status.get("model_key") or {}).get("done")),
@@ -884,8 +936,11 @@ def get_job_search_brief() -> Any:
     careers pages (company + careers_url + has_contact), and counts of jobs
     captured in the last 30 days by role category. profile.work_auth_by_country
     holds those yes/no answers for each market the user applies in, keyed by
-    market ("UK", not "GB"); profile.work_auth is the home market's set, named by
-    work_auth_market and kept for one release; unless the user lives and applies
+    market ("UK", not "GB"), a citizenship's settled answers included, with
+    expected_pay when the user gave that country one (as given, in that country's
+    own pay terms, which are monthly in some); profile.work_auth is the home
+    market's set, named by work_auth_market and kept for one release
+    (read the same way); unless the user lives and applies
     in one country, each warning names its country. last_runs maps each automation to
     when its newest run that did not fail finished (UTC ISO; a failed run does not
     count; absent when none has).
@@ -1395,35 +1450,46 @@ def create_base_resume_from_kb(
     return {"base": base, "next": _best_effort_hint(compose)}
 
 
+_CONTEXT_APPLICATION_FIELD = Field(description=(
+    "An application id: the profile is then that job's view, its country's work permits as "
+    "work_auth (work_auth_market names the market) and its own answers folded into the slots "
+    "they fill (country_answered lists them; pay there is in that country's terms, saved under "
+    "answers_by_country, not preferences). Without one nothing is folded, and "
+    "answers_by_country holds each market's own answers."
+))
+
+
 @mcp.tool(**_read("Get Autofill Profile"))
 @_guard
-def get_autofill_profile(application_id: str | None = None, base: str | None = None) -> Any:
-    """Read the user's application-form autofill data: `profile` (personal
-    contact + address, work-authorization answers (`work_auth`: the job's
-    country's, none without one; `work_auth_by_country`: per market key, e.g.
-    UK; a question naming a country takes its), preferences like
-    salary/notice/relocation, education, `languages` — each a language with
-    read/speak/write level Basic/Intermediate/Fluent and separate `native`
-    and `fluent` booleans — custom Q&A presets), plus `employment`
-    blocks and `skills` from the selected resume when application_id or base is
-    given. Response is labeled `source: "profile"` and includes
-    `canonical_identity` (`legal_first`, `legal_last`, `preferred`) mapped only
-    from stored autofill personal fields; it is the source of truth for form
-    identity fields and takes precedence over ATS-parsed values. It is the
-    feed the Chrome extension's deterministic fill uses. EEO/demographic answer values
-    (`profile.eeo`) are returned ONLY when Profile standing consent is active
-    (`eeo_consent.enabled`) and are stripped otherwise; when returned they are
-    the user's stored answers, intended for Playwright/agent fill verbatim with
-    no inference or model-authored values. `eeo.veteran_status` is no, yes
-    or decline: one question, "Are you a veteran?" (a no also answers "not a
-    protected veteran"; a yes alone never says which protected class applies,
-    so leave a protected-class list to the user). `eeo.gender` is male, female,
-    non_binary, self_describe or decline; with self_describe,
-    `eeo.gender_self_describe` is the user's own words for a form's
-    self-describe box. A form lacking a matching option is left to the user.
-    Missing EEO values are completed by the user in Profile or in the browser;
-    consented answers are not pasted or re-dictated through chat. A value absent
-    here (a county) is not in the profile and is not guessable.
+def get_autofill_profile(
+    application_id: Annotated[str | None, _CONTEXT_APPLICATION_FIELD] = None,
+    base: str | None = None,
+) -> Any:
+    """Read the user's application-form answers: `profile` (contact, address,
+    `personal.citizenships` as country names; work permits per market key, e.g.
+    UK, in `work_auth_by_country`, and `work_auth`, the job's country's, none
+    without one (a question naming a country takes its); preferences;
+    education; `languages`; custom Q&A presets, all as set_autofill_profile takes
+    them), `questions` (`chosen`: whether the user chose where they apply; per
+    apply-in market its permit keys with their choices, its own answers in its
+    words and what a citizenship settles there; null when that read fails), and
+    `employment` and `skills` from the resume application_id or base selects.
+    Labeled `source: "profile"`; `canonical_identity` (`legal_first`,
+    `legal_last`, `preferred`, from stored personal fields only) for form identity
+    fields takes precedence over ATS-parsed values. The Companion fills from this
+    feed. EEO answer values (`profile.eeo`) are returned ONLY under Profile
+    standing consent (`eeo_consent.enabled`), and current pay only
+    while the user lets the Companion fill agreements; returned, they are the
+    user's stored answers, for Playwright/agent fill verbatim with no inference
+    or model-authored values. `eeo.veteran_status` is no, yes or decline: one
+    question, "Are you a veteran?" (a no also answers "not a protected veteran";
+    a yes alone never says which protected class applies, so a protected-class
+    list is the user's). `eeo.gender` is male, female, non_binary, self_describe
+    or decline; with self_describe, `eeo.gender_self_describe` is the user's own
+    words for a self-describe box. A form lacking a matching option is left to
+    the user. Missing EEO values are completed by the user in Profile or in the
+    browser; consented answers are not pasted or re-dictated through chat. A
+    value absent here (a county) is not in the profile and is not guessable.
     WOTC, signatures and terms are human-only."""
     return _client.get_autofill_context(application_id=application_id, base=base)
 
@@ -1456,14 +1522,15 @@ def set_autofill_profile(
     eligibility: EligibilityAnswers | None = None,
     preferences: PreferenceAnswers | None = None,
     work_auth_by_country: WorkPermitsArg = None,
+    answers_by_country: CountryAnswersArg = None,
     education: list[EducationEntry] | None = None,
     languages: list[LanguageEntry] | None = None,
     custom: list[SavedAnswer] | None = None,
 ) -> Any:
     """Save the user's application-form answers: the profile get_autofill_profile reads and
     the Companion fills forms from. Only the sections passed change. Inside personal,
-    eligibility, preferences and each country's work-permit answers only the keys passed
-    change, and a null removes one; education and languages replace the stored list whole
+    eligibility, preferences and each country's work-permit and own answers only the keys
+    passed change, and a null removes one; education and languages replace the stored list whole
     (get_autofill_profile returns them). Each custom answer replaces the saved one with the
     same question (case and spacing ignored) and the same only_for and only_for_kind, or is
     added: for an answer held for one company or city, send its only_for and only_for_kind
@@ -1473,17 +1540,20 @@ def set_autofill_profile(
     country and a form question without one is asked on that form, never defaulted; setup
     counts the answers of each country in apply_in (set_markets). Diversity (EEO) answers
     have no field here: they and their consent are the user's, in Profile. An unknown
-    section, key or market key writes nothing. Returns {profile, setup}: the saved profile
-    without eeo, and setup status's form-answer readiness (readiness 0 to 1, groups,
-    blocking, work_auth_by_country counts), null when that read fails."""
+    section, key or market key writes nothing, nor does a status outside its market's list,
+    a country answer that market does not ask or a citizenship that names no country (the
+    refusal names what is allowed). Returns {profile, setup}: the saved profile without eeo
+    (current pay only while the user lets the Companion fill agreements), and setup status's
+    form-answer readiness (readiness 0 to 1, groups, blocking, work_auth_by_country counts,
+    chosen), null when that read fails."""
     changes = _given(
         refusal=(
             "Nothing to save: no section was passed. Diversity (eeo) answers have no field "
             "here; they are the user's, in Profile."
         ),
         personal=personal, eligibility=eligibility, preferences=preferences,
-        work_auth_by_country=work_auth_by_country, education=education,
-        languages=languages, custom=custom,
+        work_auth_by_country=work_auth_by_country, answers_by_country=answers_by_country,
+        education=education, languages=languages, custom=custom,
     )
     return {"profile": _client.set_autofill_profile(changes), "setup": _setup_autofill()}
 

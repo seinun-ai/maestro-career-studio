@@ -36,11 +36,93 @@ async def test_the_autofill_write_has_no_eeo_field_and_refuses_unknown_keys():
     schema = (await _tool("set_autofill_profile")).input_schema
     assert "eeo" not in schema["properties"]
     assert set(schema["properties"]) == {
-        "personal", "eligibility", "preferences", "work_auth_by_country",
+        "personal", "eligibility", "preferences", "work_auth_by_country", "answers_by_country",
         "education", "languages", "custom",
     }
-    for shape in ("PersonalAnswers", "WorkPermitAnswers", "SavedAnswer"):
+    for shape in ("PersonalAnswers", "EligibilityAnswers", "PreferenceAnswers", "WorkPermitAnswers",
+                  "CountryAnswers", "LanguageEntry", "SavedAnswer"):
         assert schema["$defs"][shape]["additionalProperties"] is False, shape
+
+
+async def test_country_answers_are_the_catalogs_and_each_market_is_a_market_key():
+    """A country answer added to form_questions.yaml is writable with no code change, typed as asked."""
+    from app.services import form_questions
+
+    schema = (await _tool("set_autofill_profile")).input_schema
+    answers = schema["$defs"]["CountryAnswers"]["properties"]
+    assert list(answers) == [f.key for f in form_questions.catalog().answers]
+    assert answers["in_country_now"]["anyOf"][0] == {"type": "boolean"}
+    assert answers["expected_pay"]["anyOf"][0] == {"type": "string"}
+    by_market = schema["properties"]["answers_by_country"]["anyOf"][0]
+    assert by_market["propertyNames"]["enum"] == markets.keys()
+    assert "preferences" in schema["properties"]["answers_by_country"]["description"]
+
+
+async def test_a_status_is_any_text_and_says_where_each_markets_list_is():
+    """Each market has its own statuses, so the schema takes a string and names where they are listed;
+    the backend refuses one outside the market's list."""
+    work_permit = (await _tool("set_autofill_profile")).input_schema["$defs"]["WorkPermitAnswers"]
+    assert work_permit["properties"]["status"]["anyOf"][0] == {"type": "string"}
+    assert "get_autofill_profile's questions" in work_permit["description"]
+
+
+@pytest.mark.parametrize("args", [
+    {"personal": {"citizenships": ["IN", "United Kingdom"]}},
+    {"eligibility": {"experience_years": 6}},
+    {"eligibility": {"experience_months": 11}},
+    {"preferences": {"notice_days": 45}},
+    {"preferences": {"serving_notice": True}},
+    {"preferences": {"last_working_day": "2026-12-01"}},
+    {"preferences": {"preferred_locations": "Bengaluru, Pune"}},
+    {"languages": [{"language": "German", "cefr": "B2"}]},
+    {"answers_by_country": {"IN": {"expected_pay": "2400000", "current_ctc": "1800000"}}},
+    {"answers_by_country": {"AE": {"in_country_now": True, "uae_driving_licence": False}, "DE": None}},
+], ids=["citizenships", "experience_years", "experience_months", "notice_days", "serving_notice",
+        "last_working_day", "preferred_locations", "cefr", "country_answers", "country_yes_no"])
+async def test_each_new_answer_is_written_as_given(monkeypatch, args):
+    monkeypatch.setattr(srv, "_client", BackendClient(BASE))
+    with respx.mock:
+        patch = respx.patch(f"{BASE}/api/settings/autofill").mock(
+            return_value=httpx.Response(200, json={"key": "autofill_profile", "value": {}}))
+        respx.get(f"{BASE}/api/setup/status").mock(return_value=httpx.Response(200, json={}))
+        await srv.mcp.call_tool("set_autofill_profile", args)
+    assert json.loads(patch.calls.last.request.read())["value"] == args
+
+
+@pytest.mark.parametrize("args", [
+    {"languages": [{"language": "German", "cefr": "B3"}]},
+    {"eligibility": {"experience_months": 12}},
+    {"preferences": {"notice_days": -1}},
+    {"personal": {"citizenships": "IN"}},
+    {"answers_by_country": {"AE": {"favourite_emirate": "Dubai"}}},
+    {"answers_by_country": {"FR": {"expected_pay": "1"}}},
+    {"answers_by_country": {"AE": {"in_country_now": "maybe"}}},
+])
+async def test_a_bad_new_answer_writes_nothing(monkeypatch, args):
+    monkeypatch.setattr(srv, "_client", BackendClient(BASE))
+    with respx.mock:
+        patch = respx.patch(f"{BASE}/api/settings/autofill").mock(
+            return_value=httpx.Response(200, json={"key": "autofill_profile", "value": {}}))
+        with pytest.raises(ToolError, match="validation error"):
+            await srv.mcp.call_tool("set_autofill_profile", args)
+    assert not patch.called
+
+
+async def test_a_status_from_another_country_comes_back_as_the_backends_refusal(monkeypatch):
+    """The schema cannot know Canada's list from the US one; the backend's 422 names Canada's statuses,
+    and that sentence is what the agent reads."""
+    from app.services import autofill_profile
+
+    args = {"work_auth_by_country": {"CA": {"status": "h1b"}}}
+    refusal = autofill_profile._refusal(args)
+    assert refusal and "open_work_permit" in refusal
+    monkeypatch.setattr(srv, "_client", BackendClient(BASE))
+    with respx.mock:
+        respx.patch(f"{BASE}/api/settings/autofill").mock(
+            return_value=httpx.Response(422, json={"detail": refusal}))
+        with pytest.raises(ToolError) as caught:
+            await srv.mcp.call_tool("set_autofill_profile", args)
+    assert refusal in str(caught.value)
 
 
 async def test_the_autofill_write_says_saved_answers_are_added_or_replaced_never_removed():
