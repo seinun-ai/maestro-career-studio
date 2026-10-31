@@ -97,6 +97,13 @@ def _work_permits(profile: dict, questions: QuestionSet) -> dict[str, GroupCompl
     return out
 
 
+def _total(groups: list[GroupCompleteness]) -> GroupCompleteness:
+    """The groups counted as one."""
+    return GroupCompleteness(
+        answered=sum(g.answered for g in groups), answerable=sum(g.answerable for g in groups)
+    )
+
+
 def _autofill_step(db: Session) -> AutofillStep:
     profile = autofill_profile.peek_profile(db)
     market = market_settings.peek_market(db)
@@ -108,13 +115,9 @@ def _autofill_step(db: Session) -> AutofillStep:
     contact = [f for f in fields["personal"] if f.type != "countries"]
     citizenship = _group(profile, "personal", [f for f in fields["personal"] if f.type == "countries"])
     by_country = _work_permits(profile, questions)
-    permits = [citizenship, *by_country.values()]
     groups = {
         "personal": _group(profile, "personal", contact),
-        "work_auth": GroupCompleteness(
-            answered=sum(g.answered for g in permits),
-            answerable=sum(g.answerable for g in permits),
-        ),
+        "work_auth": _total([citizenship, *by_country.values()]),
         "preferences": _group(profile, "preferences", fields["preferences"]),
     }
     # The diversity group is the US question set — veteran status, CC-305
@@ -127,12 +130,11 @@ def _autofill_step(db: Session) -> AutofillStep:
     # unanswered.
     if questions.offers_eeo:
         groups["eeo"] = _group(profile, "eeo", fields["eeo"])
-    answered = sum(g.answered for g in groups.values())
-    answerable = sum(g.answerable for g in groups.values())
+    total = _total(list(groups.values()))
     # Only the knockout answers block (setup-steps.ts `autofillTarget`): a country's permit answers,
     # never the citizenship counted beside them.
     blocking = ["work_auth"] if any(g.answered < g.answerable for g in by_country.values()) else []
-    readiness = round(answered / answerable, 3) if answerable else 1.0
+    readiness = round(total.answered / total.answerable, 3) if total.answerable else 1.0
     return AutofillStep(
         done=readiness >= 1.0, readiness=readiness, groups=groups, blocking=blocking,
         work_auth_by_country=by_country, chosen=market.chosen,

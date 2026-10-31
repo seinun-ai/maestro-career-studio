@@ -220,22 +220,25 @@ def resolve(*, home: str, apply_in: list[str], chosen: bool, profile: Any) -> Qu
     Unchosen (`MarketSetting.chosen` false) is the generic set: no country is applied in, so no
     pack, no country questions (a permit answer belongs to a country), no diversity set, and the
     state line is optional."""
-    cat = catalog()
     apply_in = (apply_in or [home]) if chosen else []
     packs = {p for m in apply_in for p in markets.get(m)["packs"]}
-    groups = [
+    return QuestionSet(
+        groups=_groups(home, chosen, packs),
+        countries=[_country(m, profile) for m in apply_in],
+        language_fields=[f for f in catalog().language_fields if _shown(f, packs)],
+        offers_eeo=any(markets.offers_eeo(m) for m in apply_in),
+        chosen=chosen,
+    )
+
+
+def _groups(home: str, chosen: bool, packs: set[str]) -> list[Group]:
+    """The facts about you, each asked once: a pack's field while `packs` names it, the address
+    lines resolved for `home` (`_for_home`)."""
+    return [
         Group(
             key=g.key,
             title=g.title,
             fields=[_for_home(f, home, chosen) for f in g.fields if _shown(f, packs)],
         )
-        for g in cat.groups
+        for g in catalog().groups
     ]
-    countries = [_country(m, profile) for m in apply_in]
-    return QuestionSet(
-        groups=groups,
-        countries=countries,
-        language_fields=[f for f in cat.language_fields if _shown(f, packs)],
-        offers_eeo=any(markets.offers_eeo(m) for m in apply_in),
-        chosen=chosen,
-    )

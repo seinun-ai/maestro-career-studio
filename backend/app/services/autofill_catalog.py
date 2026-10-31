@@ -385,6 +385,18 @@ def with_fill_rules(profile: dict[str, Any], today: date) -> dict[str, Any]:
     return out
 
 
+def _slot_value(slot: str, value: Any, values: dict[str, Any], status_words: dict[str, str]) -> Any:
+    """A stored answer as its fact takes it: a self-described gender in its own words (from its
+    section's `values`), a work-permit status in its market's words, a list as its non-blank items."""
+    if slot == "eeo.gender" and value == "self_describe":
+        value = values.get("gender_self_describe")
+    if slot == "work_auth.status" and isinstance(value, str):
+        value = status_words.get(value, value)
+    if isinstance(value, list):
+        value = tuple(str(v).strip() for v in value if str(v).strip())
+    return value
+
+
 def _profile_sections(out: dict[str, Fact], profile: dict[str, Any]) -> None:
     market = profile.get(WORK_AUTH_MARKET)
     status_words = (
@@ -395,14 +407,9 @@ def _profile_sections(out: dict[str, Fact], profile: dict[str, Any]) -> None:
         if not isinstance(values, dict):
             continue
         for key, value in values.items():
-            if section == "eeo" and key == "gender" and value == "self_describe":
-                value = values.get("gender_self_describe")
-            if section == "work_auth" and key == "status" and isinstance(value, str):
-                value = status_words.get(value, value)
-            if isinstance(value, list):
-                value = tuple(str(v).strip() for v in value if str(v).strip())
             slot = f"{section}.{key}"
-            _add(out, slot, value, _pay_describe(profile) if slot == _PAY else None)
+            _add(out, slot, _slot_value(slot, value, values, status_words),
+                 _pay_describe(profile) if slot == _PAY else None)
 
 
 def _education(out: dict[str, Fact], education: Any) -> None:
@@ -447,12 +454,15 @@ def _language_answer(key: str, value: Any) -> str | None:
         return (value.strip() or None) if isinstance(value, str) else None
     if key in ("native", "fluent"):
         return _YES_NO.get(word) if isinstance(word, (str, bool)) else None
-    if key in _LANGUAGE_FACTS:
-        return _LEVELS.get(word) if isinstance(word, str) else None
-    # A catalog field (the CEFR level): one of its options' values, passed through as its code ("B2").
+    levels = _LEVELS if key in _LANGUAGE_FACTS else _catalog_levels(key)
+    return levels.get(word) if isinstance(word, str) else None
+
+
+def _catalog_levels(key: str) -> dict[str, str]:
+    """A catalog field's levels on a language (the CEFR level), by their code in any case: one of its
+    options' values, passed through as its code ("B2"). Empty for a key the catalog does not ask."""
     field = next((f for f in form_questions.catalog().language_fields if f.key == key), None)
-    codes = {o.value.casefold(): o.value for o in (field.options or [])} if field else {}
-    return codes.get(word) if isinstance(word, str) else None
+    return {o.value.casefold(): o.value for o in (field.options or [])} if field else {}
 
 
 def _languages(out: dict[str, Fact], languages: Any) -> None:

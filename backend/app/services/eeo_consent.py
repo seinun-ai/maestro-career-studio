@@ -113,6 +113,11 @@ def _given(consent: Any, permission: str) -> bool:
     return isinstance(consent, dict) and bool(consent.get(permission))
 
 
+def _without(values: Any, keys: set[str]) -> Any:
+    """A copy of the dict `values` without `keys`; anything else as it is."""
+    return {k: v for k, v in values.items() if k not in keys} if isinstance(values, dict) else values
+
+
 def _without_agreement_slots(profile: dict[str, Any]) -> dict[str, Any]:
     """`profile` without the agreement slots: each flat slot, and every country's answer that fills one
     (`answers_by_country[market][key]`, form_questions.yaml `fills`), so no country's fold puts it back."""
@@ -122,14 +127,11 @@ def _without_agreement_slots(profile: dict[str, Any]) -> dict[str, Any]:
     for slot in AGREEMENT_SLOTS:
         section, key = slot.split(".", 1)
         if isinstance(out.get(section), dict) and key in out[section]:
-            out[section] = {k: v for k, v in out[section].items() if k != key}
+            out[section] = _without(out[section], {key})
     keys = {f.key for f in form_questions.catalog().answers if f.fills in AGREEMENT_SLOTS}
     by_market = out.get("answers_by_country")
     if isinstance(by_market, dict):
-        out["answers_by_country"] = {
-            market: {k: v for k, v in answers.items() if k not in keys} if isinstance(answers, dict) else answers
-            for market, answers in by_market.items()
-        }
+        out["answers_by_country"] = {market: _without(answers, keys) for market, answers in by_market.items()}
     return out
 
 
@@ -149,7 +151,7 @@ def withhold_unconsented(profile: Any, consent: Any, *, outward: bool = True) ->
     if not isinstance(profile, dict):
         return profile
     if not _given(consent, "enabled"):
-        profile = {key: value for key, value in profile.items() if key != "eeo"}
+        profile = _without(profile, {"eeo"})
     if outward and not _given(consent, "consent_forms"):
         profile = _without_agreement_slots(profile)
     return profile
