@@ -2039,6 +2039,36 @@ def test_every_name_the_uae_rows_know_is_one_the_backend_reads_as_the_uae():
         assert countries.mentioned_in(f"Are you in the {name}?") == {"AE"}, name
 
 
+def test_the_companions_country_answers_are_the_catalogs():
+    """One list on both sides, like the agreement slots: each country answer the Companion learns
+    (`shared/profile-fields.js`: a row learned into `answers_by_country`, and the salary row's `countryKey`) is a
+    `form_questions.yaml` `answers[].key`, and the slot its fill rule reads (`content/autofill.js`: `el.*` is
+    eligibility, `pref.*` preferences) is that answer's `fills`, the slot /context folds it into. A key on one
+    side only is an answer learned where nothing fills it, or filled from a slot nothing folds."""
+    import re
+
+    from app.services import form_questions
+
+    fields = (EXTENSION / "shared" / "profile-fields.js").read_text(encoding="utf-8")
+    fill = (EXTENSION / "content" / "autofill.js").read_text(encoding="utf-8")
+    fills = {f.key: f.fills for f in form_questions.catalog().answers if f.fills}
+
+    learned = dict(re.findall(r'\{ id: "([^"]+)", path: \["answers_by_country", "([^"]+)"\]', fields))
+    salary = re.search(r'\{ id: "(salary)", path: \["(\w+)", "(\w+)"\], countryKey: "(\w+)"', fields)
+    assert learned and salary, "profile-fields.js moved its country rows: this pin reads them"
+    rule_id, section, leaf, pay_key = salary.groups()
+    assert fills[pay_key] == f"{section}.{leaf}"  # the generic key it learns with no country is the slot it fills
+    learned[rule_id] = pay_key
+    assert set(learned.values()) == set(fills), "a country answer on one side only"
+
+    sections = {"el": "eligibility", "pref": "preferences"}
+    for rule, key in learned.items():
+        read = re.search(rf'\{{ id: "{re.escape(rule)}", \.\.\.pf\("{re.escape(rule)}"\),\s*value: (?:yesNo\()?(el|pref)\.(\w+)',
+                         fill)
+        assert read, f"autofill.js has no rule {rule!r} reading a slot: this pin reads it"
+        assert f"{sections[read.group(1)]}.{read.group(2)}" == fills[key], rule
+
+
 def test_every_question_the_uae_rows_take_is_one_the_backend_reads_as_the_uae():
     """One UAE name list: on an Indian job, /context must name the UAE for every question the Companion learns
     into a UAE answer (`autofill_country.market_for_question`), so India's entry never keeps one."""
