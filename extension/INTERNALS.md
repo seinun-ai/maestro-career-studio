@@ -872,8 +872,8 @@ know, and each one was learned from a live failure.
   salary/wage/compensation label are blocked by the shared policy. Explicit expectations such as expected, desired, target, or salary
   range (expected CTC too) may fill `preferences.desired_salary` (on a job
   whose country has its own expected pay, that country's figure). An expectation
-  phrase never overrides current pay in the same label ("current and expected
-  CTC") or another policy block such as signature, consent, terms, credentials,
+  phrase never overrides current or previous pay in the same label ("current
+  and expected CTC", "previous CTC and expected CTC") or another policy block such as signature, consent, terms, credentials,
   or government-ID wording. With the permission, "salary requirements" and
   "compensation" questions fill from the same fact, and current CTC from India's
   own answer.

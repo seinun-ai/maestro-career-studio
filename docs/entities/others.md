@@ -1443,8 +1443,9 @@
     to the model or tagged `data-rt-qid` — plus the panel's PAIR: the pause row renders no input for a blocked label AND `submitAnswer`
     refuses one again (the first decides what to draw, the second touches the page). Salary history/current salary/current CTC and
     unqualified salary/wage/compensation/CTC mentions are also blocked without consent; explicit expectations (expected salary, expected
-    CTC) are allowed only AFTER both lists and after current pay (`CURRENT_PAY`, published as `ns.currentPayRe`): a label asking both
-    ("current and expected CTC", "CTC expectation vs current") is current pay. A label is not the whole guard, so current pay is also
+    CTC) are allowed only AFTER both lists and after current or previous pay (`CURRENT_PAY`, published as `ns.currentPayRe`): a label
+    asking both ("current and expected CTC", "previous CTC and expected CTC", "CTC expectation vs current") is that pay, while a time
+    word that leads to no pay word ("expected salary and current notice period") leaves the expectation fillable. A label is not the whole guard, so current pay is also
     refused by what it is, without consent: the server's gate withholds it from every fill view it hands out (`eeo_consent.AGREEMENT_SLOTS`,
     "EEO consent details"), the rule pass has no current-CTC rule and the fill loop blocks a `preferences.current_ctc` slot.
   - **Label-pattern table details** (inv-one-label-pattern-table): `profile-fields.js` throws at load if `shared/policy.js` has not run (it

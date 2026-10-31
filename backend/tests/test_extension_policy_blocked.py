@@ -68,7 +68,13 @@ _NEVER_FILL = [
         # …but current pay anywhere in the label is history, the expectation beside it notwithstanding.
         ("Current and expected CTC", "policy_blocked", ""),
         ("CTC expectation vs current", "policy_blocked", ""),
+        ("Previous CTC and expected CTC", "policy_blocked", ""),
+        ("Prior salary vs expected", "policy_blocked", ""),
+        # A time word that is not about pay leaves the expectation fillable.
         ("Expected salary for the current role", "filled", "150000"),
+        ("Expected salary and current notice period", "filled", "150000"),
+        ("Desired pay & current location", "filled", "150000"),
+        ("Present address / expected CTC", "filled", "150000"),
         ("Salary", "policy_blocked", ""),
     ],
 )

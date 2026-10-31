@@ -2283,8 +2283,19 @@ def test_an_answer_about_current_pay_is_never_learned(tmp_path):
     """"Current and expected CTC" reaches the salary row first, and its answer often holds both figures: kept as
     expected pay, it would fill the next "Expected CTC" with current pay. Current pay is never learned."""
     out = _learned(tmp_path, [{"label": "current and expected CTC", "answer": "18 / 25 LPA"},
-                              {"label": "CTC expectation vs current", "answer": "25 LPA (now 18)"}])
+                              {"label": "CTC expectation vs current", "answer": "25 LPA (now 18)"},
+                              {"label": "Previous CTC and expected CTC", "answer": "16 / 25 LPA"},
+                              {"label": "Prior salary vs expected", "answer": "16 vs 25 LPA"}])
     assert out["after"] == SERVED_INDIA
+
+
+@pytest.mark.parametrize("label", [
+    "Expected salary and current notice period", "Desired pay & current location", "Present address / expected CTC"])
+def test_an_expectation_beside_a_time_word_that_is_not_pay_is_learned_as_expected_pay(tmp_path, label):
+    """"Current" or "present" refuses a label only when it leads to pay: these ask the expectation, and their
+    answer is that country's expected pay."""
+    out = _learned(tmp_path, [{"label": label, "answer": "2500000"}])
+    assert out["after"]["answers_by_country"]["IN"] == {"current_ctc": "1800000", "expected_pay": "2500000"}
 
 
 def test_a_pause_row_never_learns_current_pay_even_past_the_policy(tmp_path):

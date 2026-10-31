@@ -58,11 +58,18 @@
   const SALARY_EXPECTATION =
     /\b(?:expected|desired|target)\b[^?|]{0,30}\b(?:salary|wages?|compensation|pay|rate|ctc)\b|\b(?:salary|wages?|compensation|pay|ctc)\b[^?|]{0,40}\bexpectations?\b|\b(?:salary|wages?|compensation|pay|ctc)\s+(?:expectation|expectations|range)\b/i;
   const SALARY_MENTION = /\b(?:salary|wages?|compensation|ctc)\b/i;
-  // What you are paid NOW, wherever it sits in the label. Checked BEFORE the
-  // expectation exemption: "current and expected CTC" or "CTC expectation vs
-  // current" asks for current pay as well, and its answer often holds both.
-  const CURRENT_PAY =
-    /\b(?:current|present|existing|last\s+drawn)\b[^?|]{0,20}\b(?:salary|wages?|ctc|pay|compensation)\b|\b(?:salary|wages?|ctc|pay|compensation)\b[^?|]{0,30}(?:\bvs\b\.?|\bversus\b|\band\b|&|\/)\s*(?:current|present|existing)\b/i;
+  // What you are or were paid, wherever it sits in the label. Checked BEFORE
+  // the expectation exemption: "current and expected CTC", "previous CTC and
+  // expected CTC" or "CTC expectation vs current" asks for that pay as well,
+  // and its answer often holds both figures. The time word must lead to a pay
+  // word ("current notice period", "present address" are not pay), or end a
+  // pay question bare ("… vs current").
+  const PAY_WHEN = "(?:current|present|existing|previous|prior|last(?:\\s+drawn)?)";
+  const PAY_WORD = "(?:salary|wages?|ctc|pay|compensation|package)";
+  const CURRENT_PAY = new RegExp(
+    `\\b${PAY_WHEN}\\s+(?:\\w+\\s+){0,2}${PAY_WORD}\\b`
+    + `|\\b${PAY_WORD}\\b[^?|]{0,30}(?:\\bvs\\b\\.?|\\bversus\\b|\\band\\b|&|\\/)\\s*${PAY_WHEN}(?=\\s*(?:$|[?).:*|,]))`,
+    "i");
 
   /** `consentForms` comes from the backend's standing consent and defaults to
    * FALSE — an omitted argument is the absence of permission, never its

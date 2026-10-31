@@ -264,7 +264,7 @@ def test_an_indian_jobs_pay_questions_fill_from_indias_answers(tmp_path):
 @pytest.mark.parametrize("label", [
     "current ctc and expected ctc", "current and expected ctc", "current ctc (we will discuss expectations later)",
     "current ctc range", "present ctc | expected ctc", "current ctc in inr (expected ctc below)",
-    "ctc expectation vs current"])
+    "ctc expectation vs current", "previous ctc and expected ctc", "prior salary vs expected"])
 def test_a_label_asking_current_and_expected_pay_never_gets_current_pay_without_the_agreement(tmp_path, label):
     """Current pay is refused wherever it sits in the label (`ns.currentPayRe`, checked before the expectation
     exemption), and without the agreement permission there is no current-pay rule for the scan to reach either."""
