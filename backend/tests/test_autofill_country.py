@@ -289,8 +289,10 @@ def test_the_extension_reads_only_the_resolved_work_auth():
     assert "profile.work_auth" in fill
     learn = pause.read_text(encoding="utf-8")
     assert 'const BY_COUNTRY = "work_auth_by_country";' in learn
-    assert "await store.api(`/api/autofill/context?${params}`)" in learn
-    assert "context?.profile?.work_auth_market" in learn
+    assert "const profile = (await store.api(`/api/autofill/context?${params}`))?.profile;" in learn
+    assert "market: text(profile?.work_auth_market)" in learn
+    # …and only a backend that folds a country's own answers gets one (docs/RELEASING.md rule 2).
+    assert "folds: Array.isArray(profile?.country_answered)" in learn
     assert "work_auth: BY_COUNTRY" in learn  # the table's `work_auth.*` is learned into the map…
     assert "path: [BY_MARKET[target.path[0]], market, ...target.path.slice(1)]" in learn  # …at that market
 
@@ -397,16 +399,28 @@ def test_a_given_answer_still_wins_over_a_citizenship_on_the_job():
 
 
 def test_countries_authorized_lists_the_markets_a_citizenship_settles():
+    # The citizen's own country first, a country no market covers included: a French citizen may work in France.
     profile = {"personal": {"citizenships": ["FR"]}}
     assert work_auth_for(profile, question="", job_country="DE").countries_authorized == [
-        "Ireland", "Germany", "Netherlands"]
-    # A stored Yes keeps its place first; a settled market the answers already name is listed once.
+        "France", "Ireland", "Germany", "Netherlands"]
+    # Then a stored Yes in its place; a settled market the answers already name is listed once.
     profile["work_auth_by_country"] = {"US": {"authorized_now": True}, "NL": {"authorized_now": True}}
     assert work_auth_for(profile, question="", job_country="DE").countries_authorized == [
-        "United States", "Netherlands", "Ireland", "Germany"]
+        "France", "United States", "Netherlands", "Ireland", "Germany"]
     # A given No turns the rule off there, so that country is not listed.
     profile["work_auth_by_country"]["IE"] = {"authorized_now": False}
     assert "Ireland" not in work_auth_for(profile, question="", job_country="DE").countries_authorized
+
+
+def test_countries_authorized_names_each_citizenships_own_country_once():
+    """Two citizenships, each one's own country first in the stored order; one that is a market (India) is listed
+    once, and not at all when the user's own answer there says No."""
+    profile = {"personal": {"citizenships": ["IN", "FR"]}}
+    assert work_auth_for(profile, question="", job_country="IN").countries_authorized == [
+        "India", "France", "Ireland", "Germany", "Netherlands"]
+    profile["work_auth_by_country"] = {"IN": {"authorized_now": False}}
+    assert work_auth_for(profile, question="", job_country="DE").countries_authorized == [
+        "France", "Ireland", "Germany", "Netherlands"]
 
 
 def test_a_question_naming_germany_on_a_uae_job_gets_germanys_country_answers(db_session):

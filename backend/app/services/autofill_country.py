@@ -20,8 +20,9 @@ Answers are keyed by market (the market setting's own key, "UK"), stored under
 `work_auth_by_country` (`autofill_profile`), and read as readers see them: the
 stored answers over the ones a citizenship settles there
 (`autofill_derive.answers_for`). `countries_authorized` is derived from them:
-every country whose `authorized_now` reads Yes, a citizenship-settled one
-included, plus what the user's own list for that country already names.
+each citizenship's own country first, then every country whose `authorized_now`
+reads Yes, a citizenship-settled one included, after what the user's own list
+for that country already names.
 
 A country's own answers (`answers_by_country`, form_questions.yaml `answers`)
 follow the same rule: `with_country_answers` writes one market's over the flat
@@ -95,16 +96,24 @@ def country_for_question(question: str, job_country: str | None) -> str | None:
 
 
 def _authorized_countries(profile: Any, home: str | None) -> list[str]:
-    """The country names of every market whose `authorized_now` reads Yes as readers see it
-    (`autofill_derive.answers_for`), in `answered_markets` order: the stored markets, then the ones
+    """The country names the user may work in, each once: first each citizenship's own country, in
+    the stored order (a citizen may work there, a country no market covers included, unless their own
+    answer for its market says No), then every market whose `authorized_now` reads Yes as readers see
+    it (`autofill_derive.answers_for`), in `answered_markets` order: the stored markets, then the ones
     a citizenship settles."""
-    names = []
-    for market in autofill_derive.answered_markets(profile, home):
+    def authorized(market: str) -> bool | None:
         answers = autofill_derive.answers_for(profile, market, home)
-        if autofill_profile.typed_work_auth(answers, market).authorized_now is True:
-            name = countries.label(markets.country_code(market))
-            if name and name not in names:
-                names.append(name)
+        return autofill_profile.typed_work_auth(answers, market).authorized_now
+
+    own = [code for code in autofill_derive.citizenships(profile)
+           if (market := markets.for_country(code)) is None or authorized(market) is not False]
+    settled = [markets.country_code(m) for m in autofill_derive.answered_markets(profile, home)
+               if authorized(m) is True]
+    names: list[str] = []
+    for code in [*own, *settled]:
+        name = countries.label(code)
+        if name and name not in names:
+            names.append(name)
     return names
 
 

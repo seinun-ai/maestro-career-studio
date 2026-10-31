@@ -354,8 +354,8 @@
   a job with no country gives none. A set is read as `autofill_derive.answers_for` serves it (the stored answers over the ones a
   citizenship settles there), and the same country's own answers (`answers_by_country`) fill their flat slots
   (`autofill_country.with_country_answers`: expected pay over `desired_salary`; another country's never reach the form). `countries_authorized`
-  is derived: the entry's own list, then each market whose `authorized_now` reads Yes, a citizenship-settled one included, by country
-  name. **Readers.** Every fill reads one view, `autofill_country.for_market`: one market's answers, no per-country map,
+  is derived: the entry's own list, then each citizenship's own country (a country no market covers too, unless the user's answer
+  for its market says No), then each market whose `authorized_now` reads Yes, a citizenship-settled one included, by country name. **Readers.** Every fill reads one view, `autofill_country.for_market`: one market's answers, no per-country map,
   citizenships as country names and no notice that has ended; it carries `country_answered`, so a save of it is a 422
   (`autofill_profile.job_view_refusal`). `/context` through `profile_for_job` (the job's set; no job, no set), with
   `work_auth_by_country` added back for agents, and with no application and no question every market's `answers_by_country` too
