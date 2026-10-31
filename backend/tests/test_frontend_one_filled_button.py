@@ -296,7 +296,7 @@ _FILLED = {
     "Automations": {},
     "Analytics": {},
     "Setup": {("components/setup/setup-flow.tsx", "StepNav"): 1, ("components/setup/setup-done.tsx", "SetupDone"): 1},
-    "Profile": {("components/profile/next-up.tsx", "NextUp"): 3},
+    "Profile": {("components/profile/next-up.tsx", "NextUp"): 4},
 }
 
 
@@ -356,9 +356,11 @@ def test_setup_continue_and_the_done_card_never_show_together():
 
 
 def test_profile_next_up_returns_one_lead_card():
-    # Diversity's, citizenship's and a field's: each its own early return, so one shows.
+    # Where you apply's, diversity's, citizenship's and a field's: each its own early return, so one shows.
     next_up = _body("Profile", ("components/profile/next-up.tsx", "NextUp"))
-    assert next_up.count("<LeadCard") == next_up.count("return ( <LeadCard") == 3
-    assert next_up.index('if (current.kind === "diversity") {') < next_up.index("return ( <LeadCard")
+    assert next_up.count("<LeadCard") == next_up.count("return ( <LeadCard") == 4
+    assert next_up.index('if (current.kind === "where") {') < next_up.index("return ( <LeadCard")
+    diversity = next_up.index('if (current.kind === "diversity") {')
+    assert next_up.index("return ( <LeadCard", diversity) < next_up.index('if (current.kind === "citizenship") {')
     citizenship = next_up.index('if (current.kind === "citizenship") {')
     assert next_up.index("return ( <LeadCard", citizenship) < next_up.index("const field = current.field;")
