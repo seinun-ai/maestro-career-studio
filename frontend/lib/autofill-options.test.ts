@@ -294,6 +294,17 @@ test("removing the citizenship stops what it settled before the questions are re
   assert.equal(differsFromSettled({ work_auth_by_country: { DE: { authorized_now: false } } }, EU, "DE", SETTLED_DE), false);
 });
 
+test("a plain-string citizenship Next stored as a list keeps what the server settles once it holds the code", () => {
+  // Next up stores "France" as ["France"]; the server stores ["FR"] and serves what it settles. The copy on screen
+  // still holds the name, which matches no code here, so the served answer stands and Germany is not asked.
+  const named = withCitizenshipList({ personal: { citizenships: "France" } });
+  assert.deepEqual(derivedPermits(named, EU, "DE"), SETTLED_DE);
+  assert.deepEqual(openPermitFields(named, EU, "DE"), []);
+  assert.equal(missingAnswers(named, EU).map(missingKey).some((key) => key.startsWith("permit:DE:")), false);
+  // Codes still narrow at once: the picker saves codes, so removing one there stops what it settled.
+  assert.deepEqual(derivedPermits({ personal: { citizenships: ["IN"] } }, EU, "DE"), {});
+});
+
 test("a status your citizenship settles hides the expiry, as a status you gave does", () => {
   const us = servedFor(["US"], { derived: { US: { status: { value: "citizen", via: "US" } } } });
   const american = { personal: { citizenships: ["US"] } };

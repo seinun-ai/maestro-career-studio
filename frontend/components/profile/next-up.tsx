@@ -152,13 +152,15 @@ export function NextUp({
     const hintId = `${controlId}-hint`;
     const entries = citizenshipEntries(profile);
     // Next waits for the save, which reads the questions again, so the next one is never a permit the
-    // citizenship just settled. A citizenship stored as a plain string (an older save, a hand edit) shows in the
-    // picker and is not a list yet: Next stores it as one, and the server turns its names into codes.
+    // citizenship is about to settle. A citizenship stored as a plain string (an older save, a hand edit) shows in
+    // the picker and is not a list yet: Next stores it as one (the server turns its names into codes) and stays
+    // while that saves; pressed again, it moves on.
     const saving = saveState(SURFACE).pending;
     const loose = typeof groupValues(profile, "personal").citizenships === "string";
     const nextAfterSaving = () => {
-      if (loose) update(SURFACE, (profileNow) => withCitizenshipList(profileNow));
-      next();
+      if (!loose) return next();
+      setHeld(current);
+      update(SURFACE, (profileNow) => withCitizenshipList(profileNow));
     };
     return (
       <LeadCard

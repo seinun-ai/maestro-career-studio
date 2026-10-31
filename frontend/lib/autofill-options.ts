@@ -356,9 +356,13 @@ export function withCitizenships(profile: Profile, codes: readonly string[]): Pr
 }
 
 /** The served `settled` answers whose citizenship is still among yours: removing one stops what it settled at
- *  once, before the questions are read again. */
+ *  once, before the questions are read again. A citizenship held by name (a plain string stored as a list:
+ *  "India", which the server stores as its code) cannot be matched to a code here, so what the server settled
+ *  stands. */
 function stillCitizen(profile: Profile, settled: Record<string, DerivedAnswer>): Record<string, DerivedAnswer> {
-  const codes = new Set(citizenshipEntries(profile).map((entry) => entry.toUpperCase()));
+  const entries = citizenshipEntries(profile);
+  if (entries.some((entry) => !/^[a-z]{2}$/i.test(entry))) return settled;
+  const codes = new Set(entries.map((entry) => entry.toUpperCase()));
   return Object.fromEntries(Object.entries(settled).filter(([, answer]) => codes.has(answer.via.toUpperCase())));
 }
 
