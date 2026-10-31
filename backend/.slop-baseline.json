@@ -1,10 +1,10 @@
 {
   "structure": {
     "root": "backend",
-    "modules": 930,
-    "total_loc": 295241,
-    "src_loc": 79558,
-    "test_loc": 215683,
+    "modules": 938,
+    "total_loc": 299997,
+    "src_loc": 80897,
+    "test_loc": 219100,
     "orphan_modules": [],
     "test_only_reachable": [],
     "orphan_loc": 0,
@@ -130,14 +130,6 @@
         "lines": 118
       },
       {
-        "file": "tests/test_frontend_jobs_honest_words.py",
-        "line": 964,
-        "name": "test_step_three_change_rows_read_and_revert_one_by_one",
-        "complexity": 35,
-        "params": 0,
-        "lines": 40
-      },
-      {
         "file": "tests/test_search_summary.py",
         "line": 106,
         "name": "test_summary_counts_from_events",
@@ -184,6 +176,14 @@
         "complexity": 33,
         "params": 2,
         "lines": 152
+      },
+      {
+        "file": "tests/test_frontend_jobs_honest_words.py",
+        "line": 964,
+        "name": "test_step_three_change_rows_read_and_revert_one_by_one",
+        "complexity": 32,
+        "params": 0,
+        "lines": 40
       },
       {
         "file": "tests/test_frontend_jobs_honest_words.py",
@@ -307,7 +307,7 @@
       },
       {
         "file": "tests/test_eval_fill_cases.py",
-        "line": 573,
+        "line": 574,
         "name": "test_the_map_cases_hold_the_live_wrong_writes",
         "complexity": 26,
         "params": 0,
@@ -410,7 +410,7 @@
         "lines": 55
       }
     ],
-    "hotspot_count": 1097,
+    "hotspot_count": 1119,
     "error_masking": [
       {
         "file": "tests/test_tracing.py",
@@ -499,8 +499,8 @@
       }
     ],
     "error_masking_count": 17,
-    "internal_import_edges": 4332,
-    "imports_per_module": 4.66,
+    "internal_import_edges": 4425,
+    "imports_per_module": 4.72,
     "entry_points_used": [
       "app.main",
       "app.tools.backup_db",
@@ -530,7 +530,7 @@
       "min_tokens": 50,
       "mode": "weak"
     },
-    "percentage": 0.39,
+    "percentage": 0.38,
     "duplicated_lines": 373,
     "clones": 44,
     "allowlisted_clones": 0,
@@ -649,7 +649,7 @@
     {
       "rank": "P2",
       "signal": "complexity_concentration",
-      "detail": "1097 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
+      "detail": "1119 function(s) over threshold. worst: app/services/autofill_step.py:433 cc=79",
       "why": "Complexity mass concentrating in few functions is the erosion signature.",
       "action": "Decompose the top 3. Do not touch the tail."
     },
@@ -662,16 +662,16 @@
     }
   ],
   "metrics": {
-    "total_loc": 295241,
-    "src_loc": 79558,
-    "test_loc": 215683,
-    "modules": 930,
+    "total_loc": 299997,
+    "src_loc": 80897,
+    "test_loc": 219100,
+    "modules": 938,
     "orphan_loc": 0,
-    "duplication_pct": 0.39,
+    "duplication_pct": 0.38,
     "duplicated_lines": 373,
     "clone_count": 44,
-    "complexity_hotspots": 1097,
+    "complexity_hotspots": 1119,
     "error_masking": 17,
-    "imports_per_module": 4.66
+    "imports_per_module": 4.72
   }
 }
