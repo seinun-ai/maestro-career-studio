@@ -1710,6 +1710,11 @@ Expected: green.
     422.
   - `/context` serves `personal.citizenships` as country names ("India"), not ISO codes. Say so in
     the tool docs; a write still takes either form.
+  - **Current pay to agents.** Since Task 3.8, `eeo_consent.withhold_unconsented` strips
+    `preferences.current_ctc`, and every country answer that fills it, unless the agreement
+    permission (`consent_forms`) is on. Whatever `get_autofill_profile` serves without a job,
+    `answers_by_country` included, goes through that same strip.
+    `GET /api/settings/autofill` (Profile's own read, which the pause row writes back) keeps it.
 - Agents can see that no country is chosen: `chosen` goes in `get_setup_status`'s autofill detail
   and in `get_autofill_profile`. Without it, an unchosen install with everything else answered
   reads as complete, with no hint that its countries are missing.
