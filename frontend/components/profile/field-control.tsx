@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import { useFieldMessage } from "@/components/resume-editor/field";
 import { Input } from "@/components/ui/input";
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import {
   NOT_SET,
+  fieldShown,
   fieldValue,
   isBlank,
   storedFieldValue,
@@ -33,8 +34,9 @@ const CONTACT_INPUT: Record<
   website: { type: "url", autoComplete: "url", check: (v) => linkWarning(v) },
 };
 
-/** One answer's control: a select over its options, a date, or a text box. `onChange`
- *  gets what to store; undefined ("Not set") removes the key. */
+/** One answer's control: a select over its options, a date, a number, or a text box. `onChange`
+ *  gets what to store; undefined ("Not set", a cleared date or number) removes the key. A list of
+ *  countries (`type: "countries"`) is not one of these: Country answers asks it with `CountryPicker`. */
 export function FieldControl({
   id,
   group,
@@ -78,13 +80,14 @@ export function FieldControl({
         id={id}
         className="h-8 text-body-medium"
         value={value}
-        type={field.type === "date" ? "date" : contact?.type}
+        type={field.type === "date" || field.type === "number" ? field.type : contact?.type}
         autoComplete={contact?.autoComplete}
         {...control}
         onChange={(e) => {
           setWarning(null);
-          // A cleared date removes its key, never stores "".
-          onChange(field.type === "date" && !e.target.value ? undefined : e.target.value);
+          // A cleared date or number removes its key, never stores "".
+          const clears = field.type === "date" || field.type === "number";
+          onChange(clears && !e.target.value ? undefined : e.target.value);
         }}
         onBlur={() => setWarning(contact ? contact.check(value) : null)}
       />
@@ -96,7 +99,8 @@ export function FieldControl({
 /**
  * A group's fields in the editor's grid, each with its label, its hint (a stale answer's "Answer again"
  * instead, while the question is empty) and its control. A field shown only for one answer of another
- * (`when`) is left out until that answer is chosen.
+ * (`when`), or hidden by one (`unless`), follows that answer. A field in `settled` shows that instead of its
+ * hint and control: an answer your citizenship settles, with its way to answer differently.
  */
 export function FieldGrid({
   idPrefix,
@@ -105,6 +109,7 @@ export function FieldGrid({
   values,
   stale = [],
   voluntary = false,
+  settled = {},
   onChange,
 }: {
   /** Each control's id is `${idPrefix}-${field.key}` (`af-personal-email`): deep links resolve by prefix. */
@@ -117,6 +122,8 @@ export function FieldGrid({
   stale?: readonly string[];
   /** A voluntary group (diversity): no field says "(optional)" of its own. */
   voluntary?: boolean;
+  /** By key: what a field shows in place of its control (its label stays). */
+  settled?: Readonly<Record<string, ReactNode>>;
   onChange: (key: string, next: string | boolean | undefined) => void;
 }) {
   return (
@@ -124,10 +131,20 @@ export function FieldGrid({
     // otherwise push its control below its neighbours'.
     <div className="grid items-end gap-4 @lg/setting:grid-cols-2 @3xl/setting:grid-cols-3">
       {fields.map((field) => {
-        if (field.when && values[field.when[0]] !== field.when[1]) {
+        if (!fieldShown(field, values)) {
           return null;
         }
         const id = `${idPrefix}-${field.key}`;
+        if (settled[field.key]) {
+          return (
+            <div key={field.key} className="grid gap-1.5">
+              <span id={`${id}-label`} className="text-label-large">
+                {field.label}
+              </span>
+              {settled[field.key]}
+            </div>
+          );
+        }
         const rawValue = values[field.key];
         const value = fieldValue(field, rawValue);
         const isStale = Boolean(field.staleHint) && isBlank(rawValue) && stale.includes(field.key);

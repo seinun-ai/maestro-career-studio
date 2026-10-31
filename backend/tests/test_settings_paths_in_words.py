@@ -5,7 +5,7 @@ Settings went from five tabs (AI & models, Tailoring, Connected agents, Appearan
 (Basics, Companion, Agent apps, Advanced), and the server's error sentences, the Companion's notes and
 the guides kept sending people to the old ones. The tab labels are read from `lib/settings-tabs.ts`, so
 a renamed tab fails here until every sentence that names it follows. Profile lost its tabs (About you,
-Autofill) for tiles and folds (Contact, Work permits, Start and pay, Diversity questions, …), read from
+Autofill) for tiles and folds (Contact, Country answers, Start and pay, Diversity questions, …), read from
 `lib/profile-tiles.ts` the same way.
 
 - **The app's own words** (server messages, MCP text, the Companion, the web app; comments too, since
@@ -148,19 +148,19 @@ def test_the_scan_reads_a_profile_path_however_it_is_written():
     def read(text):
         return _paths(text, _PROFILE_PATH)
 
-    assert read("Saved to Profile › Work permits (United Kingdom).") == [(1, "Work permits")]
+    assert read("Saved to Profile › Country answers (United Kingdom).") == [(1, "Country answers")]
     assert read("turned off in Profile ›\n   * Diversity questions, which") == [(1, "Diversity questions")]
     assert read("x\nanswers (**Profile ›\n  Autofill**)") == [(2, "Autofill")]
-    assert read("(Profile → Eligibility) cover") == [(1, "Eligibility")]
+    assert read("(Profile → Screening questions) cover") == [(1, "Screening questions")]
     assert read("const answers = useAutosave<Profile>(initial);") == []
     assert read("SettingEnvelope<AutofillProfile> → Start") == []
 
 
 def test_profile_places_come_from_its_tiles_and_folds():
     places = _profile_places()
-    assert {"Contact", "Work permits", "Start and pay", "Your own questions"} <= set(places)
-    assert {"Diversity questions", "Eligibility"} <= set(places)
-    assert "Autofill" not in places and "About you" not in places
+    assert {"Contact", "Country answers", "Start and pay", "Your own questions"} <= set(places)
+    assert {"Diversity questions", "Screening questions"} <= set(places)
+    assert not {"Autofill", "About you", "Work permits", "Eligibility"} & set(places)
 
 
 def test_every_profile_path_in_the_apps_own_words_names_a_tile_or_fold():

@@ -234,7 +234,6 @@ def resolve(*, home: str, apply_in: list[str], chosen: bool, profile: Any) -> Qu
     countries = [_country(m, profile) for m in apply_in]
     return QuestionSet(
         groups=groups,
-        permits={c.market: c.permits for c in countries},
         countries=countries,
         language_fields=[f for f in cat.language_fields if _shown(f, packs)],
         offers_eeo=any(markets.offers_eeo(m) for m in apply_in),

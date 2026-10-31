@@ -4,11 +4,13 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { formQuestionsQuery } from "@/components/profile/use-form-questions";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { apiFetch } from "@/lib/api";
-import { forSaving, profileForEditing, type Profile } from "@/lib/autofill-options";
+import { BY_COUNTRY, forSaving, groupValues, profileForEditing, type Profile } from "@/lib/autofill-options";
 import { couldnt } from "@/lib/error-text";
 import { NO_EDITS, edited, landed, surfaceStatus, type SurfaceSaves } from "@/lib/save-surfaces";
+import { serverKey } from "@/lib/studio";
 import type { SettingEnvelope } from "@/lib/types";
 import { useAutosave } from "@/lib/use-autosave";
 
@@ -24,9 +26,17 @@ type AutofillEditing = {
 
 const AutofillContext = createContext<AutofillEditing | null>(null);
 
+/** What the questions' `derived` answers are read from: your citizenships, and the permit answers you gave
+ *  (one that differs from what a citizenship settles turns the rule off for that country). */
+function settles(profile: Profile | undefined): string {
+  return serverKey([groupValues(profile ?? {}, "personal").citizenships ?? null, profile?.[BY_COUNTRY] ?? null]);
+}
+
 /** `PUT /api/settings/autofill`: the whole profile without the one-set `work_auth` view (`forSaving`), the
- *  read it returns cached and readiness refetched. No toast on a save, a toast on a failure. Profile's
- *  editors and Setup's Form answers both save through it. */
+ *  read it returns cached and readiness refetched. A save that changes what a citizenship settles (your
+ *  citizenships, a permit answer) reads the questions again before it counts as saved, as a market save does,
+ *  so an answer never shows as settled once the server no longer settles it, nor the other way round. No toast
+ *  on a save, a toast on a failure. Profile's editors and Setup's Form answers both save through it. */
 export function useSaveAnswers() {
   const qc = useQueryClient();
   return useMutation({
@@ -35,9 +45,13 @@ export function useSaveAnswers() {
         method: "PUT",
         body: JSON.stringify({ value: forSaving(next) }),
       }),
-    onSuccess: (result) => {
+    onSuccess: async (result) => {
+      const before = qc.getQueryData<SettingEnvelope<Profile>>(["settings", "autofill"])?.value;
       qc.setQueryData(["settings", "autofill"], result);
       void qc.invalidateQueries({ queryKey: ["setup-status"] });
+      if (settles(before) !== settles(result.value)) {
+        await qc.invalidateQueries({ queryKey: formQuestionsQuery.queryKey });
+      }
     },
     onError: (err: Error) => toast.error(couldnt("save your answers", err)),
   });
@@ -56,8 +70,8 @@ export function useAdoptServed(served: Profile, adopt: (next: Profile) => void) 
 }
 
 /**
- * The answers for job forms, held once for every Profile editor that changes them (Contact, Work permits,
- * Start and pay, Education, Languages, Your own questions, the Diversity and Eligibility folds, Next up).
+ * The answers for job forms, held once for every Profile editor that changes them (Contact, Country answers,
+ * Start and pay, Education, Languages, Your own questions, the Diversity and Screening questions folds, Next up).
  * They save as you go: one write in flight and only the newest queued (`useAutosave`), each write the
  * whole profile without the one-set `work_auth` view, so the server keeps the per-country map
  * (`forSaving`). No toast on a save, a toast on a failure. Each editor shows the status of its own newest

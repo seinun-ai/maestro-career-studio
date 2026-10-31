@@ -276,14 +276,14 @@ test("what Setup writes: each answer on its own country, never the one-set view"
     work_auth: { authorized_now: true },
     work_auth_by_country: { DE: { authorized_now: true, status: "citizen" }, UK: { authorized_now: false } },
   };
-  const after = withPermitAnswer(before, "UK", "sponsorship_now", true);
+  const after = withPermitAnswer(before, SERVED, "UK", "sponsorship_now", true);
   assert.deepEqual(after.work_auth_by_country, {
     DE: { authorized_now: true, status: "citizen" },
     UK: { authorized_now: false, sponsorship_now: true },
   });
   assert.equal("work_auth" in after, false);
   assert.deepEqual(before.work_auth_by_country.UK, { authorized_now: false }, "the input is not changed");
-  assert.deepEqual(withPermitAnswer({}, "US", "status", "citizen"), { work_auth_by_country: { US: { status: "citizen" } } });
+  assert.deepEqual(withPermitAnswer({}, SERVED, "US", "status", "citizen"), { work_auth_by_country: { US: { status: "citizen" } } });
   const prefs = withPreference({ preferences: { desired_salary: "80k" }, work_auth: {} }, SERVED, "notice_period", "1 month");
   assert.deepEqual(prefs, { preferences: { desired_salary: "80k", notice_period: "1 month" } });
   // Declining fills each blank diversity question with its decline choice, the veteran one too, and leaves
@@ -337,7 +337,7 @@ test("the done screen: Add your first job filled, the agent app and the Companio
   );
   assert.match(left, /href="\/profile#af-permit-UK-authorized_now"[^>]*>Finish your work permit for United Kingdom/);
   assert.doesNotMatch(left, /Germany/);
-  // A country served no questions is still left to finish, and its link opens the Work permits tile.
+  // A country served no questions is still left to finish, and its link opens the Country answers tile.
   const unserved = renderElement(
     React.createElement(SetupDone, {
       questionSet: SERVED,

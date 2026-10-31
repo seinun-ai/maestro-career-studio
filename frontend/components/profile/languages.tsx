@@ -7,25 +7,28 @@ import { TileCard, type TileView } from "@/components/profile/tile";
 import { useAutofillQuery } from "@/components/profile/use-autofill-query";
 import { Label } from "@/components/ui/label";
 import {
-  LANGUAGE_FIELDS,
   booleanAnswer,
   isBlank,
+  languageFields,
   languageValue,
   withAnswer,
   type LanguageEntry,
 } from "@/lib/autofill-options";
+import type { QuestionSet } from "@/lib/types";
 
 const SURFACE = "languages";
 
-/** "German · native", "English · Fluent": the language and the one level that says the most. */
+/** "German · native", "English · Fluent · C1": the language, the one level that says the most, and its CEFR
+ *  level when set. */
 function languageWords(entry: LanguageEntry): string | null {
   if (isBlank(entry.language)) return null;
   const level = booleanAnswer(entry.native) ? "native" : booleanAnswer(entry.fluent) ? "fluent" : entry.speak;
-  return level ? `${entry.language} · ${level}` : String(entry.language);
+  return [entry.language, level, entry.cefr].filter((part) => !isBlank(part)).join(" · ");
 }
 
-/** Languages: one entry per language, most important first, with the levels forms offer. Saves as you go. */
-export function useLanguagesTile(): TileView {
+/** Languages: one entry per language, most important first, with the levels forms offer, and the CEFR level
+ *  where a country you apply in asks it (the served `language_fields`). Saves as you go. */
+export function useLanguagesTile(questionSet: QuestionSet): TileView {
   const { profile } = useAutofillProfile();
   const languages: LanguageEntry[] = Array.isArray(profile.languages) ? profile.languages : [];
   const words = languages.map(languageWords).filter((w): w is string => w !== null);
@@ -43,20 +46,20 @@ export function useLanguagesTile(): TileView {
       <span>None added</span>
     ),
     note: "The first four go on forms",
-    panel: <LanguagesCard />,
+    panel: <LanguagesCard questionSet={questionSet} />,
   };
 }
 
-function LanguagesCard() {
+function LanguagesCard({ questionSet }: { questionSet: QuestionSet }) {
   const query = useAutofillQuery();
   return (
     <TileCard tile="languages" errorTitle="Couldn't load your form answers." query={query}>
-      {() => <LanguagesEditor />}
+      {() => <LanguagesEditor questionSet={questionSet} />}
     </TileCard>
   );
 }
 
-function LanguagesEditor() {
+function LanguagesEditor({ questionSet }: { questionSet: QuestionSet }) {
   const { profile, update } = useAutofillProfile();
   const languages: LanguageEntry[] = Array.isArray(profile.languages) ? profile.languages : [];
   const setLanguages = (next: LanguageEntry[]) =>
@@ -80,7 +83,7 @@ function LanguagesEditor() {
     >
       {(entry, i, change) => (
         <div className="grid flex-1 items-end gap-4 @xl/setting:grid-cols-3">
-          {LANGUAGE_FIELDS.map((field) => {
+          {languageFields(questionSet).map((field) => {
             const id = `af-languages-${i}-${field.key}`;
             return (
               <div key={field.key} className="grid gap-1.5">
@@ -89,7 +92,7 @@ function LanguagesEditor() {
                   id={id}
                   group="language"
                   field={field}
-                  value={languageValue(field, entry[field.key as keyof LanguageEntry])}
+                  value={languageValue(field, (entry as Record<string, unknown>)[field.key])}
                   onChange={(next) => change(withAnswer(entry, field.key, next))}
                 />
               </div>

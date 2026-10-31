@@ -486,7 +486,10 @@ answers:
     fills: preferences.current_ctc
     describe: "current CTC: total annual cost to company, in rupees"
   # The gulf pack's questions (the approved design,
-  # docs/plans/2026-10-30-country-form-questions-design.md).
+  # docs/plans/2026-10-30-country-form-questions-design.md). Only the UAE names
+  # the pack, so `eligibility.in_country_now` is the UAE's answer. Before
+  # another market joins it, name the country in the rule: a UAE question on
+  # that country's job would get that country's answer.
   - key: in_country_now
     label: Are you in the UAE now?
     type: select

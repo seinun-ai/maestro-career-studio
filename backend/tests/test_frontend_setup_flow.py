@@ -163,9 +163,10 @@ def test_each_work_permit_question_carries_its_country():
     assert "permitQuestions(questionSet, question.market).map(" in answers
     assert "const questionSet = useFormQuestions();" in _read("components/setup/setup-flow.tsx")
     # Each answer is that country's own entry, sent without the one-set work_auth view.
-    assert "withPermitAnswer(current, question.market, q.key, option.value)" in answers
+    assert "withPermitAnswer(current, questionSet, question.market, q.key, option.value)" in answers
     lib = _read("lib/setup-answers.ts")
-    assert "return forSaving(withPermit(profile, market, key, value));" in lib
+    # An answer that hides another of that country's fields (a citizen's expiry) removes it, as in Profile.
+    assert "return forSaving(withPermit(profile, questionSet, market, key, value));" in lib
     # No link to Profile's set of another country (the old "Answer in Profile" edited the home one).
     assert "Answer in Profile" not in answers and '"autofill-work_auth"' not in _read("components/setup/setup-done.tsx")
     assert 'anchorHref("/profile", `af-permit-${q.market}-${open.key}`)' in _read("components/setup/setup-done.tsx")

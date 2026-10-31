@@ -105,13 +105,13 @@ def _work_auth_warnings(work_auth: dict[str, Any], country: str | None = None) -
     if not authorized or not sponsorship:
         return [
             f"{answers} are incomplete. Fix them in "
-            "Profile › Work permits before filtering jobs on them. The brief never guesses."
+            "Profile › Country answers before filtering jobs on them. The brief never guesses."
         ]
     if authorized == "no" and sponsorship == "no":
         return [
             f"{answers} are contradictory: not authorized to "
             "work, and no sponsorship needed. The brief passes them on unchanged. "
-            "Correct them in Profile › Work permits before relying on them."
+            "Correct them in Profile › Country answers before relying on them."
         ]
     return []
 

@@ -2,10 +2,11 @@
 
 import { PageHeader } from "@/components/page-shell";
 import { useAutofillProfile } from "@/components/profile/autofill-profile";
+import { countriesChosen } from "@/components/profile/country-fields";
 import { groupValues, isBlank } from "@/lib/autofill-options";
 import type { MarketSettingResponse, SetupStatus } from "@/lib/types";
 
-/** The sections setup status counts, ready or not: the form-answer groups it reports (Contact, Work permits,
+/** The sections setup status counts, ready or not: the form-answer groups it reports (Contact, Country answers,
  *  Start and pay, and Diversity where a country you apply in has a checked set), Jobs you want and How you
  *  come across. Only what the status says, never a count of its own. */
 export function readySections(status: SetupStatus): { ready: number; total: number } {
@@ -53,8 +54,8 @@ function CompletionRing({ status }: { status: SetupStatus }) {
 
 /**
  * Profile's header: your name (from your contact answers, else "Profile"), one line of where you live and
- * where you apply, and how many sections are ready (setup status). No subtitle of words about the page
- * (owner decision D1): the line under the name is your own facts.
+ * where you apply (until you choose, that none is chosen), and how many sections are ready (setup status). No
+ * subtitle of words about the page (owner decision D1): the line under the name is your own facts.
  */
 export function ProfileHeader({ market, status }: { market: MarketSettingResponse; status: SetupStatus | undefined }) {
   const { profile } = useAutofillProfile();
@@ -68,7 +69,7 @@ export function ProfileHeader({ market, status }: { market: MarketSettingRespons
   return (
     <PageHeader
       title={name || "Profile"}
-      subtitle={facts}
+      subtitle={countriesChosen(market) ? facts : "Where you live and apply: not chosen yet"}
       actions={status ? <CompletionRing status={status} /> : null}
     />
   );

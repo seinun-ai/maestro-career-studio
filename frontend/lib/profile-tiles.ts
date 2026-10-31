@@ -2,9 +2,11 @@
  * Profile's tiles and folds (board "Profile, facts about you"), and which one holds each deep-link anchor.
  * No imports: `node --test` loads it as it is (profile-tiles.test.ts).
  *
- * A tile opens its editor under the grid, one at a time; a fold opens in place. The first anchor of each is
- * its card's id (`anchorHref("/profile", "autofill-work_auth")`, the ids setup-steps.ts and the job knock-out
- * card aim at, kept from the Autofill tab); ids INSIDE a card resolve by prefix (`job-preferences-years`).
+ * A tile opens its editor under the grid, one at a time; a fold opens in place. The ids are older than some
+ * titles (`permits` is Country answers, `eligibility` Screening questions), kept so links still land. The
+ * first anchor of each is its card's id (`anchorHref("/profile", "autofill-work_auth")`, the ids setup-steps.ts
+ * and the job knock-out card aim at, kept from the Autofill tab); ids INSIDE a card resolve by prefix
+ * (`job-preferences-years`).
  * `autofill` is the tiles themselves (the old Autofill card), so it opens nothing.
  */
 export type ProfileSection = {
@@ -17,7 +19,7 @@ export type ProfileSection = {
 export const PROFILE_TILES = [
   { id: "contact", title: "Contact", anchors: ["autofill-personal"], prefixes: ["af-personal-"] },
   { id: "where", title: "Where you apply", anchors: ["market"], prefixes: ["market-"] },
-  { id: "permits", title: "Work permits", anchors: ["autofill-work_auth"], prefixes: ["af-permit-"] },
+  { id: "permits", title: "Country answers", anchors: ["autofill-work_auth"], prefixes: ["af-permit-", "af-answer-", "af-citizenships"] },
   { id: "jobs", title: "Jobs you want", anchors: ["job-preferences"], prefixes: ["job-preferences-"] },
   { id: "persona", title: "How you come across", anchors: ["persona"], prefixes: ["persona-"] },
   { id: "start", title: "Start and pay", anchors: ["autofill-preferences"], prefixes: ["af-preferences-"] },
@@ -28,7 +30,7 @@ export const PROFILE_TILES = [
 
 export const PROFILE_FOLDS = [
   { id: "diversity", title: "Diversity questions", anchors: ["autofill-eeo"], prefixes: ["af-eeo-"] },
-  { id: "eligibility", title: "Eligibility", anchors: ["autofill-eligibility"], prefixes: ["af-eligibility-"] },
+  { id: "eligibility", title: "Screening questions", anchors: ["autofill-eligibility"], prefixes: ["af-eligibility-"] },
 ] as const satisfies readonly ProfileSection[];
 
 export type TileId = (typeof PROFILE_TILES)[number]["id"];

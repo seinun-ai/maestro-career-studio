@@ -410,11 +410,13 @@ def test_every_market_gets_todays_permit_fields(market):
     assert got == [_field(f) for f in _TODAY["permits"][vocab]]
 
 
-def test_permits_are_still_served_keyed_by_market():
-    """Phase 1's `permits` rides beside `countries` until Profile reads `countries` (Task 3.10):
-    each country's own permit list."""
+def test_permits_are_served_only_per_country():
+    """Phase 1's market-keyed `permits` is gone now Profile and Setup read `countries`: each
+    country's permit list rides on its own entry, and nowhere else."""
     qs = form_questions.resolve(home="IN", apply_in=["US", "AE", "DE"], chosen=True, profile=None)
-    assert qs.permits == {c.market: c.permits for c in qs.countries}
+    assert "permits" not in qs.model_dump()
+    assert [c.market for c in qs.countries] == ["US", "AE", "DE"]
+    assert all(c.permits for c in qs.countries)
 
 
 def _state_line(home: str) -> Field:
@@ -451,9 +453,9 @@ def test_required_keys_leave_out_the_optional_fields():
     assert "address_2" not in personal("US") and "linkedin" not in personal("US")
 
 
-def test_permits_are_keyed_by_market_in_apply_in_order():
+def test_countries_are_in_apply_in_order():
     got = form_questions.resolve(home="IN", apply_in=["UK", "US", "DE"], chosen=True, profile=None)
-    assert list(got.permits) == ["UK", "US", "DE"]
+    assert [c.market for c in got.countries] == ["UK", "US", "DE"]
 
 
 def test_offers_eeo_follows_the_apply_in_markets():
@@ -466,7 +468,7 @@ def test_offers_eeo_follows_the_apply_in_markets():
 
 def test_unchosen_resolves_no_country():
     qs = form_questions.resolve(home="US", apply_in=[], chosen=False, profile=None)
-    assert qs.permits == {} and qs.offers_eeo is False and qs.chosen is False
+    assert qs.countries == [] and qs.offers_eeo is False and qs.chosen is False
 
 
 def test_unchosen_keeps_the_state_line_but_never_requires_it():
@@ -480,7 +482,8 @@ def test_unchosen_keeps_the_state_line_but_never_requires_it():
 
 def test_no_apply_in_reads_as_home():
     """The market setting's rule (`MarketSetting`: empty `apply_in` reads as `[home]`)."""
-    assert list(form_questions.resolve(home="UK", apply_in=[], chosen=True, profile=None).permits) == ["UK"]
+    got = form_questions.resolve(home="UK", apply_in=[], chosen=True, profile=None)
+    assert [c.market for c in got.countries] == ["UK"]
     assert form_questions.resolve(home="UK", apply_in=[], chosen=True, profile=None).offers_eeo is True
     assert form_questions.resolve(home="IN", apply_in=[], chosen=True, profile=None).offers_eeo is False
 

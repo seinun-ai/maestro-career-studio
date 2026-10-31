@@ -1,6 +1,11 @@
 "use client";
 
-import { ApplyInField, LiveInField, useCountriesAutosave } from "@/components/profile/country-fields";
+import {
+  ApplyInField,
+  LiveInField,
+  countriesChosen,
+  useCountriesAutosave,
+} from "@/components/profile/country-fields";
 import { TileCard, type TileView } from "@/components/profile/tile";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { SettingCardAction } from "@/components/settings/setting-card";
@@ -41,13 +46,22 @@ function CountryName({ market, label, resumes }: { market?: MarketOption; label:
 }
 
 /** Where you apply: You live in (home currency, date format) and You apply in (each country with its own
- *  work-permit answers), from the market setting. */
+ *  form answers), from the market setting. Until you choose, the stored countries are defaults: the tile says
+ *  so instead of naming them. */
 export function useWhereTile(market: MarketSettingResponse): TileView {
   const resumes = useBaseResumes();
   const options = market.markets ?? [];
   const byKey = new Map(options.map((m) => [m.key, m]));
   const home = byKey.get(market.home);
   const count = market.apply_in.length;
+  if (!countriesChosen(market)) {
+    return {
+      state: { kind: "needs" },
+      summary: <span>No country chosen yet</span>,
+      note: "Each country has its own form answers",
+      panel: <WhereCard />,
+    };
+  }
   return {
     state: { kind: "count", text: count === 1 ? "1 country" : `${count} countries` },
     summary: (
@@ -65,7 +79,7 @@ export function useWhereTile(market: MarketSettingResponse): TileView {
         </span>
       </>
     ),
-    note: "Each country has its own work-permit answers",
+    note: "Each country has its own form answers",
     panel: <WhereCard />,
   };
 }
@@ -120,7 +134,7 @@ function WhereEditor({ market }: { market: MarketSettingResponse }) {
         toggleCountry={toggleCountry}
         hint={
           <>
-            Each country has its own work-permit answers and its own diversity questions, if it has a checked set.
+            Each country has its own form answers and its own diversity questions, if it has a checked set.
             A square is a base resume made for that country. Keep at least one.
           </>
         }

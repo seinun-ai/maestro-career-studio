@@ -413,7 +413,7 @@ function PermitQuestion({
                         variant={on ? "tonal" : "outline"}
                         aria-pressed={on}
                         onClick={() =>
-                          update((current) => withPermitAnswer(current, question.market, q.key, option.value))
+                          update((current) => withPermitAnswer(current, questionSet, question.market, q.key, option.value))
                         }
                       >
                         {on ? <Check aria-hidden="true" /> : null}
@@ -426,7 +426,7 @@ function PermitQuestion({
                 <Select
                   value={typeof entry[q.key] === "string" ? (entry[q.key] as string) : ""}
                   onValueChange={(next) =>
-                    update((current) => withPermitAnswer(current, question.market, q.key, next ? String(next) : undefined))
+                    update((current) => withPermitAnswer(current, questionSet, question.market, q.key, next ? String(next) : undefined))
                   }
                 >
                   <SelectTrigger aria-labelledby={`${countryId} ${questionId}`} className="w-64">

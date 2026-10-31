@@ -95,8 +95,8 @@ def _agent_questions(served: Any) -> dict[str, Any] | None:
     # Dropped on purpose, as Profile's presentation rather than what a write takes: each field's
     # `hint`, `optional` and `byHome`, the show rules (`when`, `unless`: the expiry is hidden for a
     # status that never runs out), option labels (a write takes the value), each country's `label`
-    # (the key is the market), and the set's `groups`, `language_fields`, `offers_eeo` and Phase 1
-    # `permits` (the facts about you are set_autofill_profile's own schema).
+    # (the key is the market), and the set's `groups`, `language_fields` and `offers_eeo` (the facts
+    # about you are set_autofill_profile's own schema).
     if not isinstance(served, dict):
         return None
     countries = [c for c in served.get("countries") or [] if isinstance(c, dict) and c.get("market")]

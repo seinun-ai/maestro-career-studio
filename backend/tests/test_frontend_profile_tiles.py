@@ -5,9 +5,11 @@
   "Let the Companion fill these answers"). All 62 items of the "Where everything lives" board's Profile
   group, by their board labels and in the tile or fold that holds each, are
   `test_frontend_every_item_has_a_home.py`'s.
-- **Work permits per country.** One set per apply-in country, worded by that market's `work_auth_vocab`
-  (from data, `GET /api/settings/market`): the keys `authorized_now`, `sponsorship_now` and
-  `sponsorship_future` everywhere, the visa status only where the vocabulary is `us_visa`.
+- **Country answers per country.** Citizenship first, then one set per apply-in country as the served
+  question set lists them (`GET /api/settings/autofill/questions` `countries`), worded by that market's
+  `work_auth_vocab` (data): the keys `authorized_now`, `sponsorship_now` and `sponsorship_future`
+  everywhere, the visa status only where the vocabulary is `us_visa`, then the country's own answers. A
+  permit answer a citizenship settles shows as "From your citizenship", never as a control.
 - **Saves as you go.** The Autofill tab's Save button is gone; the answers autosave (`useAutosave`) and
   report with `AutosaveStatus`.
 """
@@ -69,18 +71,21 @@ def test_every_profile_item_still_has_a_home():
 
 
 def test_the_tiles_and_folds_are_the_boards():
-    """Nine tiles in the board's order, then two folds: Diversity and Eligibility."""
+    """Nine tiles in the board's order, then two folds: Diversity and Screening questions. Work permits became
+    Country answers and Eligibility Screening questions; their ids stay, so links still land."""
     lib = _src("lib/profile-tiles.ts")
     tiles = _between(lib, "export const PROFILE_TILES = [", "] as const")
     assert re.findall(r'title: "([^"]+)"', tiles) == [
-        "Contact", "Where you apply", "Work permits", "Jobs you want", "How you come across", "Start and pay",
+        "Contact", "Where you apply", "Country answers", "Jobs you want", "How you come across", "Start and pay",
         "Education", "Languages", "Your own questions",
     ]
+    assert '{ id: "permits", title: "Country answers", anchors: ["autofill-work_auth"]' in tiles
     folds = _between(lib, "export const PROFILE_FOLDS = [", "] as const")
-    assert re.findall(r'title: "([^"]+)"', folds) == ["Diversity questions", "Eligibility"]
+    assert re.findall(r'title: "([^"]+)"', folds) == ["Diversity questions", "Screening questions"]
+    assert '{ id: "eligibility", title: "Screening questions", anchors: ["autofill-eligibility"]' in folds
 
 
-# ------------------------------------------------------------------ Work permits, per country
+# ------------------------------------------------------------------ Country answers, per country
 
 def test_the_work_permit_questions_node_suite_runs():
     """Each vocabulary's questions, keys and country words (lib/autofill-options.test.ts)."""
@@ -97,17 +102,41 @@ def test_each_country_counts_the_three_keys_and_only_the_us_counts_the_status():
         assert keys == (["status", *expected] if country.market == "US" else expected), (country.market, keys)
 
 
-def test_the_work_permits_tile_asks_one_set_per_country_in_its_own_words():
+def test_the_country_answers_tile_asks_one_set_per_country_in_its_own_words():
     """The words come from the served set (data, per market), never decided here."""
     tile = _src("components/profile/work-permits.tsx")
     # One set per country the served set lists (in apply-in order), never a newer market list's country.
-    assert "permitMarkets(questionSet).map((key) => {" in tile
-    assert "permitFields(questionSet, key)" in tile
-    # Each country's answers are its own entry, keyed by market ("UK", not "GB").
-    assert "withPermit(current, key, fieldKey, next)" in tile
-    types = _src("lib/types.ts")
-    option = _between(types, "export interface MarketOption {", "\n}")
-    assert "work_auth_vocab: string;" in option
+    assert "questionSet.countries.map((country) => ( <CountrySet key={country.market} country={country}" in _flat(tile)
+    assert "const fields = country.permits.filter((field) => fieldShown(field, answers));" in tile
+    # Each country's answers are its own entry, keyed by market ("UK", not "GB"): its permits, then its own.
+    assert "withPermit(current, questionSet, country.market, key, next)" in tile
+    assert "withCountryAnswer(current, country.market, key, next)" in tile
+    assert "fields={country.answers}" in tile
+    # The frontend never words a question from a market's vocabulary: the market list carries none for it.
+    option = _between(_src("lib/types.ts"), "export interface MarketOption {", "\n}")
+    assert "work_auth_vocab" not in option
+
+
+def test_country_answers_asks_citizenship_first_and_shows_what_it_settles():
+    """Citizen of is the one new required answer (Decision 6): asked here with the country picker, never in
+    Contact, counted on this tile as setup readiness counts it in `work_auth`. A permit answer it settles is
+    the server's `derived`, shown only where nothing is given, and Answer differently brings the control back.
+    Saving it reads the questions again, so what it settles is the server's, never a guess here."""
+    tile = _src("components/profile/work-permits.tsx")
+    assert tile.index('<Label htmlFor="af-citizenships"') < tile.index("<CountrySet key={country.market}")
+    assert "onChange={(codes) => update(SURFACE, (current) => withCitizenships(current, codes))}" in tile
+    assert "names={CITIZEN_NAMES}" in tile and 'GB: "United Kingdom (British citizen)"' in tile
+    assert "const open = !citizenDone || rows.some((row) => !row.done);" in tile
+    assert "if (!by || answered(field, entry[field.key]) || answering.includes(field.key)) return [];" in tile
+    assert "From your citizenship ({nameOf(by.via)})" in tile and "Answer differently" in tile
+    provider = _flat(_src("components/profile/autofill-profile.tsx"))
+    assert (
+        "if (settles(before) !== settles(result.value)) { await qc.invalidateQueries({ queryKey: "
+        "formQuestionsQuery.queryKey }); }"
+    ) in provider
+    options = _src("lib/autofill-options.ts")
+    assert 'if (citizenship && !citizenship.optional && !citizenshipAnswered(profile, questionSet)) {' in options
+    assert 'out.push({ kind: "citizenship", field: citizenship });' in options
 
 
 def test_the_market_list_carries_each_markets_work_permit_vocabulary():
@@ -124,8 +153,9 @@ def test_contact_counts_and_names_the_state_line_by_where_you_live():
     markets = _between(router, '"markets": [', "for k in markets.keys()")
     assert '"asks_state": markets.get(k)["asks_state"],' in markets
     assert '"state_label": markets.get(k)["state_label"],' in markets
+    # The served set carries the state line resolved; the frontend reads no market's address rule itself.
     option = _between(_src("lib/types.ts"), "export interface MarketOption {", "\n}")
-    assert "asks_state: boolean;" in option and "state_label: string;" in option
+    assert "asks_state" not in option and "state_label" not in option
     def state(home: str):
         personal = next(g for g in form_questions.resolve(home=home, apply_in=[home], chosen=True, profile=None).groups if g.key == "personal")
         return next(f for f in personal.fields if f.key == "state")
@@ -252,7 +282,8 @@ def test_diversity_sits_with_its_consent_and_only_where_a_set_is_checked():
     assert "{consent.enabled ? <AgreedOn consent={consent} /> : null}" in switch
     assert "acknowledged_at: enabled ? null : consent.acknowledged_at," in consent
     eligibility = _src("components/profile/eligibility.tsx")
-    assert '<div id="autofill-eligibility">' in eligibility and 'title="Eligibility"' in eligibility
+    assert '<div id="autofill-eligibility">' in eligibility and 'title="Screening questions"' in eligibility
+    assert "Past employers, and what your countries' forms ask" in eligibility
 
 
 def test_a_country_chip_shows_the_square_of_a_resume_made_for_it():
@@ -280,6 +311,7 @@ def test_the_contact_fill_node_suite_runs():
 
 
 def test_profile_view_node_suite():
-    """Profile rendered with seeded reads: the header, Next up, the tiles, work permits per country, the folds."""
+    """Profile rendered with seeded reads: the header, Next up, the tiles, Country answers per country (an Indian
+    citizen in India, the UAE, Germany and the Netherlands too), the folds, and no country chosen."""
     result = run_node_render_test("components/profile/profile-view.test.mjs")
     assert result.returncode == 0, result.stdout + result.stderr

@@ -10,9 +10,10 @@ import type { QuestionSet } from "@/lib/types";
 const SURFACE = "eligibility";
 
 /**
- * Eligibility, folded: the three knockout questions nearly every US application asks and nothing else in the
- * profile can derive. Each is unset until you set it: one the Companion has no answer for is reported and
- * left blank, never guessed. Saves as you go.
+ * Screening questions, folded: whether you worked for the company before, and what the forms of the countries
+ * you apply in ask besides (the US's age and restrictive-agreement questions, India's total experience), as
+ * served (the eligibility group). Each is unset until you set it: one the Companion has no answer for is
+ * reported and left blank, never guessed. Saves as you go.
  */
 export function EligibilityFold({
   questionSet,
@@ -30,8 +31,8 @@ export function EligibilityFold({
   return (
     <div id="autofill-eligibility">
       <Fold
-        title="Eligibility"
-        summary={given ? `${given} of ${fields.length} answered` : "Age, past employers, restrictive agreements"}
+        title="Screening questions"
+        summary={given ? `${given} of ${fields.length} answered` : "Past employers, and what your countries' forms ask"}
         open={open}
         onOpenChange={onOpenChange}
       >

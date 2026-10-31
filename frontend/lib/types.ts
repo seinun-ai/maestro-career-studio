@@ -2435,21 +2435,15 @@ export interface MarketOption {
   /** "DMY" or "MDY". */
   date_format: string;
   offers_eeo: boolean;
-  /** How its work-permit questions are worded: `us_visa` (with the US visa status), `uk`, `generic`, `ca` or `ae`
-   *  (markets.yaml; the served `QuestionSet` holds the words for each market you apply in). */
-  work_auth_vocab: string;
-  /** Whether an address there needs a state or province line: Contact counts the state only for a home
-   *  where this is true (the served `QuestionSet` marks it optional elsewhere). */
-  asks_state: boolean;
-  /** The country's own word for that line ("State", "Province", "County"), the Contact field's label. */
-  state_label: string;
 }
 
 /** Where the user lives and applies (`GET/PUT /api/settings/market`). */
 export interface MarketSettingResponse {
   key: "market";
-  /** `market` is the old single market, kept equal to `home` for readers not moved yet. */
-  value: { home: string; apply_in: string[]; market: string };
+  /** `market` is the old single market, kept equal to `home` for readers not moved yet. `chosen` is false
+   *  until the user picks where they apply: `home` and `apply_in` are then the defaults, never a choice, and
+   *  the form questions are the generic set (no country's). */
+  value: { home: string; apply_in: string[]; market: string; chosen: boolean };
   /** Where the user lives: the home currency and date format. */
   home: string;
   /** Every market the user applies in, each once; at least one. */
@@ -2481,24 +2475,49 @@ export type FieldDef = {
   /** Instead of `hint` while the question is empty because the saved answer was dropped when the
    *  question changed (the backend lists it in the profile's `stale_answers`). */
   staleHint?: string;
-  /** Shown only while another field of the group holds this value: [key, value].
-   *  Changing that field away deletes this one (lib/autofill-options.ts `withField`). */
+  /** Shown only while another field of the same list holds this value: [key, value].
+   *  Changing that field away deletes this one (lib/autofill-options.ts `withField`, `withPermit`). */
   when?: [string, string];
-  /** The address's state line, served already named by where you live (`state_label`) and optional where an
-   *  address there has none (`asks_state`). */
-  byHome?: true;
+  /** Hidden while another field of the same list holds one of these values: [key, values] (the permit's
+   *  expiry, for a status that never runs out). Changing that field to one deletes this one. */
+  unless?: [string, string[]];
+  /** The address line named and counted by where you live: the state line or the postal code. Served already
+   *  resolved, so nothing here reads it. */
+  byHome?: "state" | "postcode";
 };
 
 export type GroupDef = { key: string; title: string; fields: FieldDef[] };
 
+/** A work-permit answer a citizenship settles (backend `services/autofill_derive`): computed when read,
+ *  never stored. `via` is the ISO code of the citizenship that settles it ("IN"). */
+export type DerivedAnswer = { value: string | boolean; via: string };
+
+/** One country you apply in: its work permits (stored in `work_auth_by_country[market]`), its own answers
+ *  (`answers_by_country[market]`, all optional) and the permit answers a citizenship settles there, keyed like
+ *  the permits. Served without defaults, so `derived` is absent when nothing is settled. */
+export type CountryQuestions = {
+  /** The market key ("UK", never "GB"). */
+  market: string;
+  /** The country's name ("United Kingdom"). */
+  label: string;
+  permits: FieldDef[];
+  answers: FieldDef[];
+  derived?: Record<string, DerivedAnswer>;
+};
+
 /** GET /api/settings/autofill/questions (backend schemas/form_questions.py `QuestionSet`): the form questions
- *  for where you live and apply. The groups are personal, eeo, eligibility and preferences; `permits` holds
- *  each apply-in market's work-permit fields ("UK", never "GB"), required questions first. */
+ *  for where you live and apply. The groups are personal, eeo, eligibility and preferences, each fact asked
+ *  once; `countries` holds each apply-in country's own questions, in the order you apply in (none while no
+ *  country is chosen). */
 export type QuestionSet = {
   groups: GroupDef[];
-  permits: Record<string, FieldDef[]>;
+  countries: CountryQuestions[];
+  /** Extra fields on each language you list (the CEFR level while a country you apply in asks it). */
+  language_fields?: FieldDef[];
   /** Whether a market you apply in has a checked diversity set. */
   offers_eeo: boolean;
+  /** Whether you chose where you apply: unchosen, the set is the generic one. */
+  chosen: boolean;
 };
 
 /** How pay reads (`GET/PUT /api/settings/money`; docs/entities/money.md). */

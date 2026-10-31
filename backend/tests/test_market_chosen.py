@@ -25,14 +25,14 @@ def settings_dir(tmp_path, monkeypatch):
 def test_a_new_install_starts_unchosen(client):
     assert client.get("/api/settings/market").json()["value"]["chosen"] is False
     served = client.get("/api/settings/autofill/questions").json()
-    assert served["chosen"] is False and served.get("permits", {}) == {}
+    assert served["chosen"] is False and served["countries"] == []
 
 
 def test_saving_where_you_apply_marks_it_chosen(client):
     client.put("/api/settings/market", json={"value": {"home": "US", "apply_in": ["US"]}})
     assert market_settings.peek_market().chosen is True
     served = client.get("/api/settings/autofill/questions").json()
-    assert list(served["permits"]) == ["US"]
+    assert [country["market"] for country in served["countries"]] == ["US"]
 
 
 def test_an_agent_setting_markets_marks_it_chosen(client):

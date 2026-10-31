@@ -35,10 +35,10 @@ def _chose_us(db_session) -> None:
     market_settings.set_market(MarketSetting(home="US", apply_in=["US"]), db_session)
 
 
-def _assert_points_to_work_permits(warnings: list[str]) -> None:
-    """The work-authorization answers live in Profile's Work permits tile (D §9.3):
+def _assert_points_to_country_answers(warnings: list[str]) -> None:
+    """The work-authorization answers live in Profile's Country answers tile (D §9.3):
     a warning names that tile, never Settings, and never the raw profile keys."""
-    assert any("Profile › Work permits" in w for w in warnings)
+    assert any("Profile › Country answers" in w for w in warnings)
     assert not [w for w in warnings if "Settings" in w or "authorized_to_work" in w]
 
 
@@ -206,7 +206,7 @@ def test_search_brief_contradictory_work_auth_warns(db_session, tmp_path, monkey
         "requires_sponsorship": "no",
     }
     assert any("contradictory" in w for w in body["warnings"])
-    _assert_points_to_work_permits(body["warnings"])
+    _assert_points_to_country_answers(body["warnings"])
 
 
 def test_search_brief_projects_typed_work_auth_to_public_yes_no_shape(
@@ -462,7 +462,7 @@ def test_each_country_applied_in_is_warned_about_by_name(db_session, tmp_path, m
     assert netherlands.startswith("Netherlands: your work authorization answers are contradictory")
     assert canada.startswith("Canada: your work authorization answers are incomplete")
     assert not [w for w in warnings if "Germany" in w or "India" in w]
-    _assert_points_to_work_permits(warnings)
+    _assert_points_to_country_answers(warnings)
 
 
 def test_the_home_set_is_one_of_the_countries_when_the_user_applies_at_home(
@@ -479,7 +479,7 @@ def test_the_home_set_is_one_of_the_countries_when_the_user_applies_at_home(
     assert body["profile"]["work_auth_by_country"]["UK"] == body["profile"]["work_auth"]
     assert [w for w in body["warnings"] if "incomplete" in w] == [
         "Ireland: your work authorization answers are incomplete. Fix them in Profile › "
-        "Work permits before filtering jobs on them. The brief never guesses."
+        "Country answers before filtering jobs on them. The brief never guesses."
     ]
 
 
@@ -495,10 +495,10 @@ def test_one_country_reads_as_before(db_session, tmp_path, monkeypatch):
         "US": {"authorized_to_work": None, "requires_sponsorship": None},
     }
     assert body["warnings"] == [
-        "Your work authorization answers are incomplete. Fix them in Profile › Work permits "
+        "Your work authorization answers are incomplete. Fix them in Profile › Country answers "
         "before filtering jobs on them. The brief never guesses."
     ]
-    _assert_points_to_work_permits(body["warnings"])
+    _assert_points_to_country_answers(body["warnings"])
 
 
 def test_a_citizenship_answers_the_brief_and_each_country_carries_its_expected_pay(

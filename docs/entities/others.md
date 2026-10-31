@@ -379,7 +379,7 @@
   generic `desired_salary` only when no country is known, and not learned for a country no market covers (a Singapore job), so it never
   becomes every other form's answer. Current pay is never learned (`ns.currentPayRe`: "current and expected CTC" often holds both
   figures). Undo puts back each key, and sends a country's entry the learn made as null, so the save removes it. `work_auth_country` names that question's one country in words, a country no market
-  covers too (null: none known), and the note says "Saved to Profile › Work permits (United Kingdom)." by that name, never the market
+  covers too (null: none known), and the note says "Saved to Profile › Country answers (United Kingdom)." by that name, never the market
   key. With no market (no job and no country named, a country no market covers, two countries) a work permit or country answer is
   filled and not learned: the next form asks again, and the note says why ("Profile can't keep work-permit answers for Brazil", else
   "it isn't clear which country's work permit this is"; "answers" and "which country this answer is for" for a country answer). The

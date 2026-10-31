@@ -1853,7 +1853,7 @@ def test_the_answer_is_remembered_in_the_profile_the_rules_actually_read(tmp_pat
 
 def test_a_learned_answer_names_the_profile_fold_that_shows_it(tmp_path):
     """A typed key is shown by the tile or fold that holds its group (lib/profile-tiles.ts's titles): an
-    eligibility answer in Profile's Eligibility fold, as a preference is in Start and pay."""
+    eligibility answer in Profile's Screening questions fold, as a preference is in Start and pay."""
     frames = {"collect_open_questions": [{"frameId": 0, "result": {
         "host": "job-boards.greenhouse.io",
         "questions": [{"qid": "el1", "label": "Are you 18 years of age or older?", "kind": "select",
@@ -1864,7 +1864,7 @@ def test_a_learned_answer_names_the_profile_fold_that_shows_it(tmp_path):
     [body] = _profile_put(out)
     assert body["value"]["eligibility"]["over_18"] == "Yes"
     [note] = _by_class(out["answered"]["foot"], "note")
-    assert "Saved to Profile › Eligibility." in note["text"]
+    assert "Saved to Profile › Screening questions." in note["text"]
 
 
 def _work_permit_answer(tmp_path, market, served, label="Do you currently require sponsorship?", text="Yes",
@@ -1904,8 +1904,8 @@ def test_a_paused_work_permit_answer_saves_to_the_jobs_country(tmp_path, db_sess
     # The one set is left exactly as it was served.
     assert (body["value"]["work_auth"], body["value"]["work_auth_market"]) == (US_ANSWERS, "US")
     [note] = _by_class(out["answered"]["foot"], "note")
-    # The country by its name, as the Work permits tile heads its set, never the market key.
-    assert "Saved to Profile › Work permits (United Kingdom)." in note["text"]
+    # The country by its name, as the Country answers tile heads its set, never the market key.
+    assert "Saved to Profile › Country answers (United Kingdom)." in note["text"]
 
     # …and the server stores what the panel meant.
     from app.schemas.market_settings import MarketSetting
@@ -2060,7 +2060,7 @@ def test_expected_pay_paused_on_a_job_with_a_country_is_that_countrys(tmp_path, 
     assert body["value"]["answers_by_country"] == {"IN": {"current_ctc": "1800000", "expected_pay": "2500000"}}
     assert body["value"]["preferences"] == {"desired_salary": "150000"}
     [note] = _by_class(out["answered"]["foot"], "note")
-    assert "Saved to Profile › Work permits (India)." in note["text"]
+    assert "Saved to Profile › Country answers (India)." in note["text"]
 
     # …and the server keeps it for India's jobs only.
     from app.schemas.market_settings import MarketSetting
@@ -2091,7 +2091,7 @@ def test_a_paused_uae_question_on_a_uae_job_learns_into_the_uae(tmp_path):
                                                    "AE": {"in_country_now": "Yes"}}
     assert "eligibility" not in body["value"]
     [note] = _by_class(out["answered"]["foot"], "note")
-    assert "Saved to Profile › Work permits (United Arab Emirates)." in note["text"]
+    assert "Saved to Profile › Country answers (United Arab Emirates)." in note["text"]
 
 
 def test_a_country_answer_with_no_country_is_filled_and_not_learned(tmp_path):

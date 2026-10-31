@@ -458,7 +458,7 @@ def test_profile_and_agent_limits_speak_plainly():
     for rel, words in (
         ("components/profile/where-you-apply.tsx", "Sets your home currency and date format."),
         ("components/profile/where-you-apply.tsx",
-         "Each country has its own work-permit answers and its own diversity questions, if it has a checked set."),
+         "Each country has its own form answers and its own diversity questions, if it has a checked set."),
         ("components/profile/how-you-come-across.tsx", "It sets the tone of tailoring, cover letters and answers, and never adds facts to your resume."),
         ("components/profile/how-you-come-across.tsx", "Draft from my career history"),
         ("components/settings/auto-apply-section.tsx", 'label: "Jobs per search",'),
@@ -816,9 +816,13 @@ def test_the_self_description_shows_only_for_self_describe_and_goes_with_it():
     assert field.optional is True
     assert field.hint == "The Companion types this where a form asks you to self-describe."
     renderer = _between(_FIELDS, "export function FieldGrid(", "\n}\n")
-    assert "if (field.when && values[field.when[0]] !== field.when[1]) {" in renderer
+    assert "if (!fieldShown(field, values)) {" in renderer
+    shown = _between(_AUTOFILL, "export function fieldShown(", "\n}\n")
+    assert "if (field.when && values[field.when[0]] !== field.when[1]) return false;" in shown
     set_field = _between(_AUTOFILL, "export function withField(", "\n}\n")
-    assert "if (field.when?.[0] === key && field.when[1] !== value) delete values[field.key];" in set_field
+    assert "withAnswerIn(groupValues(profile, group), groupFields(questionSet, group), key, value," in set_field
+    cleared = _between(_AUTOFILL, "function withAnswerIn(", "\n}\n")
+    assert "if (dependsOn && !fieldShown(field, next)) delete next[field.key];" in cleared
 
 
 def test_an_agreement_from_an_older_policy_asks_again():

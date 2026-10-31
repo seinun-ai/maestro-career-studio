@@ -3,13 +3,19 @@ import { test } from "node:test";
 
 import {
   answered,
+  citizenshipEntries,
   contactFields,
+  countryAnswerEntry,
   declinedEeo,
+  derivedPermits,
+  fieldShown,
   forSaving,
   groupCount,
   groupFields,
+  languageFields,
   missingAnswers,
   missingKey,
+  permitAnswers,
   permitCount,
   permitAnswered,
   permitEntry,
@@ -17,10 +23,12 @@ import {
   permitMarkets,
   permitQuestions,
   profileForEditing,
+  withCitizenships,
+  withCountryAnswer,
   withField,
   withPermit,
 } from "./autofill-options.ts";
-import type { FieldDef, QuestionSet } from "./types.ts";
+import type { DerivedAnswer, FieldDef, QuestionSet } from "./types.ts";
 
 // A small set in the served shape (GET /api/settings/autofill/questions; the backend resolves it and its tests
 // pin the words). A node-tested lib file cannot import another lib file's values, so it is built here.
@@ -33,13 +41,15 @@ const select = (key: string, label: string, values: string[]): FieldDef => ({
   options: values.map((value) => ({ value, label: value })),
 });
 const EXPIRES: FieldDef = { key: "authorization_expires_on", label: "Authorization expires on", type: "date", optional: true };
+// The US expiry is not asked of a status that never runs out (the server sets `unless` from its status list).
+const US_EXPIRES: FieldDef = { ...EXPIRES, unless: ["status", ["citizen", "permanent_resident"]] };
 const PERMITS: Record<string, FieldDef[]> = {
   US: [
-    select("status", "Work authorization status", ["citizen", "h1b"]),
+    select("status", "Work authorization status", ["citizen", "permanent_resident", "h1b"]),
     yesNo("authorized_now", "Authorized to work in the U.S. now?"),
     yesNo("sponsorship_now", "Do you need visa sponsorship now?"),
     yesNo("sponsorship_future", "Will you need visa sponsorship later?"),
-    EXPIRES,
+    US_EXPIRES,
   ],
   UK: [
     yesNo("authorized_now", "Do you have the right to work in the UK now?"),
@@ -54,10 +64,17 @@ const PERMITS: Record<string, FieldDef[]> = {
     EXPIRES,
   ],
 };
-const STATE: FieldDef = { key: "state", label: "State", byHome: true };
+const LABELS: Record<string, string> = { US: "United States", UK: "United Kingdom", DE: "Germany" };
+const ANSWERS: FieldDef[] = [{ key: "expected_pay", label: "Expected salary", optional: true }];
+const STATE: FieldDef = { key: "state", label: "State", byHome: "state" };
+type Settled = Record<string, Record<string, DerivedAnswer>>;
 
-/** The set for `applyIn`, with the state line as the server resolved it for where you live. */
-function servedFor(applyIn: string[], { state = STATE, offersEeo = true } = {}): QuestionSet {
+/** The set for `applyIn`, with the state line as the server resolved it for where you live, and the permit
+ *  answers a citizenship settles per country (`derived`). */
+function servedFor(
+  applyIn: string[],
+  { state = STATE, offersEeo = true, derived = {} as Settled } = {},
+): QuestionSet {
   return {
     groups: [
       {
@@ -93,8 +110,15 @@ function servedFor(applyIn: string[], { state = STATE, offersEeo = true } = {}):
         fields: [{ key: "desired_salary", label: "Desired salary" }, yesNo("willing_to_relocate", "Willing to relocate?")],
       },
     ],
-    permits: Object.fromEntries(applyIn.map((market) => [market, PERMITS[market]])),
+    countries: applyIn.map((market) => ({
+      market,
+      label: LABELS[market],
+      permits: PERMITS[market],
+      answers: ANSWERS,
+      ...(derived[market] ? { derived: derived[market] } : {}),
+    })),
     offers_eeo: offersEeo,
+    chosen: true,
   };
 }
 
@@ -128,7 +152,9 @@ test("each country is asked in its own words, as served", () => {
 
 test("the countries asked are the served set's own, in its order", () => {
   assert.deepEqual(permitMarkets(servedFor(["DE", "US"])), ["DE", "US"]);
+  assert.deepEqual(permitMarkets(servedFor(["UK", "DE", "US"])), ["UK", "DE", "US"], "apply-in order, never sorted");
   assert.deepEqual(permitMarkets(servedFor(["UK"])), ["UK"]);
+  assert.deepEqual(permitMarkets({ ...ALL, countries: [], chosen: false }), [], "no country chosen asks none");
 });
 
 test("a country the set serves no questions for is open, never answered, wherever it is asked", () => {
@@ -137,7 +163,8 @@ test("a country the set serves no questions for is open, never answered, whereve
   // Not even with answers stored: without its questions nothing says they are the ones it asks.
   const stored = { work_auth_by_country: { UK: { authorized_now: true, sponsorship_now: false, sponsorship_future: false } } };
   assert.equal(permitAnswered(stored, set, "UK"), false);
-  assert.equal(permitAnswered({ work_auth_by_country: { UK: {} } }, { ...set, permits: { ...set.permits, UK: [] } }, "UK"), false);
+  const noQuestions = { ...set, countries: [...set.countries, { market: "UK", label: "United Kingdom", permits: [], answers: [] }] };
+  assert.equal(permitAnswered({ work_auth_by_country: { UK: {} } }, noQuestions, "UK"), false);
   // A served country with every answer given is answered; one still blank is not.
   const us = { work_auth_by_country: { US: { status: "citizen", authorized_now: true, sponsorship_now: false, sponsorship_future: false } } };
   assert.equal(permitAnswered(us, set, "US"), true);
@@ -150,18 +177,109 @@ test("a country the set serves no questions for is open, never answered, whereve
 
 test("the expiry date ends every country's fields and counts toward nothing", () => {
   for (const market of ["US", "UK", "DE"]) {
-    assert.equal(permitFields(ALL, market).at(-1), EXPIRES);
+    assert.equal(permitFields(ALL, market).at(-1)?.key, "authorization_expires_on");
     assert.equal(permitQuestions(ALL, market).some((f) => f.key === "authorization_expires_on"), false);
   }
 });
 
 test("a country's answer lands on its own entry, keyed by market, and the others stay", () => {
   const before = { work_auth_by_country: { US: { authorized_now: true } }, custom: [] };
-  const after = withPermit(before, "UK", "sponsorship_now", false);
+  const after = withPermit(before, ALL, "UK", "sponsorship_now", false);
   assert.deepEqual(after.work_auth_by_country, { US: { authorized_now: true }, UK: { sponsorship_now: false } });
   assert.deepEqual(permitEntry(after, "UK"), { sponsorship_now: false });
   // Clearing removes the key; it is never stored as "".
-  assert.deepEqual(permitEntry(withPermit(after, "UK", "sponsorship_now", undefined), "UK"), {});
+  assert.deepEqual(permitEntry(withPermit(after, ALL, "UK", "sponsorship_now", undefined), "UK"), {});
+});
+
+test("a permit answer that hides another field removes it: a citizen keeps no expiry", () => {
+  const before = { work_auth_by_country: { US: { status: "h1b", authorization_expires_on: "2027-01-31" }, UK: { authorized_now: true } } };
+  const citizen = withPermit(before, ALL, "US", "status", "citizen");
+  assert.deepEqual(permitEntry(citizen, "US"), { status: "citizen" });
+  assert.deepEqual(permitEntry(citizen, "UK"), { authorized_now: true }, "another country's answers stay");
+  // A status that runs out keeps it.
+  assert.deepEqual(permitEntry(withPermit(before, ALL, "US", "status", "h1b"), "US"), before.work_auth_by_country.US);
+  // Shown and hidden by the same rule.
+  assert.equal(fieldShown(US_EXPIRES, { status: "permanent_resident" }), false);
+  assert.equal(fieldShown(US_EXPIRES, { status: "h1b" }), true);
+  assert.equal(fieldShown(US_EXPIRES, {}), true);
+});
+
+test("a country's own answer lands on its own entry in answers_by_country, and the others stay", () => {
+  const before = { answers_by_country: { IN: { current_ctc: "1800000" } }, preferences: { desired_salary: "150000" } };
+  const after = withCountryAnswer(before, "DE", "expected_pay", "70000");
+  assert.deepEqual(after.answers_by_country, { IN: { current_ctc: "1800000" }, DE: { expected_pay: "70000" } });
+  assert.deepEqual(after.preferences, { desired_salary: "150000" }, "the generic pay is left as it was");
+  assert.deepEqual(countryAnswerEntry(withCountryAnswer(after, "DE", "expected_pay", ""), "DE"), {});
+  assert.deepEqual(countryAnswerEntry(after, "IN"), { current_ctc: "1800000" });
+});
+
+test("citizenships are saved as codes, each once, and none removes the answer", () => {
+  const profile = { personal: { first_name: "Asha" } };
+  assert.deepEqual(withCitizenships(profile, ["IN", "GB", "IN"]).personal, { first_name: "Asha", citizenships: ["IN", "GB"] });
+  assert.deepEqual(withCitizenships({ personal: { citizenships: ["IN"] } }, []).personal, {});
+  // A plain string from an older save still shows, part by part; the picker saves codes in its place.
+  assert.deepEqual(citizenshipEntries({ personal: { citizenships: "India, Ireland" } }), ["India", "Ireland"]);
+  assert.deepEqual(citizenshipEntries({ personal: { citizenships: ["IN", " ", 7] } }), ["IN"]);
+  assert.deepEqual(citizenshipEntries({}), []);
+});
+
+// An Indian citizen applying in the US and Germany, as the server serves it: nothing settled there. Applying in
+// Germany as an EU citizen: the three yes/no answers settled by the French citizenship.
+const SETTLED_DE = {
+  authorized_now: { value: true, via: "FR" },
+  sponsorship_now: { value: false, via: "FR" },
+  sponsorship_future: { value: false, via: "FR" },
+};
+const EU = servedFor(["DE", "US"], { derived: { DE: SETTLED_DE } });
+
+test("an answer your citizenship settles counts as answered, and next up never asks it", () => {
+  assert.equal(permitAnswered({}, EU, "DE"), true);
+  assert.deepEqual(permitCount({}, EU, "DE"), { answered: 3, answerable: 3 });
+  assert.equal(permitAnswered({}, EU, "US"), false, "a settled country settles no other");
+  const missing = missingAnswers({}, EU).map(missingKey);
+  assert.equal(missing.some((key) => key.startsWith("permit:DE:")), false);
+  assert.equal(missing.includes("permit:US:authorized_now"), true);
+  assert.equal(permitAnswers({}, EU, "DE").authorized_now, true);
+});
+
+test("an answer given the same way leaves the rest settled; one that differs settles nothing there", () => {
+  const same = { work_auth_by_country: { DE: { authorized_now: "Yes" } } };
+  assert.deepEqual(derivedPermits(same, EU, "DE"), SETTLED_DE);
+  assert.equal(permitAnswered(same, EU, "DE"), true);
+  const differs = { work_auth_by_country: { DE: { authorized_now: false } } };
+  assert.deepEqual(derivedPermits(differs, EU, "DE"), {});
+  assert.deepEqual(permitCount(differs, EU, "DE"), { answered: 1, answerable: 3 });
+  assert.deepEqual(
+    missingAnswers(differs, EU).map(missingKey).filter((key) => key.startsWith("permit:DE:")),
+    ["permit:DE:sponsorship_now", "permit:DE:sponsorship_future"],
+  );
+  // The fill reads what you gave over what is settled.
+  assert.equal(permitAnswers(differs, EU, "DE").authorized_now, false);
+  // A blank or unusable answer is no answer: it hides nothing.
+  assert.deepEqual(derivedPermits({ work_auth_by_country: { DE: { authorized_now: "maybe" } } }, EU, "DE"), SETTLED_DE);
+});
+
+test("a status your citizenship settles hides the expiry, as a status you gave does", () => {
+  const us = servedFor(["US"], { derived: { US: { status: { value: "citizen", via: "US" } } } });
+  const shown = permitFields(us, "US").filter((field) => fieldShown(field, permitAnswers({}, us, "US")));
+  assert.equal(shown.some((field) => field.key === "authorization_expires_on"), false);
+});
+
+test("each language asks the served fields too, each select with a way back to Not set", () => {
+  const cefr: FieldDef = select("cefr", "Level (CEFR)", ["A1", "B2", "C2"]);
+  const fields = languageFields({ ...ALL, language_fields: [{ ...cefr, optional: true }] });
+  assert.deepEqual(fields.map((f) => f.key), ["language", "read", "speak", "write", "native", "fluent", "cefr"]);
+  assert.deepEqual(fields.at(-1)?.options?.map((o) => o.value), ["not_set", "A1", "B2", "C2"]);
+  assert.deepEqual(languageFields(ALL).map((f) => f.key), ["language", "read", "speak", "write", "native", "fluent"]);
+});
+
+test("a number is answered by a number or by what was typed", () => {
+  const years: FieldDef = { key: "experience_years", label: "Total experience: years", type: "number", optional: true };
+  assert.equal(answered(years, 6), true);
+  assert.equal(answered(years, 0), true);
+  assert.equal(answered(years, "6"), true);
+  assert.equal(answered(years, ""), false);
+  assert.equal(answered(years, Number.NaN), false);
 });
 
 test("editing reads each country's legacy pair as typed answers, and a save sends no one-set view", () => {
@@ -254,8 +372,8 @@ test("next up asks each country's permit first, then contact, then start and pay
 });
 
 // The state line, as the server resolves it for where you live (markets.yaml `asks_state` and `state_label`).
-const PROVINCE: FieldDef = { key: "state", label: "Province", byHome: true };
-const NO_STATE: FieldDef = { key: "state", label: "Province", byHome: true, optional: true };
+const PROVINCE: FieldDef = { key: "state", label: "Province", byHome: "state" };
+const NO_STATE: FieldDef = { key: "state", label: "Province", byHome: "state", optional: true };
 
 test("the state line reads as served: its home's word, and optional where addresses have none", () => {
   const state = (served: FieldDef) => groupFields(servedFor(["DE"], { state: served }), "personal").find((f) => f.key === "state");
@@ -287,15 +405,23 @@ test("contact leaves citizenship to Country answers: it neither shows nor counts
   assert.deepEqual(groupCount(profile, served, "personal"), { answered: 4, answerable: 4 });
 });
 
-test("next up never asks citizenship in a text box", () => {
+test("next up asks citizenship first, with its picker, never in a text box", () => {
   const served = withCitizenship(servedFor(["DE"], { offersEeo: false }));
   const done = { authorized_now: true, sponsorship_now: false, sponsorship_future: false };
+  const personal = { first_name: "Ada", last_name: "Lovelace", email: "ada@example.com", state: "BE" };
   const profile = {
-    personal: { first_name: "Ada", last_name: "Lovelace", email: "ada@example.com", state: "BE" },
+    personal,
     work_auth_by_country: { DE: done },
     preferences: { desired_salary: "x", willing_to_relocate: false },
   };
-  assert.deepEqual(missingAnswers(profile, served).map(missingKey), []);
+  const [first, ...rest] = missingAnswers(profile, served);
+  assert.deepEqual([first.kind, first.kind === "citizenship" && first.field.key, rest], ["citizenship", "citizenships", []]);
+  assert.equal(missingAnswers({}, served).map(missingKey)[0], "citizenship", "before every country's permits");
+  const citizen = { ...profile, personal: { ...personal, citizenships: ["IN"] } };
+  assert.deepEqual(missingAnswers(citizen, served).map(missingKey), []);
+  // A plain string names no list: still asked, as setup readiness counts it.
+  const loose = { ...profile, personal: { ...personal, citizenships: "India" } };
+  assert.deepEqual(missingAnswers(loose, served).map(missingKey), ["citizenship"]);
 });
 
 test("a list of countries is answered once it holds one", () => {

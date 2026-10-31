@@ -436,7 +436,7 @@ evidence for can only go in your skills list, never into an invented bullet.
 ![The Companion beside a job: it saves the job, picks the resume, and with full automation on, Apply fills each page, clicks Next and stops on the review page. You press Submit.](assets/extension.gif)
 
 The **Companion** is a side panel in Chrome: save a job from the job board you're reading, score
-it, and fill application forms from your saved answers (in **Profile**: Contact, Work permits, Start
+it, and fill application forms from your saved answers (in **Profile**: Contact, Country answers, Start
 and pay and the rest). It leaves
 signatures, agreement boxes and government IDs to you unless you turn
 on the agreement permission in Settings › Companion. Autofill never types a password, and the Companion never submits. Autofill does not move to the next page either; only **Apply** does, with full automation on in Settings › Agent apps (see the Companion's README).

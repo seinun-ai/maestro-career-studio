@@ -106,7 +106,7 @@ def _missing(needles: tuple[Needle, ...], src: str) -> list[Needle]:
 _PROFILE_FILES: dict[str, tuple[str, ...]] = {
     "Contact": ("components/profile/contact.tsx",),
     "Where you apply": ("components/profile/where-you-apply.tsx", "components/profile/country-fields.tsx"),
-    "Work permits": ("components/profile/work-permits.tsx",),
+    "Country answers": ("components/profile/work-permits.tsx",),
     "Jobs you want": ("components/profile/jobs-you-want.tsx",),
     "How you come across": ("components/profile/how-you-come-across.tsx",),
     "Start and pay": ("components/profile/start-and-pay.tsx",),
@@ -115,7 +115,7 @@ _PROFILE_FILES: dict[str, tuple[str, ...]] = {
     "Languages": ("components/profile/languages.tsx", "components/profile/answer-list.tsx"),
     "Your own questions": ("components/profile/own-questions.tsx", "components/profile/answer-list.tsx"),
     "Diversity questions": ("components/profile/diversity.tsx", "components/profile/diversity-consent.tsx"),
-    "Eligibility": ("components/profile/eligibility.tsx",),
+    "Screening questions": ("components/profile/eligibility.tsx",),
     # Not a tile: the one provider every answer editor saves through, and the status each one shows.
     "Saving": ("components/profile/autofill-profile.tsx", "components/settings/autosave-status.tsx"),
 }
@@ -130,9 +130,15 @@ _PERSONAL = (
 _PREFERENCES = 'fields={groupFields(questionSet, "preferences")}'
 _EEO = 'fields={groupFields(questionSet, "eeo")}'
 _ELIGIBILITY = 'const fields = groupFields(questionSet, "eligibility");'
-_PERMITS = ("permitMarkets(questionSet).map((key) => {", "permitFields(questionSet, key)")
+# Country answers: one set per served country, its permits shown by the answers as the fill reads them.
+_PERMITS = (
+    "questionSet.countries.map((country) => ( <CountrySet key={country.market} country={country}",
+    "const fields = country.permits.filter((field) => fieldShown(field, answers));",
+)
 _APPLY_IN = ("frontend/components/profile/country-fields.tsx", "You apply in </span>")
 _ADD = "onClick={() => setEntries([...entries, newEntry()])}"
+# Each language's fields: the shared ones, then any a country you apply in asks (the CEFR level).
+_LANGUAGE_FIELDS = ("{languageFields(questionSet).map((field) => {", "return [...LANGUAGE_FIELDS, ...served];")
 
 # (tile or fold, board label, needles)
 _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
@@ -152,14 +158,14 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("Contact", "Fill from career history", ('"Fill from career history"', "onClick={fillFromResume}")),
     ("Where you apply", "You live in", ("<Label htmlFor={homeId}>You live in</Label>",)),
     ("Where you apply", "You apply in", ("You apply in </span>", "onClick={() => toggleCountry(m.key)}")),
-    # Work permits, one set per country, each in its market's words: the keys, not the US wording.
-    ("Work permits", "Work authorization status", (asked("status:US", "status", label="Work authorization status"), *_PERMITS)),
-    ("Work permits", "Authorized to work now?", (asked("permits", "authorized_now"), *_PERMITS)),
-    ("Work permits", "Need visa sponsorship now?", (asked("permits", "sponsorship_now"), *_PERMITS)),
-    ("Work permits", "Need visa sponsorship later?", (asked("permits", "sponsorship_future"), *_PERMITS)),
-    ("Work permits", "Authorization expires on",
+    # Country answers, one set per country, each in its market's words: the keys, not the US wording.
+    ("Country answers", "Work authorization status", (asked("status:US", "status", label="Work authorization status"), *_PERMITS)),
+    ("Country answers", "Authorized to work now?", (asked("permits", "authorized_now"), *_PERMITS)),
+    ("Country answers", "Need visa sponsorship now?", (asked("permits", "sponsorship_now"), *_PERMITS)),
+    ("Country answers", "Need visa sponsorship later?", (asked("permits", "sponsorship_future"), *_PERMITS)),
+    ("Country answers", "Authorization expires on",
      (asked("permits", "authorization_expires_on", label="Authorization expires on"), *_PERMITS)),
-    ("Work permits", "Countries authorized", (
+    ("Country answers", "Countries authorized", (
         asked("permits", "authorized_now"), *_PERMITS, _APPLY_IN,
         ("backend/app/services/autofill_country.py", "derived = _authorized_countries(profile, home)"),
         ("backend/app/services/autofill_country.py",
@@ -192,17 +198,17 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("Education", "Start year", ('{ key: "start_year", label: "Start year" }', "{EDUCATION_FIELDS.map((field) => {")),
     ("Education", "Graduation year", ('{ key: "end_year", label: "Graduation year" }', "{EDUCATION_FIELDS.map((field) => {")),
     ("Education", "Add education", ('addLabel="Add education"', "newEntry={() => ({})}", _ADD)),
-    ("Languages", "Language", ('{ key: "language", label: "Language" }', "{LANGUAGE_FIELDS.map((field) => {")),
+    ("Languages", "Language", ('{ key: "language", label: "Language" }', *_LANGUAGE_FIELDS)),
     # Each level is a select of the words forms offer (LANGUAGE_LEVELS: Basic, Intermediate, Fluent).
     ("Languages", "Reading level",
      ('{ key: "read", label: "Reading", type: "select", options: [NOT_SET, ...LANGUAGE_LEVELS] }',
-      "{LANGUAGE_FIELDS.map((field) => {")),
+      *_LANGUAGE_FIELDS)),
     ("Languages", "Speaking level",
      ('{ key: "speak", label: "Speaking", type: "select", options: [NOT_SET, ...LANGUAGE_LEVELS] }',
-      "{LANGUAGE_FIELDS.map((field) => {")),
+      *_LANGUAGE_FIELDS)),
     ("Languages", "Writing level",
      ('{ key: "write", label: "Writing", type: "select", options: [NOT_SET, ...LANGUAGE_LEVELS] }',
-      "{LANGUAGE_FIELDS.map((field) => {")),
+      *_LANGUAGE_FIELDS)),
     ("Languages", "Add language", ('addLabel="Add language"', "newEntry={() => ({})}", _ADD)),
     ("Your own questions", "Question and answer", (
         "<Label htmlFor={`af-custom-${i}-question`}>Question</Label>",
@@ -227,20 +233,20 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("Diversity questions", "Hispanic or Latino?", (asked("eeo", "hispanic_latino", label="Hispanic or Latino?"), _EEO)),
     ("Diversity questions", "Race or ethnicity", (asked("eeo", "race_ethnicity", label="Race or ethnicity"), _EEO)),
     ("Diversity questions", "Decline the rest", ("Decline the rest", "onClick={declineAllEeo}")),
-    ("Eligibility", "Are you 18 or older?", (asked("eligibility", "over_18", label="Are you 18 or older?"), _ELIGIBILITY)),
-    ("Eligibility", "Worked for this company before?",
+    ("Screening questions", "Are you 18 or older?", (asked("eligibility", "over_18", label="Are you 18 or older?"), _ELIGIBILITY)),
+    ("Screening questions", "Worked for this company before?",
      (asked("eligibility", "previously_employed_here", label="Have you worked for the company you're applying to?"),
       _ELIGIBILITY)),
-    ("Eligibility", "Subject to a restrictive covenant?",
+    ("Screening questions", "Subject to a restrictive covenant?",
      (asked("eligibility", "non_compete", label="Subject to a restrictive covenant?"), _ELIGIBILITY)),
     ("Saving", "Saves as you go", ("const answers = useAutosave<Profile>(initial,", "Saving…", "Not saved")),
 ]
 
 # The board's Profile sections and how many items each lists.
 _PROFILE_COUNTS = {
-    "Contact": 14, "Where you apply": 2, "Work permits": 6, "Jobs you want": 6, "How you come across": 2,
+    "Contact": 14, "Where you apply": 2, "Country answers": 6, "Jobs you want": 6, "How you come across": 2,
     "Start and pay": 5, "Education": 7, "Languages": 5, "Your own questions": 2, "Diversity questions": 9,
-    "Eligibility": 3, "Saving": 1,
+    "Screening questions": 3, "Saving": 1,
 }
 
 
@@ -269,8 +275,9 @@ def test_each_country_is_asked_every_work_permit_key():
     """Every vocabulary asks the three yes/no keys and when the permit runs out; a market with a status list
     asks its status first (the US's required, the others optional, so of these only the US asks one). The
     served set holds one entry per country you apply in; Profile asks each, Setup one card per country."""
-    served = form_questions.resolve(home="DE", apply_in=["US", "UK", "DE"], chosen=True, profile=None).permits
-    asked = [[field.key for field in served[market]] for market in ("US", "UK", "DE")]
+    served = form_questions.resolve(home="DE", apply_in=["US", "UK", "DE"], chosen=True, profile=None).countries
+    assert [country.market for country in served] == ["US", "UK", "DE"]
+    asked = [[field.key for field in country.permits] for country in served]
     keys = ["authorized_now", "sponsorship_now", "sponsorship_future", "authorization_expires_on"]
     assert asked == [["status", *keys], keys, keys]
     tile = _flat(_read("components/profile/work-permits.tsx"))
@@ -317,7 +324,7 @@ _SETUP: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("Form answers", "Work permit, per country", (
         'applyIn.map((market) => ({ kind: "permit",', "Work permit </span>",
         "permitQuestions(questionSet, question.market).map((q) => {",
-        "withPermitAnswer(current, question.market, q.key, option.value)",
+        "withPermitAnswer(current, questionSet, question.market, q.key, option.value)",
     )),
     ("Form answers", "Notice period", (
         "How soon could you start?", "<Label htmlFor={noticeId}>Notice period</Label>",

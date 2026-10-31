@@ -838,7 +838,7 @@ know, and each one was learned from a live failure.
   cancelled click is "not accepted", not agreed. Only callers that pass the
   permission get it: `fillFormFromProfile` and the fill loop's inventory; the
   old engine's model path (`collectOpenQuestions`) and the pause rows never do.
-- **Standing eligibility answers** (Profile → Eligibility) cover the three
+- **Standing eligibility answers** (Profile → Screening questions) cover the three
   questions nearly every US application asks that nothing else in the profile
   can derive: *are you 18 or older*, *have you previously been employed by this
   company*, and *are you subject to a non-compete or restrictive covenant*.

@@ -6,6 +6,8 @@ import { Check } from "lucide-react";
 import { useAutofillProfile } from "@/components/profile/autofill-profile";
 import { FieldControl } from "@/components/profile/field-control";
 import { diversityCountries } from "@/components/profile/diversity";
+import { tileTitle } from "@/components/profile/tile";
+import { CITIZEN_HINT, CitizenshipPicker } from "@/components/profile/work-permits";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { Button } from "@/components/ui/button";
 import { LeadCard } from "@/components/ui/lead-card";
@@ -13,6 +15,9 @@ import { ProgressCount } from "@/components/visual";
 import {
   answered,
   booleanAnswer,
+  citizenshipAnswered,
+  citizenshipEntries,
+  countryQuestions,
   fieldValue,
   groupCount,
   groupValues,
@@ -20,6 +25,7 @@ import {
   missingKey,
   permitCount,
   permitEntry,
+  withCitizenships,
   withField,
   withPermit,
   type MissingAnswer,
@@ -29,8 +35,14 @@ import type { MarketSettingResponse, QuestionSet } from "@/lib/types";
 
 const SURFACE = "next-up";
 
-/** The tile each missing answer belongs to, named as the tile is. */
-const SECTION = { permit: "Work permits", personal: "Contact", preferences: "Start and pay" } as const;
+/** The tile each missing answer belongs to, named as the tile is: citizenship and the work permits are
+ *  Country answers'. */
+const SECTION = {
+  citizenship: tileTitle("permits"),
+  permit: tileTitle("permits"),
+  personal: tileTitle("contact"),
+  preferences: tileTitle("start"),
+} as const;
 
 const YES_NO = [
   { value: true, label: "Yes" },
@@ -38,11 +50,12 @@ const YES_NO = [
 ] as const;
 
 /**
- * Next up, the Lead: the first required answer still missing (lib/autofill-options.ts `missingAnswers`: each
- * country's work permit first), answered in place and saved as you go, beside the promise that these answers
- * only ever come from you. A Yes or No moves on by itself; a typed answer stays until Next, so it never
- * jumps away mid-word. Skip leaves one for later in this visit. Diversity is answered in its fold, beside its
- * consent (D10), so Next up only opens it. Nothing missing, nothing shown: the ring says so.
+ * Next up, the Lead: the first required answer still missing (lib/autofill-options.ts `missingAnswers`:
+ * citizenship, then each country's work permit), answered in place and saved as you go, beside the promise
+ * that these answers only ever come from you. A Yes or No moves on by itself; a typed answer, or a country
+ * picked, stays until Next, so it never jumps away mid-word. Skip leaves one for later in this visit. Diversity
+ * is answered in its fold, beside its consent (D10), so Next up only opens it. Nothing missing, nothing shown:
+ * the ring says so.
  */
 export function NextUp({
   market,
@@ -61,7 +74,6 @@ export function NextUp({
   const questionId = useId();
   const controlId = useId();
 
-  const markets = market.markets ?? [];
   const missing = missingAnswers(profile, questionSet);
   const open = missing.filter((item) => !skipped.includes(missingKey(item)));
   const current = held ?? open[0] ?? null;
@@ -110,6 +122,12 @@ export function NextUp({
     </>
   );
 
+  const skipButton = (
+    <Button type="button" variant="ghost" className="text-muted-foreground" onClick={skip}>
+      Skip
+    </Button>
+  );
+
   if (current.kind === "diversity") {
     const countries = diversityCountries(market);
     return (
@@ -117,11 +135,7 @@ export function NextUp({
         eyebrow="Next up · Diversity questions"
         aside={aside}
         action={{ label: "Answer or decline", onClick: onOpenDiversity }}
-        secondary={
-          <Button type="button" variant="ghost" className="text-muted-foreground" onClick={skip}>
-            Skip
-          </Button>
-        }
+        secondary={skipButton}
       >
         <h2 ref={headingRef} tabIndex={-1} className="text-headline-small outline-none">
           The voluntary diversity questions
@@ -134,8 +148,44 @@ export function NextUp({
     );
   }
 
+  if (current.kind === "citizenship") {
+    const hintId = `${controlId}-hint`;
+    return (
+      <LeadCard
+        eyebrow={`Next up · ${SECTION.citizenship}`}
+        aside={aside}
+        action={{ label: "Next", onClick: next, disabled: !citizenshipAnswered(profile, questionSet) }}
+        secondary={
+          <>
+            {skipButton}
+            <AutosaveStatus {...saveState(SURFACE)} />
+          </>
+        }
+      >
+        <h2 ref={headingRef} tabIndex={-1} className="text-headline-small outline-none">
+          <label htmlFor={controlId}>{current.field.label}</label>
+        </h2>
+        <p id={hintId} className="max-w-[65ch] text-body-medium text-muted-foreground">
+          {CITIZEN_HINT}
+        </p>
+        <div className="max-w-md">
+          <CitizenshipPicker
+            id={controlId}
+            label={current.field.label}
+            describedBy={hintId}
+            value={citizenshipEntries(profile)}
+            onChange={(codes) => {
+              setHeld(current);
+              update(SURFACE, (profileNow) => withCitizenships(profileNow, codes));
+            }}
+          />
+        </div>
+      </LeadCard>
+    );
+  }
+
   const field = current.field;
-  const country = current.kind === "permit" ? markets.find((m) => m.key === current.market) : undefined;
+  const country = current.kind === "permit" ? countryQuestions(questionSet, current.market) : undefined;
   const section = current.kind === "permit" ? SECTION.permit : SECTION[current.group];
   const count =
     current.kind === "permit"
@@ -146,7 +196,7 @@ export function NextUp({
   const answer = (value: string | boolean | undefined) =>
     update(SURFACE, (profileNow) =>
       current.kind === "permit"
-        ? withPermit(profileNow, current.market, field.key, value)
+        ? withPermit(profileNow, questionSet, current.market, field.key, value)
         : withField(profileNow, questionSet, current.group, field.key, value),
     );
 
@@ -157,9 +207,7 @@ export function NextUp({
       action={field.boolean ? undefined : { label: "Next", onClick: next, disabled: !answered(field, raw) }}
       secondary={
         <>
-          <Button type="button" variant="ghost" className="text-muted-foreground" onClick={skip}>
-            Skip
-          </Button>
+          {skipButton}
           <AutosaveStatus {...saveState(SURFACE)} />
         </>
       }

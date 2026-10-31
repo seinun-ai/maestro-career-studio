@@ -38,7 +38,7 @@ const buttonId = (id: TileId) => `profile-tile-${id}-button`;
  * Profile, facts about you (design refresh Task 7.2, board "Profile, facts about you"): the header (your name,
  * where you live and apply, how many sections are ready), Next up (the Lead: the first required answer still
  * missing, answered in place), nine tiles that each open their editor under the grid, and two folds,
- * Diversity questions and Eligibility. Every answer saves as you go. It needs the answers, the consent
+ * Diversity questions and Screening questions. Every answer saves as you go. It needs the answers, the consent
  * record, your countries and the questions asked there before it can draw; job preferences and the persona
  * load in their own tiles.
  */
@@ -106,7 +106,7 @@ function ProfileBody({
   const tiles: Record<TileId, TileView> = {
     contact: useContactTile(questionSet),
     where: useWhereTile(market),
-    permits: useWorkPermitsTile(market, questionSet),
+    permits: useWorkPermitsTile(market, questionSet, () => focus("market")),
     jobs: useJobsTile(status?.job_preferences.done),
     persona: usePersonaTile(
       status?.persona.done,
@@ -114,7 +114,7 @@ function ProfileBody({
     ),
     start: useStartTile(questionSet),
     education: useEducationTile(),
-    languages: useLanguagesTile(),
+    languages: useLanguagesTile(questionSet),
     questions: useQuestionsTile(),
   };
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check } from "lucide-react";
 import { toast } from "sonner";
@@ -17,10 +17,19 @@ import { cn } from "@/lib/utils";
 
 type Place = { home: string; apply_in: string[] };
 
+/** Whether the user chose where they apply (`value.chosen`); a server that predates the mark sends none, and its
+ *  countries were always a choice. */
+export function countriesChosen(market: MarketSettingResponse): boolean {
+  return market.value?.chosen !== false;
+}
+
 /**
  * You live in and You apply in, saving as you go (`PUT /api/settings/market`, one write in flight and the
  * newest queued). Profile's Where you apply and Setup's Where and what both save through it. While you apply
  * only where you live, the list follows you; a longer list is left as it is, and at least one country stays.
+ *
+ * Until you choose (`countriesChosen`), the stored countries are the defaults, never a choice, so `value`
+ * applies in none: nothing shows as picked, and the first country you press is where you apply.
  */
 export function useCountriesAutosave(market: MarketSettingResponse) {
   const qc = useQueryClient();
@@ -49,20 +58,31 @@ export function useCountriesAutosave(market: MarketSettingResponse) {
   const place = useAutosave<Place>({ home: market.home, apply_in: market.apply_in }, (next) =>
     save.mutateAsync(next),
   );
-  const setHome = (next: string) =>
+  // Chosen from the first edit: the market read says so only once that save lands.
+  const [picked, setPicked] = useState(false);
+  const chosen = picked || countriesChosen(market);
+  const setHome = (next: string) => {
+    setPicked(true);
     place.update((current) => ({
       home: next,
-      apply_in: current.apply_in.length === 1 && current.apply_in[0] === current.home ? [next] : current.apply_in,
+      apply_in:
+        !chosen || (current.apply_in.length === 1 && current.apply_in[0] === current.home) ? [next] : current.apply_in,
     }));
-  const toggleCountry = (key: string) =>
+  };
+  const toggleCountry = (key: string) => {
+    setPicked(true);
     place.update((current) =>
-      current.apply_in.includes(key)
-        ? current.apply_in.length === 1
-          ? current // At least one: an empty list reads as where you live anyway.
-          : { ...current, apply_in: current.apply_in.filter((k) => k !== key) }
-        : { ...current, apply_in: [...current.apply_in, key] },
+      !chosen
+        ? { ...current, apply_in: [key] }
+        : current.apply_in.includes(key)
+          ? current.apply_in.length === 1
+            ? current // At least one: an empty list reads as where you live anyway.
+            : { ...current, apply_in: current.apply_in.filter((k) => k !== key) }
+          : { ...current, apply_in: [...current.apply_in, key] },
     );
-  return { ...place, setHome, toggleCountry };
+  };
+  const value = chosen ? place.value : { ...place.value, apply_in: [] };
+  return { ...place, value, chosen, setHome, toggleCountry };
 }
 
 /** You live in: one country, listed with its currency. The supported list comes from the API. */

@@ -5,9 +5,9 @@
  * every helper that needs a question takes that set. Nothing here mirrors a backend question list. Pure, so
  * `node --test` loads it (lib/autofill-options.test.ts): it imports only types, which the loader erases.
  */
-import type { FieldDef, QuestionSet } from "./types";
+import type { CountryQuestions, DerivedAnswer, FieldDef, QuestionSet } from "./types";
 
-export type { FieldDef } from "./types";
+export type { CountryQuestions, DerivedAnswer, FieldDef } from "./types";
 
 export const YES_NO = [
   { value: "yes", label: "Yes" },
@@ -30,19 +30,57 @@ export function contactFields(questionSet: QuestionSet): FieldDef[] {
   return groupFields(questionSet, "personal").filter((field) => field.type !== "countries");
 }
 
-// ------------------------------------------------------------------ Work permits, per country
+/** The citizenship question ("Citizen of", a list of countries), as served in the personal group. */
+export function citizenshipField(questionSet: QuestionSet): FieldDef | undefined {
+  return groupFields(questionSet, "personal").find((field) => field.type === "countries");
+}
 
-/** The countries whose work permit is asked: the served set's own keys, in the order you apply in (the server
- *  builds them that way). Never the market setting's list, which can change before the set is read again. */
+/** Whether a field is asked beside the other answers of its list: `when` shows it only for one answer of
+ *  another field, `unless` hides it for some (an expiry, for a status that never runs out). */
+export function fieldShown(field: FieldDef, values: Record<string, unknown>): boolean {
+  if (field.when && values[field.when[0]] !== field.when[1]) return false;
+  const shownUnless = field.unless;
+  if (shownUnless && shownUnless[1].some((value) => value === values[shownUnless[0]])) return false;
+  return true;
+}
+
+/** `values` with `key` set (undefined or "" removes it), and every field of `fields` that answer hides removed
+ *  with it: a self-description must not stay stored under "Female", nor an expiry under "Citizen", unseen. */
+function withAnswerIn(
+  values: Record<string, unknown>,
+  fields: readonly FieldDef[],
+  key: string,
+  value: string | boolean | undefined,
+  { keepBlank = false } = {},
+): Record<string, unknown> {
+  const next = { ...values };
+  if (value === undefined || (value === "" && !keepBlank)) delete next[key];
+  else next[key] = value;
+  for (const field of fields) {
+    const dependsOn = field.when?.[0] === key || field.unless?.[0] === key;
+    if (dependsOn && !fieldShown(field, next)) delete next[field.key];
+  }
+  return next;
+}
+
+// ------------------------------------------------------------------ Country answers, per country
+
+/** One country's served questions, by market key ("UK", never "GB"); none for a country the set lacks. */
+export function countryQuestions(questionSet: QuestionSet, market: string): CountryQuestions | undefined {
+  return questionSet.countries.find((country) => country.market === market);
+}
+
+/** The countries whose questions are asked: the served set's own, in the order you apply in (the server builds
+ *  them that way). Never the market setting's list, which can change before the set is read again. */
 export function permitMarkets(questionSet: QuestionSet): string[] {
-  return Object.keys(questionSet.permits);
+  return questionSet.countries.map((country) => country.market);
 }
 
 /** One country's work-permit fields, in its own words: its required questions, then when the permit runs out
  *  (optional). Served per market you apply in ("UK", never "GB"); any other market has none, never another
  *  country's. */
 export function permitFields(questionSet: QuestionSet, market: string): FieldDef[] {
-  return questionSet.permits[market] ?? [];
+  return countryQuestions(questionSet, market)?.permits ?? [];
 }
 
 /** One country's required work-permit questions: the ones setup readiness counts. */
@@ -70,6 +108,8 @@ export type LanguageEntry = {
   write?: string;
   native?: boolean;
   fluent?: boolean;
+  /** The CEFR level (A1 to C2), asked while a country you apply in asks it (`QuestionSet.language_fields`). */
+  cefr?: string;
 };
 
 export const EDUCATION_FIELDS: { key: keyof EducationEntry; label: string }[] = [
@@ -99,6 +139,15 @@ export const LANGUAGE_FIELDS: FieldDef[] = [
   { key: "fluent", label: "Fluent", type: "select", boolean: true, options: [NOT_SET, ...YES_NO] },
 ];
 
+/** Each language's fields: these, then the ones a country you apply in asks besides (the CEFR level), whose
+ *  selects offer "Not set" too, so an answer can be taken back. */
+export function languageFields(questionSet: QuestionSet): FieldDef[] {
+  const served = (questionSet.language_fields ?? []).map((field) =>
+    field.type === "select" ? { ...field, options: [NOT_SET, ...(field.options ?? [])] } : field,
+  );
+  return [...LANGUAGE_FIELDS, ...served];
+}
+
 // ------------------------------------------------------------------------------------ The profile
 
 // `only_for` (a company or a city, per `only_for_kind`): set when the question named it, so the answer is
@@ -119,6 +168,8 @@ export type Profile = {
 
 /** The key the per-country work-permit answers live under (backend autofill_profile `BY_COUNTRY`). */
 export const BY_COUNTRY = "work_auth_by_country";
+/** The key each country's own answers live under, keyed by market the same way (`ANSWERS_BY_COUNTRY`). */
+export const ANSWERS_BY_COUNTRY = "answers_by_country";
 
 export function isBlank(value: unknown): boolean {
   return typeof value !== "string" || !value.trim();
@@ -241,23 +292,89 @@ export function forSaving(profile: Profile): Profile {
   return rest;
 }
 
-/** One country's answers, by market key ("UK", never the ISO "GB"). */
+/** One country's work-permit answers, by market key ("UK", never the ISO "GB"). */
 export function permitEntry(profile: Profile, market: string): Record<string, unknown> {
   return groupValues(groupValues(profile, BY_COUNTRY), market);
 }
 
-/** The profile with one work-permit answer set (undefined removes it) on one country's entry. */
+/** The profile with one work-permit answer set (undefined removes it) on one country's entry. An answer that
+ *  hides another of that country's fields removes it: a citizen's expiry is never kept. */
 export function withPermit(
   profile: Profile,
+  questionSet: QuestionSet,
   market: string,
   key: string,
   value: string | boolean | undefined,
 ): Profile {
   const byCountry = groupValues(profile, BY_COUNTRY);
-  const entry = { ...groupValues(byCountry, market) };
-  if (value === undefined || value === "") delete entry[key];
-  else entry[key] = value;
+  const entry = withAnswerIn(groupValues(byCountry, market), permitFields(questionSet, market), key, value);
   return { ...profile, [BY_COUNTRY]: { ...byCountry, [market]: entry } };
+}
+
+/** One country's own answers (`answers_by_country`), by market key. */
+export function countryAnswerEntry(profile: Profile, market: string): Record<string, unknown> {
+  return groupValues(groupValues(profile, ANSWERS_BY_COUNTRY), market);
+}
+
+/** The profile with one of a country's own answers set (undefined or "" removes it); every other country's
+ *  answers stay as they are. */
+export function withCountryAnswer(
+  profile: Profile,
+  market: string,
+  key: string,
+  value: string | boolean | undefined,
+): Profile {
+  const byCountry = groupValues(profile, ANSWERS_BY_COUNTRY);
+  const entry = withAnswerIn(groupValues(byCountry, market), [], key, value);
+  return { ...profile, [ANSWERS_BY_COUNTRY]: { ...byCountry, [market]: entry } };
+}
+
+/** The citizenships stored, as entries: a list as written, or the parts of a plain string (an older save or a
+ *  hand edit: "India, Ireland"), so it still shows. A save from the picker writes codes in its place. */
+export function citizenshipEntries(profile: Profile): string[] {
+  const value = groupValues(profile, "personal").citizenships;
+  const parts = Array.isArray(value) ? value : typeof value === "string" ? value.split(/[,;]/) : [];
+  return parts.filter((part): part is string => !isBlank(part)).map((part) => part.trim());
+}
+
+/** The profile with these citizenships (ISO codes, each once; none removes the answer). The server stores
+ *  codes, and what a citizenship settles is read again with the questions. */
+export function withCitizenships(profile: Profile, codes: readonly string[]): Profile {
+  const personal = { ...groupValues(profile, "personal") };
+  const unique = [...new Set(codes.filter((code) => !isBlank(code)))];
+  if (unique.length) personal.citizenships = unique;
+  else delete personal.citizenships;
+  return { ...profile, personal };
+}
+
+/**
+ * The work-permit answers a citizenship settles in one country that still hold: the served `derived`, or none
+ * once an answer you gave there differs from one it settles, because you know something the rule does not
+ * (backend `autofill_derive.derived_in_effect`, which the server applies to what it last read; this applies it
+ * to the answers on screen too). An answer you gave the same way leaves the rest settled.
+ */
+export function derivedPermits(profile: Profile, questionSet: QuestionSet, market: string): Record<string, DerivedAnswer> {
+  const country = countryQuestions(questionSet, market);
+  const derived = country?.derived ?? {};
+  const entry = permitEntry(profile, market);
+  const differs = Object.entries(derived).some(([key, settled]) => {
+    const field = country?.permits.find((f) => f.key === key);
+    if (!field || !answered(field, entry[key])) return false;
+    return (field.boolean ? booleanAnswer(entry[key]) : entry[key]) !== settled.value;
+  });
+  return differs ? {} : derived;
+}
+
+/** One country's permit answers as the fill reads them: each one you gave, over the ones a citizenship
+ *  settles. What decides which of its fields are shown (`fieldShown`), and what its tile says. */
+export function permitAnswers(profile: Profile, questionSet: QuestionSet, market: string): Record<string, unknown> {
+  const entry = permitEntry(profile, market);
+  const settled = Object.entries(derivedPermits(profile, questionSet, market)).map(([key, d]) => [key, d.value]);
+  const given = permitFields(questionSet, market).filter((field) => answered(field, entry[field.key]));
+  return {
+    ...Object.fromEntries(settled),
+    ...Object.fromEntries(given.map((field) => [field.key, field.boolean ? booleanAnswer(entry[field.key]) : entry[field.key]])),
+  };
 }
 
 export function fieldValue(field: FieldDef, value: unknown): string {
@@ -265,7 +382,14 @@ export function fieldValue(field: FieldDef, value: unknown): string {
     const answer = booleanAnswer(value);
     return answer === undefined ? "" : answer ? "yes" : "no";
   }
+  if (field.type === "number" && typeof value === "number" && Number.isFinite(value)) return String(value);
   return typeof value === "string" ? value : "";
+}
+
+/** A stored answer in words, as its field offers it ("Yes", "Citizen"); a typed answer as written. */
+export function answerWords(field: FieldDef, value: unknown): string {
+  const shown = fieldValue(field, value);
+  return field.options?.find((option) => option.value === shown)?.label ?? shown;
 }
 
 export function storedFieldValue(
@@ -279,11 +403,13 @@ export function storedFieldValue(
 }
 
 /** Whether a field holds an answer the readers count: a boolean field a Yes or No, a select one of its
- *  options, a list of countries at least one (the save stores each as its code), a text field any words. */
+ *  options, a list of countries at least one (the save stores each as its code), a number any number, a text
+ *  field any words. */
 export function answered(field: FieldDef, value: unknown): boolean {
   if (field.boolean) return booleanAnswer(value) !== undefined;
   if (field.type === "select") return Boolean(field.options?.some((option) => option.value === value));
   if (field.type === "countries") return Array.isArray(value) && value.some((entry) => !isBlank(entry));
+  if (field.type === "number" && typeof value === "number") return Number.isFinite(value);
   return !isBlank(value);
 }
 
@@ -304,20 +430,34 @@ function countOf(values: Record<string, unknown>, fields: readonly FieldDef[]): 
   };
 }
 
-/** How many of one country's required work-permit answers are given, in its own questions. */
+/** How many of one country's required work-permit answers are given, in its own questions: each you gave, and
+ *  each your citizenship settles there (`derivedPermits`), as setup readiness counts them. */
 export function permitCount(profile: Profile, questionSet: QuestionSet, market: string): Count {
-  return countOf(permitEntry(profile, market), permitQuestions(questionSet, market));
+  const entry = permitEntry(profile, market);
+  const derived = derivedPermits(profile, questionSet, market);
+  const required = permitQuestions(questionSet, market);
+  return {
+    answered: required.filter((field) => field.key in derived || answered(field, entry[field.key])).length,
+    answerable: required.length,
+  };
 }
 
-/** Whether every required work-permit answer of one country is given. A country the set serves no questions
- *  for is open, never answered: a knockout answer is never taken as given. */
+/** Whether citizenship is answered: at least one country, as the picker saves it. A set that does not ask it
+ *  has nothing to answer. */
+export function citizenshipAnswered(profile: Profile, questionSet: QuestionSet): boolean {
+  const field = citizenshipField(questionSet);
+  return !field || answered(field, groupValues(profile, "personal")[field.key]);
+}
+
+/** Whether every required work-permit answer of one country is given or settled. A country the set serves no
+ *  questions for is open, never answered: a knockout answer is never taken as given. */
 export function permitAnswered(profile: Profile, questionSet: QuestionSet, market: string): boolean {
   const count = permitCount(profile, questionSet, market);
   return count.answerable > 0 && count.answered === count.answerable;
 }
 
 /** The profile with one answer set in a group (undefined removes it). A field shown only for one answer
- *  goes with that answer: a self-description must not stay stored under "Female", unseen. */
+ *  goes with that answer (`when`, `unless`): a self-description must not stay stored under "Female", unseen. */
 export function withField(
   profile: Profile,
   questionSet: QuestionSet,
@@ -325,15 +465,9 @@ export function withField(
   key: string,
   value: string | boolean | undefined,
 ): Profile {
-  const values = { ...groupValues(profile, group) };
-  if (value === undefined) {
-    delete values[key];
-  } else {
-    values[key] = value;
-  }
-  for (const field of groupFields(questionSet, group)) {
-    if (field.when?.[0] === key && field.when[1] !== value) delete values[field.key];
-  }
+  const values = withAnswerIn(groupValues(profile, group), groupFields(questionSet, group), key, value, {
+    keepBlank: true,
+  });
   return { ...profile, [group]: values };
 }
 
@@ -376,32 +510,41 @@ export function languageValue(field: FieldDef, stored: unknown): string {
 
 // ------------------------------------------------------------------------------------- Next up
 
-/** A required answer still missing: one country's work-permit question, a contact or start-and-pay field,
- *  or the diversity questions as a whole (answered in their fold, beside their consent). */
+/** A required answer still missing: citizenship (asked with its country picker), one country's work-permit
+ *  question, a contact or start-and-pay field, or the diversity questions as a whole (answered in their fold,
+ *  beside their consent). */
 export type MissingAnswer =
+  | { kind: "citizenship"; field: FieldDef }
   | { kind: "permit"; market: string; field: FieldDef }
   | { kind: "field"; group: "personal" | "preferences"; field: FieldDef }
   | { kind: "diversity" };
 
 export function missingKey(item: MissingAnswer): string {
+  if (item.kind === "citizenship") return "citizenship";
   if (item.kind === "permit") return `permit:${item.market}:${item.field.key}`;
   if (item.kind === "field") return `${item.group}:${item.field.key}`;
   return "diversity";
 }
 
 /**
- * Every required answer still missing, in the order Next up asks: each served country's work permit first, in
- * the order you apply in (`permitMarkets`; the knockout answers, never guessed), then contact, then start and
- * pay, then the diversity questions where a country you apply in has a checked set (`offers_eeo`). The fields
- * are the ones setup readiness counts, as served for where you live, less citizenship: a list of countries,
- * which Country answers asks, never a text box here.
+ * Every required answer still missing, in the order Next up asks: citizenship first, since it settles some
+ * work permits (Country answers asks it, with a country picker, never Contact), then each served country's work
+ * permit, in the order you apply in (`permitMarkets`; the knockout answers, never guessed, and none your
+ * citizenship settles), then contact, then start and pay, then the diversity questions where a country you
+ * apply in has a checked set (`offers_eeo`). The fields are the ones setup readiness counts, as served for
+ * where you live.
  */
 export function missingAnswers(profile: Profile, questionSet: QuestionSet): MissingAnswer[] {
   const out: MissingAnswer[] = [];
+  const citizenship = citizenshipField(questionSet);
+  if (citizenship && !citizenship.optional && !citizenshipAnswered(profile, questionSet)) {
+    out.push({ kind: "citizenship", field: citizenship });
+  }
   for (const market of permitMarkets(questionSet)) {
     const entry = permitEntry(profile, market);
+    const derived = derivedPermits(profile, questionSet, market);
     for (const field of permitQuestions(questionSet, market)) {
-      if (!answered(field, entry[field.key])) out.push({ kind: "permit", market, field });
+      if (!(field.key in derived) && !answered(field, entry[field.key])) out.push({ kind: "permit", market, field });
     }
   }
   for (const group of ["personal", "preferences"] as const) {

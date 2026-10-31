@@ -59,7 +59,7 @@ export function SetupDone({
     if (q.kind !== "permit" || permitAnswered(editing, questionSet, q.market)) return [];
     const entry = permitEntry(editing, q.market);
     const open = permitQuestions(questionSet, q.market).find((field) => !answered(field, entry[field.key]));
-    // The country's own control in Profile's Work permits tile (`af-permit-<market>-<key>`); a country served no
+    // The country's own control in Profile's Country answers tile (`af-permit-<market>-<key>`); a country served no
     // questions is still open, and its link opens the tile.
     const href = open
       ? anchorHref("/profile", `af-permit-${q.market}-${open.key}`)

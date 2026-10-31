@@ -239,65 +239,6 @@
       ]
     }
   ],
-  "permits": {
-    "UK": [
-      {
-        "key": "authorized_now",
-        "label": "Do you have the right to work in the UK now?",
-        "type": "select",
-        "boolean": true,
-        "options": [
-          {
-            "value": "yes",
-            "label": "Yes"
-          },
-          {
-            "value": "no",
-            "label": "No"
-          }
-        ]
-      },
-      {
-        "key": "sponsorship_now",
-        "label": "Do you need visa sponsorship to work in the UK now?",
-        "type": "select",
-        "boolean": true,
-        "options": [
-          {
-            "value": "yes",
-            "label": "Yes"
-          },
-          {
-            "value": "no",
-            "label": "No"
-          }
-        ]
-      },
-      {
-        "key": "sponsorship_future",
-        "label": "Will you need visa sponsorship in the UK later?",
-        "type": "select",
-        "boolean": true,
-        "options": [
-          {
-            "value": "yes",
-            "label": "Yes"
-          },
-          {
-            "value": "no",
-            "label": "No"
-          }
-        ]
-      },
-      {
-        "key": "authorization_expires_on",
-        "label": "Authorization expires on",
-        "optional": true,
-        "type": "date",
-        "hint": "Leave it empty if your right to work there does not run out."
-      }
-    ]
-  },
   "countries": [
     {
       "market": "UK",

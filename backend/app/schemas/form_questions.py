@@ -139,12 +139,9 @@ class QuestionSet(BaseModel):
     resolved for where they live), each apply-in country's own questions in apply-in order
     (`countries`; none when unchosen), the fields asked on each language, whether any apply-in
     market offers a diversity set, and whether the user chose their countries (unchosen: the generic
-    set). `permits` is each country's permit list keyed by market, as Phase 1 served it, until the
-    frontend reads `countries` (Task 3.10 of docs/plans/2026-10-30-country-form-questions.md).
-    `countries` and `chosen` have no default, so they are served either way."""
+    set). `countries` and `chosen` have no default, so they are served either way."""
 
     groups: list[Group]
-    permits: dict[str, list[Field]]
     countries: list[CountryQuestions]
     language_fields: list[Field] = []
     offers_eeo: bool

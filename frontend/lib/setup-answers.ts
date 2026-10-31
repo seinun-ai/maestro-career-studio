@@ -20,14 +20,16 @@ import {
 import type { FormQuestion } from "./setup-flow";
 import type { QuestionSet } from "./types";
 
-/** The profile with one work-permit answer on one country's entry (by market, "UK" never "GB"). */
+/** The profile with one work-permit answer on one country's entry (by market, "UK" never "GB"); an answer
+ *  that hides another of its fields removes it (`withPermit`). */
 export function withPermitAnswer(
   profile: Profile,
+  questionSet: QuestionSet,
   market: string,
   key: string,
   value: string | boolean | undefined,
 ): Profile {
-  return forSaving(withPermit(profile, market, key, value));
+  return forSaving(withPermit(profile, questionSet, market, key, value));
 }
 
 export function withPreference(

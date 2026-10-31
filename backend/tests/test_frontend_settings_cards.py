@@ -289,7 +289,7 @@ def test_every_card_body_is_the_container_its_columns_read():
 
 
 def test_autofill_groups_are_headed_not_ruled():
-    # Work permits: one headed fieldset per country (the other answers are one tile or fold each).
+    # Country answers: one headed fieldset per country (the other answers are one tile or fold each).
     src = _read("components/profile/work-permits.tsx")
     assert "fieldset~fieldset>legend]:border-t" not in src
     assert '<legend className={cn(GROUP_HEADING, "flex items-center gap-1.5")}>' in src
@@ -324,7 +324,7 @@ def test_languages_are_edited_like_education_and_saved_in_the_same_body():
     the profile that saves as you go (Profile's Languages tile since design refresh Task 7.2)."""
     lib = _read("lib/autofill-options.ts")
     src = _read("components/profile/languages.tsx") + lib + _read("components/profile/field-control.tsx")
-    fieldset = _slice(src, "function LanguagesEditor() {", "\n}\n")
+    fieldset = _slice(src, "function LanguagesEditor({ questionSet }: { questionSet: QuestionSet }) {", "\n}\n")
     from app.services.autofill_catalog import MAX_LANGUAGES
 
     # The catalog serves the first MAX_LANGUAGES, and a language missing a level
@@ -333,7 +333,9 @@ def test_languages_are_edited_like_education_and_saved_in_the_same_body():
     assert MAX_LANGUAGES == 4
     assert ("Most important first. The first four are used, and the Companion adds a language to a form "
             "only when its reading, speaking and writing levels are all set.") in " ".join(fieldset.split())
-    assert "{LANGUAGE_FIELDS.map((field) => {" in fieldset
+    # The shared fields, then any a country you apply in asks besides (the CEFR level).
+    assert "{languageFields(questionSet).map((field) => {" in fieldset
+    assert "return [...LANGUAGE_FIELDS, ...served];" in lib
     assert "id = `af-languages-${i}-${field.key}`" in fieldset
     fields = _slice(lib, "export const LANGUAGE_FIELDS: FieldDef[] = [", "\n];")
     assert re.findall(r'key: "(\w+)", label: "([^"]+)"', fields) == [
@@ -361,7 +363,7 @@ def test_languages_are_edited_like_education_and_saved_in_the_same_body():
     # another case ("fluent") shows as its option, never blank.
     shown = _slice(lib, "export function languageValue(", "\n}\n")
     assert "o.value.toLowerCase() === value.toLowerCase()" in shown and "|| NOT_SET.value" in shown
-    assert "value={languageValue(field, entry[field.key as keyof LanguageEntry])}" in fieldset
+    assert "value={languageValue(field, (entry as Record<string, unknown>)[field.key])}" in fieldset
     assert "<FieldControl" in fieldset
 
 

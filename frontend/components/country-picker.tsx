@@ -23,10 +23,17 @@ export function useCountries({ enabled = true }: { enabled?: boolean } = {}) {
 /**
  * A searchable multi-select of countries, valued as ISO codes. `RolePicker`'s multiple mode without
  * its groups and its "add what I typed" row: a country is one of the list's or none.
+ *
+ * A stored entry that is a country's name, not its code (an older save or a hand edit: "India"), shows
+ * as that country, and any change hands back codes in its place; an entry that names no country shows
+ * as written.
  */
 export function CountryPicker(props: {
-  value: string[];
+  value: readonly string[];
   onChange: (codes: string[]) => void;
+  /** A country's own words here, by code, in place of its name (Citizen of: "United Kingdom (British
+   *  citizen)"). */
+  names?: Readonly<Record<string, string>>;
   id?: string;
   /** The input's name. Base UI's input takes none from context here (conventions: Naming a control). */
   "aria-label": string;
@@ -36,14 +43,30 @@ export function CountryPicker(props: {
   readOnly?: boolean;
 }) {
   const { data } = useCountries();
+  const { names } = props;
   // The file is in code order; a reader looks a country up by its name.
   const countries = useMemo(
-    () => [...(data ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
-    [data],
+    () =>
+      (data ?? [])
+        .map((c) => ({ code: c.code, name: names?.[c.code] ?? c.name }))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+    [data, names],
   );
   const byCode = useMemo(() => new Map(countries.map((c) => [c.code, c])), [countries]);
-  // A code the list lacks (or before it loads) still shows, as itself.
-  const selected = props.value.map((code) => byCode.get(code) ?? { code, name: code });
+  const byName = useMemo(
+    () => new Map((data ?? []).map((c) => [c.name.toLowerCase(), byCode.get(c.code) ?? c])),
+    [data, byCode],
+  );
+  // A code the list lacks (or before it loads) still shows, as itself; so does a name it does not know.
+  // Each country once: "IN" and "India" are one.
+  const selected = [
+    ...new Map(
+      props.value.map((entry) => {
+        const country = byCode.get(entry.toUpperCase()) ?? byName.get(entry.toLowerCase()) ?? { code: entry, name: entry };
+        return [country.code, country] as const;
+      }),
+    ).values(),
+  ];
 
   const [query, setQuery] = useState("");
   const popupRef = useRef<HTMLDivElement | null>(null);

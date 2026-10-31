@@ -1198,29 +1198,40 @@
   `lib/setup-flow.test.ts` and `components/setup/setup-flow.test.mjs`.
 - **Profile** (`app/profile/page.tsx`, `components/profile/*`, board "Profile, facts about you") is facts
   about you, one page with no tabs. The header is your name (from your contact answers, else "Profile"),
-  one line of where you live and where you apply, and a ring of the sections setup status reports ready
-  (never a count of its own). **Next up** is the Lead: the first required answer still missing
-  (`lib/autofill-options.ts` `missingAnswers`: each apply-in country's work permit first, then contact, then
-  start and pay), answered in place beside "Never guessed for you"; a Yes or No moves on, a typed answer
-  stays until Next, Skip leaves one for this visit, and diversity only opens its fold. Nine tiles
-  (`lib/profile-tiles.ts`: Contact, Where you apply, Work permits, Jobs you want, How you come across, Start
-  and pay, Education, Languages, Your own questions) each say what they hold in real values with a state
+  one line of where you live and where you apply (until you choose, that none is chosen), and a ring of the
+  sections setup status reports ready (never a count of its own). **Next up** is the Lead: the first required
+  answer still missing (`lib/autofill-options.ts` `missingAnswers`: citizenship first, with its country
+  picker, then each apply-in country's work permits your citizenship does not settle, then contact, then
+  start and pay), answered in place beside "Never guessed for you"; a Yes or No moves on, a typed answer or a
+  picked country stays until Next, Skip leaves one for this visit, and diversity only opens its fold. Nine
+  tiles (`lib/profile-tiles.ts`: Contact, Where you apply, Country answers, Jobs you want, How you come across,
+  Start and pay, Education, Languages, Your own questions) each say what they hold in real values with a state
   word (Ready, Needs you, a count) and open their editor, a `TileCard` (a `SettingCard` with Close), under
   the grid, one at a time; every editor stays mounted while closed. Two folds follow: **Diversity
   questions**, only where an apply-in market `offers_eeo`, with the consent switch and its date beside the
   answers (D10; the confirm's words are `DIVERSITY_CONSENT_CONFIRM`, shared with Setup); while the consent
   is off its summary says the Companion won't fill them (the server withholds them, and setup readiness
   still counts the answers given), and
-  **Eligibility**. Where you apply holds **You live in** and **You apply in** (chips; a chip carries the
-  square of each base resume that stores its country, its name read with it). Work permits asks one set
-  per apply-in country under its name, worded by the market's `work_auth_vocab` (the visa status only for
-  `us_visa`), each answer that country's own entry in `work_auth_by_country`. Contact's state line follows
-  where you live: it carries the home market's `state_label` (State, Province, County), and it is optional
-  (not counted, never Next up) where that market's `asks_state` is false. Every question, its words and
+  **Screening questions** (the eligibility group as served: what the forms of your countries screen on).
+  Where you apply holds **You live in** and **You apply in** (chips; a chip carries the square of each base
+  resume that stores its country, its name read with it); until you choose (`value.chosen` false) no chip is
+  pressed, though the stored default is the US, and the first press is the choice (`useCountriesAutosave`,
+  shared with Setup). **Country answers** asks **Citizen of** first (`CountryPicker`, ISO codes, the United
+  Kingdom read as "United Kingdom (British citizen)"; a stored plain string still shows and is replaced by
+  codes when the picker saves), which it counts beside the permits it settles, as readiness does. Then one
+  fieldset per served country under its name: its work permits, worded by the market's `work_auth_vocab`
+  (the visa status only for `us_visa`), each answer that country's own entry in `work_auth_by_country`,
+  then its own answers (`answers_by_country`, all optional). A permit answer the served `derived` settles,
+  where you gave none, shows as words with "From your citizenship (India)" and **Answer differently**, which
+  brings the control back; an answer that differs settles nothing else there (`derivedPermits`), and a save
+  that changes citizenship or a permit reads the questions again before it counts as saved. With no country
+  chosen it shows Citizen of and a link to Where you apply. Contact's state line follows where you live
+  (served named and counted for that home); Contact never shows citizenship. Every question, its words and
   whether it counts come from the served set (`GET /api/settings/autofill/questions`, read with
   `useFormQuestions` by Profile and Setup alike, the `lib/autofill-options.ts` helpers taking it as
-  `questionSet`), never a list of the frontend's own; Work permits and Next up ask only the countries it
-  lists, in its order. Every answer saves as you go
+  `questionSet`), never a list of the frontend's own; Country answers and Next up ask only the countries it
+  lists (`countries`), in its order. Languages adds the served `language_fields` (the CEFR level) to each
+  language. Every answer saves as you go
   (`AutofillProfileProvider`: one `useAutosave` for the answers). Each editor's status follows its own newest
   edit (`lib/save-surfaces.ts`): Saving until a write that carries it lands, Not saved when the last one
   failed, nothing while it has no edit waiting, so it never says Saved before its own edit is on the server
@@ -1600,7 +1611,7 @@
     Extract job: a job becomes an application when you tailor or apply.
     **Autofill** is the Companion's Fill-step button that fills the form in
     front of you (never Fill this form or Start fill); the answers it fills
-    from are Profile's tiles (Contact, Work permits, Start and pay and the rest).
+    from are Profile's tiles (Contact, Country answers, Start and pay and the rest).
     **Jobs** (the page at `/applications` and its sidebar item, which list
     saved jobs as well as applications), never Applications as a page name
     (the ratchet's "Applications page" rule; a count of actual applications
@@ -1613,8 +1624,12 @@
     Next up too); **Setup** is the first run (**Skip for now**, and **Run
     setup again** in Settings › Basics' About); **More tools** is the
     sidebar's fold. **You live in** (one country) and **You apply in** (one or
-    more) are the market setting on screen; **Work permits** is Profile's tile
-    of each country's answers. Settings' tabs are **Basics**, **Companion**,
+    more) are the market setting on screen; **Country answers** is Profile's tile
+    of your citizenship (**Citizen of**) and each country's answers, an answer your
+    citizenship settles reading **From your citizenship** with **Answer
+    differently**; **Screening questions** is Profile's fold of what forms
+    screen applicants on (past employers, age, restrictive agreements, total
+    experience). Settings' tabs are **Basics**, **Companion**,
     **Agent apps** and **Advanced**.
     **Refresh details**, never re-extract. **gap analysis**, never session
     or tailoring session. A job page has four numbered **steps**, never tabs:
@@ -1778,7 +1793,7 @@
   deep-link the card id (`anchorHref("/profile", "autofill-work_auth")`),
   never the bare page: sending a user to `/settings` for the autofill
   profile is a dead end that shipped once already. In prose, a setting's
-  place reads as a path: Settings › Basics, Profile › Work permits. The
+  place reads as a path: Settings › Basics, Profile › Country answers. The
   place after "Settings ›" is a tab label (`SETTINGS_TABS`) and after
   "Profile ›" a tile or fold title (`lib/profile-tiles.ts`), in the app's
   own words and in the guides (`test_settings_paths_in_words.py`).

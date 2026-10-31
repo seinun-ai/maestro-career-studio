@@ -70,7 +70,7 @@ def _gc_required_verdict(work_auth: WorkAuth) -> tuple[str, str | None]:
         return (
             "profile_missing",
             "This job requires US citizenship or a green card. Add your work "
-            "authorization in Profile › Work permits.",
+            "authorization in Profile › Country answers.",
         )
     if work_auth.status in _CITIZEN_OR_GC:
         return "pass", None
@@ -89,7 +89,7 @@ def _no_sponsorship_verdict(work_auth: WorkAuth) -> tuple[str, str | None]:
         return (
             "profile_missing",
             "This job doesn't sponsor visas. Answer the sponsorship questions in "
-            "Profile › Work permits.",
+            "Profile › Country answers.",
         )
     return "pass", None
 
@@ -134,7 +134,7 @@ def _opt_verdict(stated: str, status: str | None, holder: bool) -> tuple[str, st
         return (
             "profile_missing",
             "This job states an OPT policy. Add your work authorization in "
-            "Profile › Work permits.",
+            "Profile › Country answers.",
         )
     if not holder:
         return "pass", None

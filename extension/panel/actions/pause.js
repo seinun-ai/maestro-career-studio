@@ -432,11 +432,11 @@
   // app's lib/profile-tiles.ts; backend/tests/test_settings_paths_in_words.py checks every "Profile ›").
   const SAVED_IN = {
     preferences: " Saved to Profile › Start and pay.",
-    eligibility: " Saved to Profile › Eligibility.",
+    eligibility: " Saved to Profile › Screening questions.",
   };
 
   /** What became of a learned answer, said after "Filled …". A work permit or country answer names
-   * its country by the country's name, as the Work permits tile heads it (never the market key; a
+   * its country by the country's name, as the Country answers tile heads it (never the market key; a
    * server that names none leaves the name out). One not saved says why, and that the next form asks
    * again: current pay, a country Profile keeps no answers for, or no one country known. */
   function learnedSentence(target) {
@@ -449,7 +449,7 @@
         : " Not saved: it isn't clear which country this answer is for, so it will ask again.";
     }
     if (target.market) {
-      return target.country ? ` Saved to Profile › Work permits (${target.country}).` : " Saved to Profile › Work permits.";
+      return target.country ? ` Saved to Profile › Country answers (${target.country}).` : " Saved to Profile › Country answers.";
     }
     if (target.store !== "profile") return " Saved. It won't ask again.";
     return SAVED_IN[target.path[0]] ?? " Saved to Profile.";
