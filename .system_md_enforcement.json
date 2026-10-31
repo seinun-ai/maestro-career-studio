@@ -358,7 +358,13 @@
       {"path": "backend/app/services/autofill_country.py", "symbol": "def market_for_question"},
       {"path": "backend/tests/test_autofill_country.py", "symbol": "test_a_named_country_without_answers_is_unknown_not_the_job_country"},
       {"path": "backend/tests/test_autofill_country.py", "symbol": "test_no_country_in_the_question_uses_the_job_country_then_asks"},
-      {"path": "backend/tests/test_autofill_country.py", "symbol": "test_the_fill_loop_answers_each_question_from_its_own_country"}
+      {"path": "backend/tests/test_autofill_country.py", "symbol": "test_the_fill_loop_answers_each_question_from_its_own_country"},
+      {"path": "backend/app/services/autofill_job.py", "symbol": "def view_for"}
+    ],
+    "inv-country-answers-stay-home": [
+      {"path": "backend/tests/test_autofill_country.py", "symbol": "test_a_uae_job_reads_uae_answers_and_none_of_germanys"},
+      {"path": "backend/tests/test_autofill_derive.py", "symbol": "test_derived_answers_are_never_stored"},
+      {"path": "backend/app/services/autofill_profile.py", "symbol": "def job_view_refusal"}
     ]
   },
   "unpinned": {

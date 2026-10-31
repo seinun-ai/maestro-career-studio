@@ -263,10 +263,16 @@ def get_autofill_context(
 ):
     """Everything one fill needs, resolved from ONE load of the resume.
 
-    `profile.work_auth` is one country's work-permit answers and `profile.work_auth_market` names
-    that market (inv-work-permit-per-country): the job's, or with `question`, the one that question
-    gets (the country it names, else the job's). The Companion's pause row asks with `question` to
-    learn an answer into that market's entry, and never learns one when it is null; with `question`,
+    `profile` is a job's view, the fold of one market (`autofill_job.profile_for_job` →
+    `autofill_country.for_market`; inv-work-permit-per-country, inv-country-answers-stay-home): the
+    job's market, or with `question`, the one that question gets (the country it names, else the
+    job's); none when neither is known. `profile.work_auth` is that market's work-permit answers,
+    citizenship-settled ones included, and `profile.work_auth_market` names the market; that market's
+    own answers (`answers_by_country`) are written over the flat slots they fill, which
+    `profile.country_answered` lists (`[]`: none, always present). That marker makes the view
+    unsaveable: a PUT or PATCH of it is a 422 (`autofill_profile.job_view_refusal`), so a job's view
+    is never saved; a save starts from GET /api/settings/autofill. The Companion's pause row asks with `question` to learn an answer into
+    that market's entry, and never learns one when the market is null; with `question`,
     `profile.work_auth_country` names that question's one country in words (a country no market covers
     too), so the panel can say why it kept nothing. Every market's permits ride along as
     `work_auth_by_country`; with no application and no question, no country's answers are folded into

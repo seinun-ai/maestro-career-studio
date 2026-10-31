@@ -28,8 +28,66 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+Until now, Maestro's form answers were written for a US applicant. Apply in India and nobody asked your
+notice period in days. Pick no country at all and you got the US questions anyway.
+
+Now the questions follow the countries you apply in, and the UAE joins as the ninth. Tell Maestro your
+citizenship once and it settles the work-permit answers wherever the law already does, like a French
+citizen working in Germany. Anything you answer yourself still wins. You answer each fact about yourself
+once, and each country hears only its own.
+
+### Added
+
+- **Form answers follow the countries you apply in.** Profile, Setup and the Companion ask each country's
+  own questions, from one catalog that countries asking the same things share. India adds notice in days,
+  whether you are serving notice and your last working day, preferred work locations, total experience
+  and current CTC. Germany and the Netherlands add a CEFR level to each language. The US screening
+  questions show only while you apply in the US. With no country chosen you get the generic set and no
+  work-permit questions, and Where you apply shows nothing picked, so one click is the choice.
+- **The United Arab Emirates.** The ninth country: its residence statuses, the Emirate line in your address
+  with no postcode needed, sponsorship questions about your residence visa, whether you are in the UAE now
+  and hold a UAE driving licence, and pay as a total monthly salary in dirhams. Canada and Australia get
+  their own status lists too.
+- **Citizenship, once.** **Citizen of** takes one or more countries. It settles the work-permit answers
+  where the law does: in your own country, for an EU, EEA or Swiss citizen in Germany, the Netherlands and
+  Ireland, for a British citizen in Ireland, an Irish citizen in the UK and a GCC national in the UAE.
+  A settled answer reads "From your citizenship (India)" with **Answer differently**. An answer you give
+  always wins, and one that contradicts the rule turns it off for that country. Nothing settled this way is
+  stored. Citizenship is the one new required answer, so Profile and Setup ask it once.
+- **Pay in each country's terms.** Expected pay can be given per country, worded as that country's forms
+  ask it: Expected CTC (₹ per year) in India, gross monthly excluding holiday allowance in the Netherlands,
+  gross annual in Germany, base excluding super in Australia, total monthly in the UAE. On that country's
+  jobs it fills over your expected salary, which stays the answer everywhere else and the one Setup counts.
+  Current CTC is filled only while the Companion may fill agreements and signatures.
+- **Agents see each country too.** `set_autofill_profile` takes `answers_by_country` and the new keys
+  (citizenships, notice in days, serving notice, last working day, preferred locations, total experience,
+  CEFR). `get_autofill_profile` lists each country's questions, choices and settled answers, and whether a
+  country is chosen, as `get_setup_status` does. The job search brief shows settled answers and each
+  country's expected pay with its wording. Still 94 tools.
+
+### Changed
+
+- **Profile › Work permits is now Country answers:** Citizen of at the top, then each country you apply in
+  with its work permits and its own answers. **Eligibility is now Screening questions.** Messages that send
+  you there use the new names.
+- **Setup asks only what your citizenship leaves.** Form answers start with Citizen of, then a work-permit
+  card for each country your citizenship does not settle, then notice and relocation. An Indian citizen
+  applying in India, the UAE, Germany and the Netherlands is asked about the UAE, Germany and the
+  Netherlands only.
+- **New questions don't lower your readiness.** The new country questions are optional, apart from
+  citizenship, so no existing count drops for them. An install that already answered work-permit
+  questions keeps its country as chosen.
+- **The Companion keeps a learned answer in its country.** A work permit, expected pay or "Are you in the
+  UAE now?" learned on a job is saved for that job's country, so "Expected CTC" on an Indian job never
+  fills a form somewhere else. With no country known, a country answer is filled and not kept, and expected
+  pay falls back to your expected salary. The note says "Saved to Profile › Country answers (India)."
+  Current pay is never learned. This reaches the Chrome Web Store with the next Companion release.
+
 ### Fixed
 
+- A German or UAE application could be offered your home country's work-permit answers: Jev read only your
+  home country's set, and the fast model got every country's at once. Every fill now reads the job's own
+  country, and a question that names another country gets that country's answers.
 - Leaving a job page by Back to Jobs or the browser's Back now morphs the job back into its row, and the Jobs list keeps its scroll position and filters.
 
 ## [0.12.0] — 2026-10-28

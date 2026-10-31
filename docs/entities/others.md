@@ -1410,7 +1410,8 @@
     `OPENAI_BASE_URL`, after which every request loses its scheme and surfaces as a misleading `APIConnectionError`. Related: `llm._get_client`
     raises a named error when there is no key AND no custom endpoint; Langfuse tracing requires an explicit `LANGFUSE_HOST` alongside both keys
     (opt-in by DESTINATION — keys without a host fall back to Langfuse Cloud and would ship resume text to a third party); compose does not
-    forward the Langfuse vars.
+    forward the Langfuse vars. `tests/test_config.py` runs the import-time case in a SUBPROCESS: reloading `app.config` in-process poisons
+    later tests with `/app` paths.
   - **Placement target details** (inv-placement-validation-twins): extra targets require `section="extra"`, a stable `section_key`, and either
     an enabled entry's original index or, for a flat bullets section, the same stable key as `index_or_category`.
   - **MCP control details** (inv-mcp-controls): the five settings are the form answers, job preferences, market, money's

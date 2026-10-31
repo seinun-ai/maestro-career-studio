@@ -110,8 +110,10 @@ backend/
                        registry (model id to provider), OpenAI-compatible, Gemini and Claude adapters),
                        attachment_extract (bounded DOCX/PPTX + notes; decks are documents),
                        autofill_choose + autofill_reason + contact_scan + autofill_slots + autofill_education + autofill_place + autofill_sponsorship + board_visits + jev (Companion fill), resumes_folder (visible PDF copies),
-                       application_status (the one status writer), countries + markets + autofill_country + autofill_derive +
-                       form_questions (data: services/data/*.yaml), money + money_settings + fx_rates (ECB), rates, search_summary, today, …)
+                       application_status (the one status writer), countries + markets + autofill_country + autofill_derive
+                       (permits a citizenship settles, on read) + form_questions (data: services/data/*.yaml; the catalog: packs
+                       as field tags, status lists, country answers, language fields, citizenship rules), money + money_settings +
+                       fx_rates (ECB), rates, search_summary, today, …)
     automations/skills/  the agent prompts, one <name>/SKILL.md each: the Automations
                        source of the Automations page; indexed by docs/skills/README.md
     templates/         six seeded resume designs + both cover-letter sources (licenses: THIRD_PARTY_NOTICES.md)
@@ -274,30 +276,28 @@ import and profile endpoints and store no progress of their own; frontend-conven
 
 - **The browser is the attacker; six controls are the whole boundary.** `{#inv-browser-boundary}` The API has no authentication; the user's
   browser is inside the boundary and can be aimed at `127.0.0.1`. (1) **Host allowlist on BOTH servers:** `TrustedHostMiddleware` rejects any
-  Host not in `settings.allowed_hosts` (without it DNS rebinding makes an attacker page same-origin); `frontend/proxy.ts` and the `/api` route
-  repeat it from ONE definition, `lib/allowed-hosts.mjs`. (2) **Origin gate** (`app/origin_guard.py`): a present-but-unlisted `Origin` is
-  refused before routing, an absent one allowed; raw ASGI, never `BaseHTTPMiddleware`. (3) **Extension origins are exact ids**
-  (`settings.maestro_cs_extension_ids`), never a pattern. (4) **Template source is data, not code:** `pdf_render._environment()` is a
-  `SandboxedEnvironment`. (5) **The compiler can neither execute, read siblings nor download:** `-no-shell-escape` unconditional, kpathsea
-  paranoid mode, a fresh temp folder per run, Typst proxies pointed at a dead address. (6) **A template id is a slug, enforced in the
-  REGISTRY** (`validate_template_id`). All six pinned in `tests/test_security_boundaries.py`,
-  `test_frontend_host_guard.py`, `test_template_id_containment.py`. Why each exists, the middleware order and the related controls:
-  `docs/entities/others.md`, "Browser boundary details".
+  Host not in `settings.allowed_hosts` (DNS rebinding); `frontend/proxy.ts` and the `/api` route repeat it from ONE definition,
+  `lib/allowed-hosts.mjs`. (2) **Origin gate** (`app/origin_guard.py`): a present-but-unlisted `Origin` is refused before routing, an absent
+  one allowed; raw ASGI, never `BaseHTTPMiddleware`. (3) **Extension origins are exact ids** (`settings.maestro_cs_extension_ids`), never a
+  pattern. (4) **Template source is data, not code:** `pdf_render._environment()` is a `SandboxedEnvironment`. (5) **The compiler can
+  neither execute, read siblings nor download:** `-no-shell-escape` unconditional, kpathsea paranoid mode, a fresh temp folder per run,
+  Typst proxies pointed at a dead address. (6) **A template id is a slug, enforced in the REGISTRY** (`validate_template_id`). All six
+  pinned in `tests/test_security_boundaries.py`, `test_frontend_host_guard.py`, `test_template_id_containment.py`. Why each exists, the
+  middleware order and the related controls: `docs/entities/others.md`, "Browser boundary details".
 - **An empty environment variable means UNSET.** `{#inv-empty-env-unset}` `config.scrub_empty_env()` deletes every empty or whitespace env var
   at import, before any SDK client is constructed (`config.SCRUBBED_ENV` records what went), because `docker-compose.yml` writes `VAR: ${VAR:-}`
   for optional settings — an EMPTY STRING, not an omission — and third-party SDKs read `os.environ` directly. App-level `or None` guards cannot
-  help, so the rule is enforced once at the environment boundary: do not "simplify" it away, and do not add a `${VAR:-}` line believing the
-  app will cope. Pinned by `tests/test_config.py` (the import-time case runs in a SUBPROCESS — reloading `app.config` in-process poisons later
-  tests with `/app` paths). The symptom, the related key rule and the Langfuse rule: `docs/entities/others.md`, "Environment boundary details".
+  help, so it is enforced once, at that boundary: never "simplify" it away or add a `${VAR:-}` line trusting the app to cope. Pinned by
+  `tests/test_config.py`; the symptom, the key and Langfuse rules and the subprocess test: `docs/entities/others.md`, "Environment
+  boundary details".
 - **Staged artifact removal** `{#inv-staged-artifact-removal}`: NEVER delete rendered files in a transaction that can roll back. Every
   `customized_json` write uses `services/application_writes.stage_resume_update` (sets draft, clears refs, records version, returns stale
   paths); callers commit, THEN call `artifacts.remove_files(stale)` to remove files/PDF previews and prune empty folders (what warns and what
-  stays quiet: `docs/entities/others.md`, "Artifact removal details"). Chat edits and version restores follow this pattern; never
-  reintroduce an immediate unlink helper.
-- **Stable per-application `artifact_dir`** `{#inv-stable-artifact-dir}`: one folder per application,
-  `applications/Company_Role_YYYYMMDD_<idprefix>/`, allocated once via `services/application_artifacts.get_dir`, persisted on
-  `Application.artifact_dir`; resume/source/PDF, previews, cover letters and proposal `evidence/` colocate there. Upload constraints:
-  `docs/entities/others.md`, "PDF upload staging".
+  stays quiet: `docs/entities/others.md`, "Artifact removal details"); chat edits and version restores included. Never reintroduce an
+  immediate unlink helper.
+- **Stable per-application `artifact_dir`** `{#inv-stable-artifact-dir}`: one folder per application, `applications/Company_Role_YYYYMMDD_<idprefix>/`,
+  allocated once via `services/application_artifacts.get_dir`, persisted on `Application.artifact_dir`; resume/source/PDF, previews, cover
+  letters and proposal `evidence/` colocate there. Upload constraints: `docs/entities/others.md`, "PDF upload staging".
 - **Status changes go through `set_status`.** `{#inv-status-through-set-status}` `application_status.set_status` alone writes
   `Application.status`, adding one dated `application_status_events` row per change (docs/entities/application.md). Pinned by
   `tests/test_status_events.py`.
@@ -308,9 +308,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
   the skills section, never as a fabricated experience/project bullet. Enforced server-side in `save_resolutions` (guards MCP/API callers, not
   just the UI; `_is_missing_skill`). Pinned by `tests/test_tailoring_sessions_router.py`.
 - **Placement validation twins** `{#inv-placement-validation-twins}`: `_validate_placement_target` (tailoring_session, raises) and
-  `placement_targets.coerce` (scrubs LLM output) both call the pure `placement_targets.canonicalize` — `services/placement_targets.py` owns the
-  placement-target contract, and the frontend's `buildPlacementTargets` hand-mirrors its targets shape. What an extra target requires:
-  `docs/entities/others.md`,
+  `placement_targets.coerce` (scrubs LLM output) both call the pure `placement_targets.canonicalize`; that module owns the contract, and
+  the frontend's `buildPlacementTargets` hand-mirrors its targets shape. What an extra target requires: `docs/entities/others.md`,
   "Placement target details".
 - **MCP control invariants** `{#inv-mcp-controls}`: no tool name contains "delete"; no set-default-template tool; MCP writes five settings
   through four routes, never `eeo`, and the form answers, job preferences and market (money rides on it) go through agent PATCH routes
@@ -324,8 +323,7 @@ import and profile endpoints and store no progress of their own; frontend-conven
 - **`edit_application` edits the current draft in place.** `{#inv-edit-in-place}` (MCP): its ops apply to the CURRENT `customized_json`,
   keeping every earlier edit (the base only with no draft yet); no MCP tool rebuilds a draft from the base outside a tailoring session
   (REST `from-base` stays for the web). Edit indices are **0-based into the full JSON array**, including `enabled: false` rows omitted
-  from PDF; PATCH `/edits` echoes `applied[]`. Pinned by `mcp_server/tests/test_server.py`, `test_profiles.py` and
-  `tests/test_resume_edit_service.py`.
+  from PDF; PATCH `/edits` echoes `applied[]`. Pinned by `mcp_server/tests/test_server.py`, `test_profiles.py`, `tests/test_resume_edit_service.py`.
 - **An agent request never reaches Maestro's model while the agent app writes.** `{#inv-agent-writer}` A request with
   `X-Maestro-CS-Origin: mcp` (every MCP call) is an agent request; `mcp_workflow.writer` (default `"agent"`, set only in Settings ›
   Agent apps) says who writes for it. `app/agent_writer.py` marks and decides; each writing route refuses with a 409 naming the agent's
@@ -342,21 +340,20 @@ import and profile endpoints and store no progress of their own; frontend-conven
 - **Filled-answer values stay in the receipt table.** `{#inv-filled-answers-local}` What the Companion or an agent filled into an application
   form (`POST /api/jobs/{id}/filled-answers`, MCP `record_filled_answers`) lives only in the local `filled_answers` table
   (`services/filled_answers.py`; `docs/entities/filled-answers.md`): one row per page run, linked to the job's application (by base on a legacy
-  multi-application job). It
-  never enters telemetry, run traces, Langfuse or exports. An EEO value is stored only under recorded EEO consent (the fill's own gate,
-  `eeo_consent.withhold_unconsented`, asked at write; the read is gated again as a second guard); withdrawing consent clears stored EEO answers;
-  no agent read returns an EEO value, marked or not (the server classifies by question words too, the MCP client strips again, and no MCP path
-  reads the web UI's `GET /api/jobs/{id}/filled-answers`). How the Companion panel posts it (never through telemetry, only from frames that
-  earn the data): that file. Pins (invariant, panel receipt, API, agent and MCP client tests): `.system_md_enforcement.json`.
+  multi-application job). It never enters telemetry, run traces, Langfuse or exports. An EEO value is stored only under recorded EEO
+  consent (the fill's own gate, `eeo_consent.withhold_unconsented`, asked at write; the read is gated again as a second guard); withdrawing
+  consent clears stored EEO answers; no agent read returns an EEO value, marked or not (the server classifies by question words too, the MCP
+  client strips again, and no MCP path reads the web UI's `GET /api/jobs/{id}/filled-answers`). How the Companion panel posts it (only from
+  frames that earn the data): that file. Pins (invariant, panel receipt, API, agent and MCP client tests): `.system_md_enforcement.json`.
 - **A frame must EARN the user's data.** `{#inv-frame-earns-data}` `sw.js` authorizes a broadcast at the sender, but `broadcastToFrames`
-  targets every frame — a job page carries ad/analytics/chat iframes, and the ISOLATED world protects the message in transit, NOT the DOM
-  written into: a frame owns its DOM, so a profile value in a third-party frame's input is readable by that frame's script. `agent.js` gates
+  targets every frame (ad, analytics and chat iframes too), and the ISOLATED world protects the message, NOT the DOM written
+  into: a profile value in a third-party frame's input is readable by that frame's script. `agent.js` gates
   every fan-out write on `frameMayReceiveUserData(msg)`: the TOP frame passes; a SUBFRAME must show `detectPage().form`, OR sit on exactly
   the http(s) `flowOrigin` the panel vouches for (a confirmed form in this tab, same employer, within the hour). Detection throwing refuses;
   a refused frame returns the handler's EMPTY shape, never a throw. Attach also requires a VISIBLE input (`input.files` is readable with no
   gesture). The gated ops and the vouching rule: `docs/entities/others.md`, "Frame gate details". Pinned by `tests/test_extension_frame_gate.py`.
-- **The policy deny-list is single-source, and it is TWO lists.** `{#inv-policy-deny-list-single-source}` `extension/shared/policy.js` (in
-  `shared/`, since the panel consults it too) declares each exactly once: `NEVER_FILLED` (signatures/initials, passwords, government IDs) and
+- **The policy deny-list is single-source, and it is TWO lists.** `{#inv-policy-deny-list-single-source}` `extension/shared/policy.js` (the
+  panel consults it too) declares each exactly once: `NEVER_FILLED` (signatures/initials, passwords, government IDs) and
   `CONSENT_FORMS` (the application's OWN certify/acknowledge/attest/terms/arbitration/waiver boxes). WITHOUT the standing `consent_forms`
   permission (inv-eeo-standing-consent) both lists and the salary rule refuse; WITH it `isPolicyBlocked(label, {consentForms: true})` refuses
   NO label (the user's application, recorded revocable consent). Submit stays the user's at every setting; Next is clicked only by
@@ -368,10 +365,10 @@ import and profile endpoints and store no progress of their own; frontend-conven
 - **One label-pattern table, two readers** `{#inv-one-label-pattern-table}` (`extension/shared/profile-fields.js`). The patterns naming a
   TYPED home in the autofill profile (`eligibility.*`, `work_auth.*`, `preferences.*`, `answers_by_country.*`) are read by
   `content/autofill.js`'s rule table, which FILLS those fields, and by the panel's `saveTargetFor`, which decides where a pause-row answer
-  is LEARNED. They must be one table: an answer learned into `profile.custom` for a field the rules fill from `preferences.notice_period`
-  lands where the rules do not look, so the same question pauses on every later application with nothing failing. **The learn store is the
-  autofill profile, never `qa_entries`** — that table is application-scoped and no reader feeds it back into a fill, so "pause once, learn
-  forever" is only true of `profile.custom` (matched by the rule pass on every later form) and the typed keys. Wiring faults are loud (the
+  is LEARNED. One table, since two drift: an answer learned into `profile.custom` for a field the rules fill from `preferences.notice_period` lands
+  where they never look, and the question pauses on every later form with nothing failing. **The learn store is the autofill profile, never
+  `qa_entries`** (application-scoped, never read back into a fill): "pause once, learn forever" holds only for `profile.custom` (the rule
+  pass matches it on every later form) and the typed keys. Wiring faults are loud (the
   two load-time throws: `docs/entities/others.md`, "Label-pattern table details").
 - **Em-dash rule** `{#inv-em-dash}`: model- or agent-written answers, cover letters and `kb_add_points` drafts lose U+2014/U+2013 at store
   time (`qa.scrub_typographic_dashes`); a rendered PDF holds none (ATS parsers), and MCP `get_rendered_pdf` is the resume-PDF backstop
@@ -383,46 +380,42 @@ import and profile endpoints and store no progress of their own; frontend-conven
   `eeo_consent.withhold_unconsented`, strips `profile.eeo` unless `enabled`, and current pay (`AGREEMENT_SLOTS`) unless `consent_forms`, for
   every outward reader — `GET /api/autofill/context`, the `/choose` prompt AND the Jev engine's slot catalog — and fails CLOSED when consent
   cannot be computed; the MCP client keeps its OWN strip (two gates, not a relocated one). Pins (router, `/choose`, Jev):
-  `.system_md_enforcement.json`. No inference or invented EEO answers. Human-only at ANY setting is Submit and nothing wider (Next belongs
-  to the run, per inv-policy-deny-list-single-source); `consent_forms` lifts every label refusal for the callers that pass it, and only it,
-  as served, adds `derived.agrees_to_terms`. The stamp, which callers, the chat rule and the provider list: `docs/entities/others.md`, "EEO
-  consent details".
+  `.system_md_enforcement.json`. No inference or invented EEO answers. Only Submit is human-only at ANY setting
+  (inv-policy-deny-list-single-source); only `consent_forms`, as served, adds `derived.agrees_to_terms`. The stamp, which callers, the chat
+  rule and the provider list: `docs/entities/others.md`, "EEO consent details".
 - **Provider data** `{#inv-provider-tagged-meta}`: opaque blocks (`ProviderMeta`: Claude thinking signatures, Gemini thought signatures)
-  carry their provider and reach only that provider; `replay.for_provider` strips them for any other, so a model switch mid-chat never leaks
-  one vendor's blocks to another. Pinned by `tests/test_replay.py`.
+  carry their provider and reach only that provider; `replay.for_provider` strips them for any other, a model switch mid-chat included.
+  Pinned by `tests/test_replay.py`.
 - **PDF word-spacing** `{#inv-pdf-word-spacing}`: pdflatex+XCharter joins words for strict extractors; `pdfinterwordspaceon` + the
-  parse_certified gate protect this — see the shared header partial `_header.tex.j2`, which BOTH resume and cover-letter templates include
-  (format/scanner changes must handle both). pdfTeX 1.40.27 misplaces that space for many Type 1 fonts → overprinted words that still
-  extract cleanly; `template_validation.text_overprints` refuses such a LaTeX sample and `engines` warns on that build. The fonts, the boot
-  re-check and the host-TeX rule: `docs/entities/others.md`, "PDF word-spacing details". Pinned by `tests/test_pdf_render.py` and
-  `tests/test_template_overprint.py`.
+  parse_certified gate protect this in the shared header partial `_header.tex.j2`, which BOTH resume and cover-letter templates include
+  (format/scanner changes must handle both). pdfTeX 1.40.27 overprints words for many Type 1 fonts, unseen by extractors;
+  `template_validation.text_overprints` refuses such a LaTeX sample and `engines` warns on that build. The fonts, the boot re-check and the
+  host-TeX rule: `docs/entities/others.md`, "PDF word-spacing details". Pinned by `tests/test_pdf_render.py`, `test_template_overprint.py`.
 - **A render never changes engine silently** `{#inv-render-fallback-explained}`: `services/engines` is the ONE probe; `MAESTRO_CS_PDFLATEX`
   overrides and fails CLOSED. Without `pdflatex`, `pdf_render.resolve_render_template` uses the first ready Typst template for LaTeX
   resumes, bases and cover letters; `render_note` names both. VALIDATION never substitutes. `base_resume_render.record_render_error`:
   committed writes persist `render_error`; render-only requests return 400, never 500. Startup validates seed templates before rendering
   bases, and a seed-render failure leaves the base usable (`docs/entities/others.md`, "Render fallback details"). Call sites:
   `tests/test_render_note_coverage.py`. Pins: `tests/test_render_fallback.py`, `tests/test_seeding.py`.
-- **`user_cannot_confirm` is durable.** `{#inv-provenance-no-decay}` No code path upgrades that provenance to anything else — including the
-  gap flow that writes it: a "cannot confirm" gap outcome stores a retired `user_cannot_confirm` point and future sessions pre-resolve the
-  claim instead of re-asking (where it lands and how it matches: `docs/entities/others.md`, "KB provenance details"). Base-sync of the same claim
-  drafts a NEW `user_authored` point and leaves the record untouched — new first-party
-  evidence beats an old "don't know"; the draft queue is where the user reconciles. Pinned by `tests/test_kb_provenance_stamping.py`
+- **`user_cannot_confirm` is durable.** `{#inv-provenance-no-decay}` No code path upgrades that provenance, the gap flow
+  that writes it included: a "cannot confirm" outcome stores a retired `user_cannot_confirm` point, and later sessions pre-resolve the claim
+  instead of re-asking (where it lands and how it matches: `docs/entities/others.md`, "KB provenance details"). Base-sync of the same claim
+  drafts a NEW `user_authored` point and leaves the record untouched (new first-party evidence beats an old "don't know"; the user
+  reconciles in the draft queue). Pinned by `tests/test_kb_provenance_stamping.py`
   (`test_no_writer_flips_user_cannot_confirm`) and `tests/test_gap_cannot_confirm.py` (`test_nothing_upgrades_user_cannot_confirm`).
 - **Column types come from ONE module.** `{#inv-single-dialect}` SQLite is the only runtime database. `app/models/types.py` (`JSONDoc`,
   `UUIDType`, `UTCDateTime`) is the only place a column type is chosen, and nothing under `app/` imports `sqlalchemy.dialects`.
   `UTCDateTime` is the whole timezone story: aware in Python, naive UTC on disk, and a NAIVE bind raises; the APP writes every timestamp
   (`default=utcnow`, `onupdate=utcnow`) so one format lands on disk. Pinned by `tests/test_db_portability.py`.
 - **Job-site passwords stay in their local file.** `{#inv-job-site-password-local}` `settings/secrets/job-site-login.json` is 0600 (directory
-  0700). Never DB, exports, telemetry or logs.
-  Settings GET/PUT return only `{email, password_set}`; validation errors are sanitized. TWO routes hand it out, both needing full automation
-  On, a Queued/approved proposal and a company off the skip list, each recording `ConsentEvent(action="login_shared")`, never the value. POST
-  `/api/proposals/{id}/job-site-login` requires NO `Origin` (MCP origin; channel `mcp`, note = client name) and the login passes through the
-  agent's AI provider. POST `/api/companion/job-site-login` (`{proposal_id}`; channel `companion`) is admitted only for the Companion
-  extension's origin, which types it once (top frame, known ATS host) to sign in or create an account, and the password never reaches a
-  model, run record, card, receipt, trace, telemetry or error (the file, frame, host, park and box rules: `docs/entities/others.md`,
-  "Job-site login file details"). Pins:
-  `tests/test_job_site_login*.py`, `test_companion_job_site_login.py`, `mcp_server/tests/test_client_job_site_login.py` (symbols in
-  `.system_md_enforcement.json`).
+  0700); never DB, exports, telemetry or logs. Settings GET/PUT return only `{email, password_set}`; validation errors are sanitized. TWO
+  routes hand it out, both needing full automation On, a Queued/approved proposal and a company off the skip list, each recording
+  `ConsentEvent(action="login_shared")`, never the value. POST `/api/proposals/{id}/job-site-login` requires NO `Origin` (MCP origin; channel
+  `mcp`, note = client name) and the login passes through the agent's AI provider. POST `/api/companion/job-site-login` (`{proposal_id}`;
+  channel `companion`) is admitted only for the Companion extension's origin, which types it once to sign in or
+  create an account, and the password never reaches a model, run record, card, receipt, trace, telemetry or error (the file, frame, host,
+  park and box rules: `docs/entities/others.md`, "Job-site login file details"). Pins: `tests/test_job_site_login*.py`,
+  `test_companion_job_site_login.py`, `mcp_server/tests/test_client_job_site_login.py` (symbols in `.system_md_enforcement.json`).
 - **Automatic consent is gated by the user's switch.** `{#inv-auto-consent-gated}` Off by default; only PUT `/api/settings/full-automation`
   writes it (StrictBool); PUT `/api/settings/auto-apply` preserves it. Channel `auto` approves only `accepted` (Queued),
   requires `final_review` evidence, re-checks the company blocklist, and keeps the daily-cap/already-applied gates; an auto-attested submit,
@@ -431,8 +424,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
   judgment. Only the Companion's exact extension origin may name channel `companion` (the user's Apply, a relink of an `accepted`
   proposal); the user's real Submit is recorded only by `POST /api/proposals/{id}/companion-submitted`, which clicks nothing (the queue
   and relink rules and the submit record: `docs/entities/others.md`, "Proposal relink from the Companion" and "The Companion's run"). A skipped
-  (rejected) proposal blocks queuing its job again, except an
-  "applied manually" one, which blocks only while an application of the job is still applied. Pins: `tests/test_full_automation_setting.py`,
+  (rejected) proposal blocks queuing its job again, except an "applied manually" one, which blocks only while an application of the job is
+  still applied. Pins: `tests/test_full_automation_setting.py`,
   `test_proposal_state_machine.py`, `test_companion_submitted.py`, `test_proposals_router.py` (symbols in `.system_md_enforcement.json`).
 - **One writer per job; the laptop owns the profile.** `{#inv-one-writer-ownership}` With sync on (a key file exists) every job has one owner
   machine (`jobs.owner_machine`, NULL = this one) and the other copy holds a read-only replica; the laptop owns the whole profile, which the
@@ -440,8 +433,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
   row ("Sent at the next sync") the OWNER applies under the normal rules (state machine, forward-only statuses, daily cap); anything else on
   it is refused. Only a handover moves ownership, `offered` (laptop to bot) or `returning` (bot to laptop); what starts, cancels or refuses
   each, the columns and the offers route: `docs/entities/job.md`, "Ownership under sync". The same JD text on
-  both copies keeps the laptop's job (`duplicates.py`). Without a key every job is owned here and every `/api/sync/*` route is a 404. Pinned
-  by `tests/sync/test_guard.py` and `tests/sync/test_home_endpoints.py`.
+  both copies keeps the laptop's job (`duplicates.py`). Without a key every job is owned here and every `/api/sync/*` route is a 404.
+  Pinned by `tests/sync/test_guard.py`, `tests/sync/test_home_endpoints.py`.
 - **The flush guard is the ownership check, and it runs before disk.** `{#inv-flush-guard}` One SQLAlchemy `before_flush` hook
   (`services/sync/hooks.py`) guards EVERY write path (web, MCP, Companion, the Assistant's in-process writes): it raises `NotOwnedHere` (a
   409) for a replica, an offered job (laptop), a returning job (bot), a row it cannot tie to a job, and any profile row on the always-on
@@ -452,7 +445,7 @@ import and profile endpoints and store no progress of their own; frontend-conven
   session-state rules: `docs/entities/others.md`, "Flush guard details"). Pinned by `tests/sync/test_guard.py`.
 - **Every sync message is sealed; the key never travels.** `{#inv-sync-channel}` Peer routes and `/api/sync/enroll` are AES-256-GCM, with
   HKDF-SHA256 keys derived from the sync key or the one-time pairing code; a header MAC is checked before any body. An unsealed request, a
-  failed seal, or an `Origin` on a sealed route is a bare 404, byte-identical to sync being off (a 403 would show that sync is on); with no
+  failed seal, or an `Origin` on a sealed route is a bare 404, byte-identical to sync being off (a 403 would reveal it); with no
   key file every `/api/sync/*` route is that 404 and the always-on copy serves no home routes. Only `/api/sync` may be published (Tailscale
   Funnel); while `SYNC_PUBLIC_HOST` is set every response on it is sealed or the bare 404, whatever Host says, and the public name stays
   refused off that tree. The profile, the AI key and the job-site login ride only this channel, and no key, pairing code, seal plaintext,
@@ -461,9 +454,9 @@ import and profile endpoints and store no progress of their own; frontend-conven
   `tests/sync/test_seal.py`, `test_sealed_home.py`, `test_public_host.py`, `test_pairing.py` and `test_two_machines.py`.
 - **One data folder per user; nothing writes into the install.** `{#inv-one-home}` A uv install's `MAESTRO_HOME` defaults to the
   platform's per-user application-data folder (the three paths: `docs/entities/others.md`, "Home folder paths"), the folder the future
-  desktop app uses, so its data needs no import. `home.backend_env`
-  points every writable path (data, applications, settings, logs, uploads, model cache) into it, so nothing lands under site-packages; its
-  `maestro.env` is the only settings file. Pinned by `tests/maestro_cs/test_home.py`.
+  desktop app uses, so its data needs no import. `home.backend_env` points every writable path (data, applications, settings, logs,
+  uploads, model cache) into it, so nothing lands under site-packages; its `maestro.env` is the only settings file. Pinned by
+  `tests/maestro_cs/test_home.py`.
 - **The install's environment is applied before `app` is imported.** `{#inv-env-before-app}` `app.config.settings` reads the environment at
   import, and its `env_file=".env"` would read a Docker checkout's file from the caller's folder. One-shot verbs (`check`, `migrate`,
   `connect`) call `home.apply_env()` first, which also `chdir`s into the home; servers get it as child env with cwd = home; `maestro mcp`
@@ -498,7 +491,7 @@ import and profile endpoints and store no progress of their own; frontend-conven
 - **Veteran status is one Yes/No.** `{#inv-veteran-yes-no}` A No settles every "not a (protected) veteran" option and "currently or ever
   served" (reported `assumed`: `veteran_inferred`); a Yes, and any other saved Yes/No fact, never picks or answers a protected class, and a
   Yes never claims CURRENT service (`veteran_overreach`); a No picks the one "I am not a (protected) veteran" option in code
-  (`veteran_option`). Legacy `veteran` reads as yes; legacy `not_veteran` reads as UNANSWERED (`stale_answers`). The readers and the
+  (`veteran_option`). Legacy `veteran` reads as yes, `not_veteran` as UNANSWERED (`stale_answers`). The readers and the
   option rules: `docs/entities/others.md`, "Veteran". Pinned by `tests/test_autofill_pick.py`.
 - **Ready means a real review page with nothing missing.** `{#inv-ready-real-review}` The run reports Ready to submit only when the page is a
   review whose `by` is `submit_button` (a real Submit control inside the application and no real Next), shows no errors and has no required
@@ -509,9 +502,14 @@ import and profile endpoints and store no progress of their own; frontend-conven
   `tests/test_extension_queue_run.py`, `test_extension_page_kind.py` and `tests/browser/test_page_reader.py`.
 - **A work-permit answer is per country and never guessed.** `{#inv-work-permit-per-country}` `work_auth_by_country` holds each market's
   answers ("UK", not "GB"). A question gets the set of the one country it names, else its job's (`markets.for_country`), else none: unknown
-  is `missing_source`, asked on that job, never a default. `autofill_country` is the rule; `profile_for_job` and the fill loop's `_Catalog`
-  apply it (the Companion's rule pass sees the job's set only). Storage and limits: `docs/entities/others.md`, "Work permits per country".
-  Pinned by `tests/test_autofill_country.py`.
+  is `missing_source`, asked on that job, never a default. `autofill_country` is the rule; every fill reads one market's view
+  (`for_market`, through `autofill_job.view_for`): /context, both /choose engines per label's country, the fill loop's `_Catalog` (the
+  Companion's rule pass sees the job's set only). Storage and limits: `docs/entities/others.md`, "Work permits per country". Pinned by
+  `tests/test_autofill_country.py`.
+- **A country's answers stay in that country.** `{#inv-country-answers-stay-home}` Typed (`answers_by_country`, `work_auth_by_country`)
+  or derived from citizenship, they reach only that country's jobs: `for_market` folds one market's over the flat slots and drops every
+  map. Derived answers (`autofill_derive.answers_for`; a given answer wins) are computed on read and never stored; a job's view, marked
+  `country_answered`, is never saved (422, `autofill_profile.job_view_refusal`). Pinned by `tests/test_autofill_{country,derive}.py`.
 - **Low stakes are decisive; a draft is read, not trusted.** `{#inv-drafted-answers}` A low-stakes gap is filled and reported `assumed` with
   a fixed note, never left blank and never invented as a fact: a date box asking for more than the fact has takes the 1st (January for a
   year), https goes on a host, a phone type is Mobile, a dialing-code picker takes the profile country's code; the owner's No/Yes safe
@@ -519,8 +517,7 @@ import and profile endpoints and store no progress of their own; frontend-conven
   REQUIRED text or textarea that `/map` filed as `free_text` or `years_unanswered`, never at **Careful**, never when the never-list matches,
   in the owner's voice; it returns `assumed` with "Drafted from your history: read it" and saves nothing. The never-list, the length and
   the grounding: `docs/entities/others.md`, "Derived facts, drafted answers and degree levels". Pinned by `tests/test_autofill_choose.py`,
-  `test_autofill_map.py` and
-  `tests/browser/test_fill_core_fields.py`.
+  `test_autofill_map.py`, `tests/browser/test_fill_core_fields.py`.
 
 ## 7. Agent surfaces
 
@@ -785,6 +782,9 @@ exception, so ingest lands drafts and consent-gated `kb_approve_points` is the o
 - 2026-10-30 — The form questions are served from one catalog, `data/form_questions.yaml`, resolved for where you live and apply
   (`GET /api/settings/autofill/questions`; readiness counts the same set); superseded the frontend's hand-written list, mirrored by
   readiness and kept by a parity test because labels were presentation, since per-country wording makes the labels country data.
+- 2026-10-30 — Country questions are data: a market names packs (field tags in that catalog), a status list and pay terms; no country
+  chosen asks no permit question (the owner's call); permits a citizenship settles are computed on read; superseded permit and US screening
+  questions under a default US, and an "EU citizen?" question, because a permit answer belongs to one country and a given one beats the rule.
 
 ## 11. Known deferred items (priority order)
 

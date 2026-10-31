@@ -116,7 +116,10 @@
 53. Diversity answers are one set for every country: the profile stores one `eeo` set, so Profile and Setup show it wherever an
     apply-in market `offers_eeo` and name those countries, a UK form (the GSS categories) reads the same answers as a US one
     (EEO-1), and a UK-only user's readiness counts the stored US-shaped fields, since the profile has no UK question set.
-    Per-country answers need a storage change (`eeo` keyed by market, like `work_auth_by_country`) and a UK question set. Do when a
+    Per-country answers need a storage change (`eeo` keyed by market, like `work_auth_by_country`) and a UK question set. They are
+    Phase 4 of `docs/plans/2026-10-30-country-form-questions.md`, its own design and plan (UK first, then Canada and Australia once
+    verified) because it touches inv-eeo-standing-consent; that phase also has the served question set name the diversity countries
+    itself (today the fold gates on the served `offers_eeo` but names them from the market list, `diversityCountries`). Do when a
     second checked set's categories must differ from the stored set's, or a UK-only user reports a US-only diversity question.
 54. No payload breaks work authorization down by the countries you apply in: Analytics' Market in detail shows the jobs' stated
     work authorization (the overview's `work_auth` block) and narrows it to one country through the fold's Country filter. A view per
