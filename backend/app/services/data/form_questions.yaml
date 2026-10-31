@@ -38,7 +38,8 @@
 # Quote "yes" and "no" (YAML 1.1 reads them as booleans), and so the country
 # code "NO" (Norway); quote a label that ends in "?" or holds ", " or ": "
 # inside {braces} (there a "?" before "}" or "," is syntax). Every yes/no
-# question offers the one `&yes_no` list.
+# question merges the one `&yes_no_question` (`<<: *yes_no_question`): a
+# select stored as a boolean, offering Yes and No.
 
 groups:
   - key: personal
@@ -142,18 +143,17 @@ groups:
       # (the `us_screening` pack).
       - key: over_18
         label: Are you 18 or older?
-        type: select
-        boolean: true
-        options: &yes_no
-          - {value: "yes", label: "Yes"}
-          - {value: "no", label: "No"}
+        <<: &yes_no_question
+          type: select
+          boolean: true
+          options:
+            - {value: "yes", label: "Yes"}
+            - {value: "no", label: "No"}
         optional: true
         pack: us_screening
       - key: previously_employed_here
         label: Have you worked for the company you're applying to?
-        type: select
-        boolean: true
-        options: *yes_no
+        <<: *yes_no_question
         optional: true
       - key: non_compete
         # The legal term stays in the label: forms ask it in those words and
@@ -161,9 +161,7 @@ groups:
         # what one is.
         label: Subject to a restrictive covenant?
         hint: Such as a non-compete or non-solicit agreement.
-        type: select
-        boolean: true
-        options: *yes_no
+        <<: *yes_no_question
         optional: true
         pack: us_screening
       # Indian forms ask total experience in years and months (Sources 20;
@@ -198,9 +196,7 @@ groups:
           shortest one that is at least this long, never a shorter one
       - key: serving_notice
         label: Are you serving your notice period?
-        type: select
-        boolean: true
-        options: *yes_no
+        <<: *yes_no_question
         optional: true
         pack: india_basics
         describe: is serving a notice period at the current employer now (yes/no)
@@ -217,9 +213,7 @@ groups:
       - {key: earliest_start_date, label: Earliest start date}
       - key: willing_to_relocate
         label: Willing to relocate?
-        type: select
-        boolean: true
-        options: *yes_no
+        <<: *yes_no_question
       - {key: how_heard, label: "How did you hear about the job?"}
       # Sources 22 (sources doc rows India 4a, 4b): the current location is
       # one city, `personal.city`.
@@ -363,19 +357,13 @@ permits:
   us_visa:
     - key: authorized_now
       label: Authorized to work in the U.S. now?
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - key: sponsorship_now
       label: Do you need visa sponsorship now?
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - key: sponsorship_future
       label: Will you need visa sponsorship later?
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - &expires_on
       key: authorization_expires_on
       label: Authorization expires on
@@ -385,36 +373,24 @@ permits:
   uk:
     - key: authorized_now
       label: Do you have the right to work in the UK now?
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - key: sponsorship_now
       label: Do you need visa sponsorship to work in the UK now?
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - key: sponsorship_future
       label: Will you need visa sponsorship in the UK later?
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - *expires_on
   generic:
     - key: authorized_now
       label: Can you work in this country now?
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - key: sponsorship_now
       label: Do you need visa sponsorship now?
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - key: sponsorship_future
       label: Will you need visa sponsorship later?
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - *expires_on
   # Canada: the generic words. IRCC never says "sponsor" for a work permit: the
   # employer's act is a positive LMIA or an LMIA-exempt offer of employment, so
@@ -423,23 +399,17 @@ permits:
   ca:
     - key: authorized_now
       label: Can you work in this country now?
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - key: sponsorship_now
       label: Do you need visa sponsorship now?
       hint: &ca_sponsorship >-
         In Canada this means an employer-specific work permit: an LMIA or an
         LMIA-exempt offer of employment.
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - key: sponsorship_future
       label: Will you need visa sponsorship later?
       hint: *ca_sponsorship
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - *expires_on
   # The UAE: every private-sector hire, Emiratis included, needs a MOHRE work
   # permit that the employer files, so "authorized" here means you can take the
@@ -449,19 +419,13 @@ permits:
   ae:
     - key: authorized_now
       label: Can you work in the UAE without an employer sponsoring your residence visa?
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - key: sponsorship_now
       label: Do you need an employer to sponsor your UAE residence visa now?
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - key: sponsorship_future
       label: Will you need an employer to sponsor your UAE residence visa later?
-      type: select
-      boolean: true
-      options: *yes_no
+      <<: *yes_no_question
     - *expires_on
 
 # Country answers: asked once per country you apply in (each country's own,
@@ -492,18 +456,14 @@ answers:
   # that country's job would get that country's answer.
   - key: in_country_now
     label: Are you in the UAE now?
-    type: select
-    boolean: true
-    options: *yes_no
+    <<: *yes_no_question
     optional: true
     pack: gulf
     fills: eligibility.in_country_now
     describe: is in the UAE now (yes/no)
   - key: uae_driving_licence
     label: Do you hold a UAE driving licence?
-    type: select
-    boolean: true
-    options: *yes_no
+    <<: *yes_no_question
     optional: true
     pack: gulf
     fills: eligibility.uae_driving_licence
