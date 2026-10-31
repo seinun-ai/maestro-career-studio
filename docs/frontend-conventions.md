@@ -1172,9 +1172,10 @@
   what, Form answers), each with a time and "Done" once its data is there, under a progress bar; then
   the step and one nav row under it (Back from the second step, **Skip for now**, **Continue**, the
   view's one filled button). Back is free: the rail goes to any step. It stores no progress: a step is
-  done from what it wrote (`lib/setup-flow.ts` `stepsDone`: a key, career history, job preferences,
-  and the form answers as setup status counts them: citizenship and every country the served set asks, so
-  with no country chosen citizenship alone), and it opens on the first step not done. Every
+  done from what it wrote (`lib/setup-flow.ts` `stepsDone`: a key, career history, the countries chosen
+  (`questionSet.chosen`) and job preferences, and the form answers as setup status counts them: citizenship
+  and every country the served set asks, so with no country chosen citizenship alone, while Where and what
+  stays open), and it opens on the first step not done. Every
   step writes through an endpoint that already exists, and no `/api/setup` write route exists. **AI
   model**: five provider cards named in text (no logos); Test saves the key, tests the model it will
   use (WorkingDots, then a chip per everyday job), and only a passed test turns the provider's
@@ -1210,10 +1211,11 @@
   about you, one page with no tabs. The header is your name (from your contact answers, else "Profile"),
   one line of where you live and where you apply (until you choose, that none is chosen), and a ring of the
   sections setup status reports ready (never a count of its own). **Next up** is the Lead: the first required
-  answer still missing (`lib/autofill-options.ts` `missingAnswers`: citizenship first, with its country
-  picker, then each apply-in country's work permits your citizenship does not settle, then contact, then
-  start and pay), answered in place beside "Never guessed for you"; a Yes or No moves on, a typed answer or a
-  picked country stays until Next, Skip leaves one for this visit, and diversity only opens its fold. Nine
+  answer still missing (`lib/autofill-options.ts` `missingAnswers`: while no country is chosen, where you
+  apply first, as in Setup; citizenship, with its country picker, then each apply-in country's work permits
+  your citizenship does not settle, then contact, then start and pay), answered in place beside "Never
+  guessed for you"; a Yes or No moves on, a typed answer or a picked country stays until Next, Skip leaves
+  one for this visit, and diversity only opens its fold, as where you apply opens its tile. Nine
   tiles (`lib/profile-tiles.ts`: Contact, Where you apply, Country answers, Jobs you want, How you come across,
   Start and pay, Education, Languages, Your own questions) each say what they hold in real values with a state
   word (Ready, Needs you, a count) and open their editor, a `TileCard` (a `SettingCard` with Close), under

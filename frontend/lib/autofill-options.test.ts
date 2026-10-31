@@ -578,6 +578,17 @@ test("next up asks citizenship first, with its picker, never in a text box", () 
   assert.deepEqual(missingAnswers(loose, served).map(missingKey), ["citizenship"]);
 });
 
+test("next up asks where you apply first while no country is chosen, and never once one is", () => {
+  // Unchosen, no country's permits are asked, so every other answer can be given while every form pauses on them.
+  const unchosen: QuestionSet = { ...withCitizenship(servedFor([], { offersEeo: false })), chosen: false };
+  const personal = { first_name: "Ada", last_name: "Lovelace", email: "ada@example.com", state: "BE", citizenships: ["IN"] };
+  const profile = { personal, preferences: { desired_salary: "x", willing_to_relocate: false } };
+  assert.deepEqual(missingAnswers(profile, unchosen).map(missingKey), ["where"]);
+  assert.deepEqual(missingAnswers({}, unchosen).map(missingKey).slice(0, 2), ["where", "citizenship"]);
+  assert.deepEqual(missingAnswers(profile, withCitizenship(servedFor(["DE"], { offersEeo: false }))).map(missingKey),
+    ["permit:DE:authorized_now", "permit:DE:sponsorship_now", "permit:DE:sponsorship_future"]);
+});
+
 test("a list of countries is answered once it holds one", () => {
   assert.equal(answered(CITIZEN, ["IN"]), true);
   assert.equal(answered(CITIZEN, ["IN", "FR"]), true);

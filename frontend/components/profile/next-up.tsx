@@ -40,6 +40,7 @@ const SURFACE = "next-up";
 /** The tile each missing answer belongs to, named as the tile is: citizenship and the work permits are
  *  Country answers'. */
 const SECTION = {
+  where: tileTitle("where"),
   citizenship: tileTitle("permits"),
   permit: tileTitle("permits"),
   personal: tileTitle("contact"),
@@ -53,21 +54,24 @@ const YES_NO = [
 
 /**
  * Next up, the Lead: the first required answer still missing (lib/autofill-options.ts `missingAnswers`:
- * citizenship, then each country's work permit), answered in place and saved as you go, beside the promise
+ * where you apply while no country is chosen, then citizenship, then each country's work permit), answered in
+ * place and saved as you go, beside the promise
  * that none is guessed: a work permit comes only from you or your citizenship (derived when read, never stored),
  * and a diversity answer only from you. A Yes or No moves on by itself; a typed answer, or a country
  * picked, stays until Next, so it never jumps away mid-word. Skip leaves one for later in this visit. Diversity
- * is answered in its fold, beside its consent (D10), so Next up only opens it. Nothing missing, nothing shown:
- * the ring says so.
+ * is answered in its fold, beside its consent (D10), and the countries in the Where you apply tile, so Next up
+ * only opens them. Nothing missing, nothing shown: the ring says so.
  */
 export function NextUp({
   market,
   questionSet,
   onOpenDiversity,
+  onChooseCountries,
 }: {
   market: MarketSettingResponse;
   questionSet: QuestionSet;
   onOpenDiversity: () => void;
+  onChooseCountries: () => void;
 }) {
   const { profile, update, saveState } = useAutofillProfile();
   const [skipped, setSkipped] = useState<readonly string[]>([]);
@@ -143,6 +147,25 @@ export function NextUp({
       Skip
     </Button>
   );
+
+  if (current.kind === "where") {
+    return (
+      <LeadCard
+        eyebrow={`Next up · ${SECTION.where}`}
+        aside={aside}
+        action={{ label: "Choose countries", onClick: onChooseCountries }}
+        secondary={skipButton}
+      >
+        <h2 ref={headingRef} tabIndex={-1} className="text-headline-small outline-none">
+          The countries you apply in
+        </h2>
+        <p className="max-w-[65ch] text-body-medium text-muted-foreground">
+          Each country you apply in asks its own work-permit questions. Until you choose one, none is asked
+          here, so application forms stop to ask them.
+        </p>
+      </LeadCard>
+    );
+  }
 
   if (current.kind === "diversity") {
     const countries = diversityCountries(questionSet, market.markets ?? []);

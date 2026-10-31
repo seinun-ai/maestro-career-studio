@@ -153,6 +153,7 @@ function ProfileBody({
           sections.setFold("diversity", true);
           focus("autofill-eeo");
         }}
+        onChooseCountries={() => focus("market")}
       />
       {/* `autofill` was the Autofill tab's card: a link to it lands on the tiles. */}
       <section id="autofill" aria-label="Facts about you" className="flex flex-col gap-4">

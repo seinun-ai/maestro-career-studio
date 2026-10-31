@@ -43,7 +43,9 @@ once, and each country hears only its own.
   whether you are serving notice and your last working day, preferred work locations, total experience
   and current CTC. Germany and the Netherlands add a CEFR level to each language. The US screening
   questions show only while you apply in the US. With no country chosen you get the generic set and no
-  work-permit questions, and Where you apply shows nothing picked, so one click is the choice.
+  work-permit questions, and Where you apply shows nothing picked, so one click is the choice. Until you
+  choose, Setup keeps Where and what open, Profile's Next up asks it first, and an agent's next setup step
+  is to save where you apply.
 - **The United Arab Emirates.** The ninth country: its residence statuses, the Emirate line in your address
   with no postcode needed, sponsorship questions about your residence visa, whether you are in the UAE now
   and hold a UAE driving licence, and pay as a total monthly salary in dirhams. Canada and Australia get

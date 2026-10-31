@@ -793,9 +793,25 @@ def _step_done(status: dict[str, Any], key: str) -> bool:
     return bool((status.get(key) or {}).get("done"))
 
 
+# The form-answers step while no country is chosen: the countries come first. In words, like every
+# step: the profile set's tool for it is titled "Set Where You Live and Apply".
+_CHOOSE_COUNTRIES = ("Ask the user where they live and which countries they apply in, and save where "
+                     "they live and apply (their markets). Until then no country's work-permit questions "
+                     "count, so the form answers read complete while every application form pauses on them.")
+
+
+def _countries_chosen(status: dict[str, Any]) -> bool:
+    """False only when setup status says the user has not chosen where they apply (`autofill.chosen`)."""
+    return (status.get("autofill") or {}).get("chosen") is not False
+
+
 def _answers_done(status: dict[str, Any]) -> bool:
-    """Every form-answer group an agent can save is complete. The diversity answers (`eeo`) count
-    toward the app's own done, but set_autofill_profile refuses them: only the user gives those."""
+    """Every form-answer group an agent can save is complete, and the countries they are for are
+    chosen: unchosen, no country's permits count, so the groups read complete while every form
+    pauses on them. The diversity answers (`eeo`) count toward the app's own done, but
+    set_autofill_profile refuses them: only the user gives those."""
+    if not _countries_chosen(status):
+        return False
     groups = ((status.get("autofill") or {}).get("groups") or {}).items()
     open_groups = [g for k, g in groups if k != "eeo" and g.get("answered", 0) < g.get("answerable", 0)]
     return _step_done(status, "autofill") or bool(groups) and not open_groups
@@ -816,6 +832,8 @@ def setup_next_step(status: dict[str, Any]) -> dict[str, Any] | None:
     }
     for step, says in _SETUP_STEPS:
         if not done[step]:
+            if step == "form_answers" and not _countries_chosen(status):
+                says = _CHOOSE_COUNTRIES
             return {"step": step, "tool_set": "profile", "says": says}
     return None
 

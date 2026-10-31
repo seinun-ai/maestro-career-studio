@@ -615,6 +615,9 @@ export interface SetupStatus {
     blocking: string[];
     /** Each apply-in market's work-permit answers ("UK"), summed in `groups.work_auth`. */
     work_auth_by_country: Record<string, { answered: number; answerable: number }>;
+    /** Whether you chose where you apply (the market setting's mark): unchosen, no country's permits count,
+     *  so readiness can read complete while every form pauses on them. */
+    chosen: boolean;
   };
   job_preferences: SetupStep;
   persona: SetupStep;

@@ -118,6 +118,14 @@ test("with no country chosen, the form answers need only citizenship, never the 
   assert.equal(stepsDone(unchosen(0), served([])).answers, false);
 });
 
+test("where and what is done only once the countries are chosen, job preferences or not", () => {
+  // Unchosen, readiness can read complete while every form pauses on the permits no country asks.
+  const wanted = status({ job_preferences: step(true) });
+  assert.equal(stepsDone(wanted, served([])).where, false);
+  assert.equal(stepsDone(wanted, served(["DE"])).where, true);
+  assert.equal(stepsDone(status(), served(["DE"])).where, false);
+});
+
 test("setup opens on the first step not done, and on the first one when all are", () => {
   assert.equal(firstOpenStep({ model: false, resume: false, where: false, answers: false }), 0);
   assert.equal(firstOpenStep({ model: true, resume: false, where: false, answers: false }), 1);

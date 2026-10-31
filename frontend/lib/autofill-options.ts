@@ -626,37 +626,39 @@ export function languageValue(field: FieldDef, stored: unknown): string {
 
 // ------------------------------------------------------------------------------------- Next up
 
-/** A required answer still missing: citizenship (asked with its country picker), one country's work-permit
- *  question, a contact or start-and-pay field, or the diversity questions as a whole (answered in their fold,
- *  beside their consent). */
+/** A required answer still missing: where you apply while no country is chosen (answered in the Where you
+ *  apply tile), citizenship (asked with its country picker), one country's work-permit question, a contact or
+ *  start-and-pay field, or the diversity questions as a whole (answered in their fold, beside their consent). */
 export type MissingAnswer =
+  | { kind: "where" }
   | { kind: "citizenship"; field: FieldDef }
   | { kind: "permit"; market: string; field: FieldDef }
   | { kind: "field"; group: "personal" | "preferences"; field: FieldDef }
   | { kind: "diversity" };
 
 export function missingKey(item: MissingAnswer): string {
-  if (item.kind === "citizenship") return "citizenship";
+  if (item.kind === "where" || item.kind === "citizenship") return item.kind;
   if (item.kind === "permit") return `permit:${item.market}:${item.field.key}`;
   if (item.kind === "field") return `${item.group}:${item.field.key}`;
   return "diversity";
 }
 
 /**
- * Every required answer still missing, in the order Next up asks: citizenship first, since it settles some
- * work permits (Country answers asks it, with a country picker, never Contact), then each served country's work
- * permit, in the order you apply in (`permitMarkets`; the knockout answers, never guessed, and none your
- * citizenship settles), then contact, then start and pay, then the diversity questions where a country you
- * apply in has a checked set (`offers_eeo`). The fields are the ones setup readiness counts, as served for
- * where you live. A citizenship held by name is missing once the country list is read (`codes`): Next stores
- * it as codes.
+ * Every required answer still missing, in the order Next up asks: where you apply while no country is chosen
+ * (`questionSet.chosen`), first as in Setup, since the countries decide every country's question that follows
+ * (unchosen, none is asked, so every form pauses on them); then citizenship, since it settles some work permits
+ * (Country answers asks it, with a country picker, never Contact), then each served country's work permit, in
+ * the order you apply in (`permitMarkets`; the knockout answers, never guessed, and none your citizenship
+ * settles), then contact, then start and pay, then the diversity questions where a country you apply in has a
+ * checked set (`offers_eeo`). The fields are the ones setup readiness counts, as served for where you live. A
+ * citizenship held by name is missing once the country list is read (`codes`): Next stores it as codes.
  */
 export function missingAnswers(
   profile: Profile,
   questionSet: QuestionSet,
   codes: CountryCodes | null = null,
 ): MissingAnswer[] {
-  const out: MissingAnswer[] = [];
+  const out: MissingAnswer[] = questionSet.chosen ? [] : [{ kind: "where" }];
   const citizenship = citizenshipField(questionSet);
   if (citizenship && !citizenship.optional && !citizenshipAnswered(profile, questionSet, codes)) {
     out.push({ kind: "citizenship", field: citizenship });

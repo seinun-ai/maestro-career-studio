@@ -239,11 +239,21 @@ test("then form answers, one at a time: citizenship first, with its country pick
   assert.match(html, />Skip for now</);
 });
 
-test("with no country chosen, the form answers are citizenship, notice and relocation: no work permit", () => {
+test("with no country chosen, where and what stays open though the job preferences are saved", () => {
+  // Unchosen, no country's permits are asked, so every form would pause on them: Setup opens where to choose.
   const html = render({ status: WANTED, applyIn: ["US"], chosen: false });
+  assert.match(html, /Where and what you&#x27;re looking for/);
+  assert.match(html, /2 of 4 done/);
+  assert.doesNotMatch(html, /Where and what<\/span><span[^>]*>Done</);
+});
+
+test("with no country chosen, the form answers are citizenship, notice and relocation: no work permit", () => {
+  const unchosen = servedQuestions("US", [], { chosen: false });
+  const questions = formQuestions(unchosen, MARKETS);
+  assert.equal(questions.some((q) => q.kind === "permit"), false);
+  const html = answersStep({ questionSet: unchosen, questions, question: 0 });
   assert.match(html, /1 of 3/);
   assert.match(html, />Citizen of<\/label>/);
-  assert.equal(formQuestions(servedQuestions("US", [], { chosen: false }), MARKETS).some((q) => q.kind === "permit"), false);
 });
 
 test("a country's work permit, named, each question's group named by the country and the question", () => {

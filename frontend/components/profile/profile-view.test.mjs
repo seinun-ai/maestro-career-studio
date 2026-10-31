@@ -378,4 +378,9 @@ test("with no country chosen: nothing picked, no country's questions, and a way 
   // Next up asks no diversity question, and the note under Where you apply names no country without a set.
   assert.doesNotMatch(html, /Next up · Diversity questions/);
   assert.doesNotMatch(html, /no checked diversity questions for/);
+  // Next up asks where you apply first: until then every form pauses on the permits no country asks.
+  assert.match(html, /Next up · Where you apply/);
+  assert.match(html, /The countries you apply in/);
+  assert.match(html, /<button[^>]*bg-primary text-primary-foreground[^>]*>Choose countries<\/button>/);
+  assert.ok(html.indexOf("Next up · Where you apply") < html.indexOf(">Citizen of</label>"));
 });

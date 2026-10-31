@@ -80,17 +80,18 @@ export function questionKey(question: FormQuestion): string {
 
 export type StepsDone = Record<SetupStepId, boolean>;
 
-/** Each step, done from the data it writes: a key, a resume in career history, job preferences, and the form
- *  answers as setup status counts them: every country the served set asks, and citizenship, which it counts
- *  in the work-permit group beside them (a count it lacks is not done). With no country chosen the set asks
- *  none, so citizenship alone decides. */
+/** Each step, done from the data it writes: a key, a resume in career history, where you apply chosen
+ *  (`questionSet.chosen`, the market setting's mark) and job preferences, and the form answers as setup status
+ *  counts them: every country the served set asks, and citizenship, which it counts in the work-permit group
+ *  beside them (a count it lacks is not done). With no country chosen the set asks none, so citizenship alone
+ *  decides the answers, and Where and what stays open: until you choose, every form pauses on its permits. */
 export function stepsDone(status: SetupStatus, questionSet: QuestionSet): StepsDone {
   const counted = status.autofill.work_auth_by_country;
   const workAuth = status.autofill.groups.work_auth;
   return {
     model: status.model_key.done,
     resume: status.import_resumes.done,
-    where: status.job_preferences.done,
+    where: questionSet.chosen && status.job_preferences.done,
     answers:
       questionSet.countries.every(({ market }) => {
         const count = counted[market];

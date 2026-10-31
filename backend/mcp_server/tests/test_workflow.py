@@ -1118,7 +1118,7 @@ def _setup(**done):
         "import_resumes": {"done": done.get("import_resumes", False),
                            "detail": {"kb_entities": 0, "base_resumes": done.get("bases", 0)}},
         "autofill": {"done": done.get("autofill", False), "readiness": 0.0, "groups": {},
-                     "blocking": []},
+                     "blocking": [], **({"chosen": done["chosen"]} if "chosen" in done else {})},
         "job_preferences": {"done": done.get("job_preferences", False), "detail": {}},
         "persona": {"done": done.get("persona", False), "detail": {}},
         "template": {"done": False, "detail": {}},
@@ -1171,6 +1171,19 @@ def test_the_form_answers_step_names_citizenship():
     assert "citizenship" in step["says"] and "each country the user applies in" in step["says"]
 
 
+def test_form_answers_are_not_done_while_no_country_is_chosen():
+    """Unchosen, no country's permits count, so every group can read complete (readiness 1.0) while every
+    form pauses on them: the step stays open and says to save where the user lives and applies first."""
+    status = _setup(import_resumes=True, bases=1, autofill=True, chosen=False)
+    status["autofill"]["groups"] = {"personal": {"answered": 12, "answerable": 12},
+                                    "work_auth": {"answered": 1, "answerable": 1}}
+    step = workflow.setup_next_step(status)
+    assert step["step"] == "form_answers"
+    assert "which countries they apply in" in step["says"] and "save where they live and apply" in step["says"]
+    status["autofill"]["chosen"] = True
+    assert workflow.setup_next_step(status)["step"] == "job_preferences"
+
+
 def test_setup_next_step_never_asks_an_agent_for_the_key_or_the_template():
     """Both are the user's, in the app: reported by get_setup_status, never a next step."""
     seen = set()
@@ -1190,6 +1203,7 @@ def test_setup_next_step_names_no_tool():
     tools = set(list_registered_tool_names("full"))
     for flags in ({}, {"import_resumes": True}, {"import_resumes": True, "bases": 1},
                   {"import_resumes": True, "bases": 1, "autofill": True},
-                  {"import_resumes": True, "bases": 1, "autofill": True, "job_preferences": True}):
+                  {"import_resumes": True, "bases": 1, "autofill": True, "job_preferences": True},
+                  {"import_resumes": True, "bases": 1, "autofill": True, "chosen": False}):
         says = workflow.setup_next_step(_setup(**flags))["says"]
         assert not set(re.findall(r"[a-z_]+", says)) & tools, says
