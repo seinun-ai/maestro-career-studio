@@ -404,8 +404,10 @@ export function withCitizenships(profile: Profile, codes: readonly string[]): Pr
 }
 
 /** The served `settled` answers whose citizenship is still among yours: removing one stops what it settled at
- *  once, before the questions are read again. A citizenship held by name settles nothing, as on the server
- *  (`withCitizenshipList` stores codes). */
+ *  once, before the questions are read again. A citizenship held by name (a hand edit, or a save from before
+ *  codes) settles nothing here, though the server reads names (`countries.codes_in`) and settles from them: this
+ *  side treats a name list as not yet answered, so Next up asks it and the next save stores codes
+ *  (`withCitizenshipList`), and the two agree from then on. */
 function stillCitizen(profile: Profile, settled: Record<string, DerivedAnswer>): Record<string, DerivedAnswer> {
   const codes = new Set(citizenshipEntries(profile).map((entry) => entry.toUpperCase()));
   return Object.fromEntries(Object.entries(settled).filter(([, answer]) => codes.has(answer.via.toUpperCase())));

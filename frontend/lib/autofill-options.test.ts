@@ -354,7 +354,7 @@ test("a citizenship held by name is not answered once the country list is read, 
   assert.equal(missingAnswers({ personal: { citizenships: ["FR"] } }, withCitizenship, CODES).map(missingKey).includes("citizenship"), false);
 });
 
-test("a citizenship held by name settles nothing, as on the server; stored as codes, it settles what it should", () => {
+test("a citizenship held by name settles nothing on screen until it is stored as codes, then what it should", () => {
   const named = { personal: { citizenships: ["France"] } };
   assert.deepEqual(derivedPermits(named, EU, "DE"), {});
   // Next up and Setup store it as codes first, so what the server settles applies on screen too.
