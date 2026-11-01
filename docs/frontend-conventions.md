@@ -1557,7 +1557,12 @@
   block flow (`space-y-4`): a rendered legend is not a grid or flex item, so
   `gap` never separates it from the first field. If a rule is ever needed, it
   goes on the legend, because the browser clips a fieldset's block-start
-  border behind a full-width legend.
+  border behind a full-width legend. **Repeated sets are the one ruled case**:
+  Country answers asks each country much what it asked the last, so a muted
+  heading and a gap ran them together. Each country's legend is its name in
+  `text-title-medium text-foreground` over a `border-t` (`COUNTRY_HEADING` in
+  `components/profile/work-permits.tsx`), with the tile's line for that country
+  (done mark and words) at its end.
 - **A labelled tag list is a `<dl>` on a two-column grid**, not a flex row
   with a fixed-width label — under `flex flex-wrap` an overflowing group drops
   BELOW its label while narrower groups stay inline. A grid gives every

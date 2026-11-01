@@ -10,7 +10,6 @@ import { TileCard, type TileView } from "@/components/profile/tile";
 import { useAutofillQuery } from "@/components/profile/use-autofill-query";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import { SettingCardAction } from "@/components/settings/setting-card";
-import { GROUP_HEADING } from "@/components/settings/setting-layout";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useFocusOnNextCommit } from "@/hooks/use-focus-return";
@@ -37,7 +36,6 @@ import {
 } from "@/lib/autofill-options";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import type { MarketSettingResponse, QuestionSet } from "@/lib/types";
-import { cn } from "@/lib/utils";
 
 const SURFACE = "permits";
 
@@ -57,14 +55,24 @@ function permitWords(answers: Record<string, unknown>, count: Count): string {
   return now === true ? "can work now" : now === false ? "can't work there now" : "answered";
 }
 
+/** Done or still open: a check, or an empty ring. */
+function DoneMark({ done }: { done: boolean }) {
+  return done ? (
+    <CONCEPT_ICONS.done aria-hidden="true" className="size-3.5 shrink-0 text-success" />
+  ) : (
+    <span aria-hidden="true" className="size-3.5 shrink-0 rounded-full border-[1.5px] border-attention" />
+  );
+}
+
+/** A country set's heading: every set asks much what the last one did, so a muted group heading and a gap alone run
+ *  them together. The name is a title over a rule, the one ruled heading in a long form (frontend-conventions,
+ *  "divided by group headings"), with the tile's line for that country at its end. */
+const COUNTRY_HEADING = "flex w-full items-center gap-3 border-t border-border pt-6 text-title-medium text-foreground";
+
 function SummaryRow({ done, label, words }: { done: boolean; label: string; words: string }) {
   return (
     <span className="flex items-center gap-1.5 text-foreground">
-      {done ? (
-        <CONCEPT_ICONS.done aria-hidden="true" className="size-3.5 shrink-0 text-success" />
-      ) : (
-        <span aria-hidden="true" className="size-3.5 shrink-0 rounded-full border-[1.5px] border-attention" />
-      )}
+      <DoneMark done={done} />
       <span className="min-w-0 flex-1 truncate">{label}</span>
       <span className="min-w-0 truncate text-muted-foreground">{words}</span>
     </span>
@@ -270,9 +278,14 @@ function CountrySet({
   }
   return (
     <fieldset className="space-y-4">
-      <legend className={cn(GROUP_HEADING, "flex items-center gap-1.5")}>
-        <CONCEPT_ICONS.workAuthorization aria-hidden="true" className="size-4" />
-        {country.label}
+      <legend className={COUNTRY_HEADING}>
+        <span className="min-w-0 flex-1 truncate">{country.label}</span>
+        <span className="flex shrink-0 items-center gap-1.5 text-body-small text-muted-foreground">
+          {/* The group's name reads "India, can work now", never the two run together. */}
+          <span className="sr-only">, </span>
+          <DoneMark done={permitAnswered(profile, questionSet, market)} />
+          {permitWords(answers, permitCount(profile, questionSet, market))}
+        </span>
       </legend>
       {differs ? (
         <p className="text-body-small text-muted-foreground">

@@ -153,7 +153,7 @@ test("next up asks citizenship first, with its country picker, in Country answer
 
 test("country answers: one set per country you apply in, the visa status only for the United States", () => {
   const html = render();
-  const sets = [...html.matchAll(/<fieldset class="space-y-4"><legend[^>]*>.*?<\/svg>([^<]+)<\/legend>(.*?)<\/fieldset>/g)];
+  const sets = [...html.matchAll(/<fieldset class="space-y-4"><legend[^>]*><span class="min-w-0 flex-1 truncate">([^<]+)<\/span>.*?<\/legend>(.*?)<\/fieldset>/g)];
   assert.deepEqual(sets.map((m) => m[1]), ["Germany", "United Kingdom", "United States"]);
   const [de, uk, us] = sets.map((m) => m[2]);
   assert.match(de, /Can you work in this country now\?/);
@@ -165,10 +165,20 @@ test("country answers: one set per country you apply in, the visa status only fo
   assert.match(uk, /id="af-permit-UK-sponsorship_now"/);
 });
 
+test("each country is titled over a rule, with the tile's line for it at the end", () => {
+  // The sets ask much the same questions each: a muted heading and a gap alone ran them together.
+  const legends = [...render().matchAll(/<fieldset class="space-y-4">(<legend[^>]*>.*?<\/legend>)/g)].map((m) => m[1]);
+  assert.equal(legends.length, 3);
+  for (const legend of legends) {
+    assert.match(legend, /^<legend class="[^"]*border-t border-border pt-6 text-title-medium text-foreground"/);
+    assert.match(legend, /<\/span><span class="flex shrink-0 items-center gap-1\.5 text-body-small text-muted-foreground">.+<\/span><\/legend>$/);
+  }
+});
+
 test("country answers ask only the countries the served set lists, never one it has no questions for", () => {
   // The market setting already names the United States; the questions read for it have not arrived.
   const html = render({ served: ["DE", "UK"] });
-  const sets = [...html.matchAll(/<fieldset class="space-y-4"><legend[^>]*>.*?<\/svg>([^<]+)<\/legend>/g)];
+  const sets = [...html.matchAll(/<fieldset class="space-y-4"><legend[^>]*><span class="min-w-0 flex-1 truncate">([^<]+)<\/span>.*?<\/legend>/g)];
   assert.deepEqual(sets.map((m) => m[1]), ["Germany", "United Kingdom"]);
   assert.doesNotMatch(html, /United States<\/span><span class="text-muted-foreground">/);
 });
@@ -275,7 +285,7 @@ test("country answers: Citizen of at the top, then each country's permits and it
   assert.ok(citizen < region.indexOf("<fieldset"), "before the first country");
   // The picker shows the stored code by its name.
   assert.match(region, /India<button[^>]*aria-label="Remove India"/);
-  const sets = [...region.matchAll(/<fieldset class="space-y-4"><legend[^>]*>.*?<\/svg>([^<]+)<\/legend>(.*?)<\/fieldset>/g)];
+  const sets = [...region.matchAll(/<fieldset class="space-y-4"><legend[^>]*><span class="min-w-0 flex-1 truncate">([^<]+)<\/span>.*?<\/legend>(.*?)<\/fieldset>/g)];
   assert.deepEqual(sets.map((m) => m[1]), ["India", "United Arab Emirates", "Germany", "Netherlands"]);
   const [india, uae, germany, netherlands] = sets.map((m) => m[2]);
   // India's own pay, after its permits; the UAE's status list and its own questions.
@@ -289,7 +299,7 @@ test("country answers: Citizen of at the top, then each country's permits and it
 
 test("India's three permit answers come from the citizenship, each with a way to answer differently", () => {
   const html = renderIndia();
-  const sets = [...html.matchAll(/<fieldset class="space-y-4"><legend[^>]*>.*?<\/svg>([^<]+)<\/legend>(.*?)<\/fieldset>/g)];
+  const sets = [...html.matchAll(/<fieldset class="space-y-4"><legend[^>]*><span class="min-w-0 flex-1 truncate">([^<]+)<\/span>.*?<\/legend>(.*?)<\/fieldset>/g)];
   const [india, ...others] = sets.map((m) => m[2]);
   assert.equal((india.match(/From your citizenship \(India\)/g) ?? []).length, 3);
   assert.equal((india.match(/>Answer differently</g) ?? []).length, 3);
@@ -302,6 +312,8 @@ test("India's three permit answers come from the citizenship, each with a way to
   // A right to work from citizenship does not run out: India asks no expiry; the UAE, settled by nothing, does.
   assert.doesNotMatch(india, /Authorization expires on/);
   assert.match(others[0], /id="af-permit-AE-authorization_expires_on"/);
+  // Its heading carries the tile's line: settled is answered.
+  assert.match(html, /<span class="min-w-0 flex-1 truncate">India<\/span><span[^>]*><span class="sr-only">, <\/span><svg[^>]*text-success[^>]*>.*?<\/svg>can work now<\/span><\/legend>/);
   for (const set of others) assert.doesNotMatch(set, /From your citizenship/);
   assert.doesNotMatch(india, /Your answer differs/);
 });
@@ -309,7 +321,7 @@ test("India's three permit answers come from the citizenship, each with a way to
 test("an answer that differs from what the citizenship settles: the rest are asked, and a note says why", () => {
   // Saved, the server has not been asked again yet: it still serves India as settled.
   const html = renderIndia({ ...ASHA, work_auth_by_country: { IN: { authorized_now: false } } });
-  const [india] = [...html.matchAll(/<fieldset class="space-y-4"><legend[^>]*>.*?<\/svg>India<\/legend>(.*?)<\/fieldset>/g)].map((m) => m[1]);
+  const [india] = [...html.matchAll(/<fieldset class="space-y-4"><legend[^>]*><span class="min-w-0 flex-1 truncate">India<\/span>.*?<\/legend>(.*?)<\/fieldset>/g)].map((m) => m[1]);
   assert.match(india, /Your answer differs from what your citizenship settles, so these are asked\./);
   assert.doesNotMatch(india, /From your citizenship \(India\)/);
   for (const key of ["authorized_now", "sponsorship_now", "sponsorship_future", "authorization_expires_on"]) {
@@ -332,7 +344,7 @@ test("a citizenship stored as a plain string shows in the picker, and Next store
 
 test("an answer you gave the same way shows as yours, not as from your citizenship", () => {
   const html = renderIndia({ ...ASHA, work_auth_by_country: { IN: { authorized_now: true } } });
-  const [india] = [...html.matchAll(/<fieldset class="space-y-4"><legend[^>]*>.*?<\/svg>India<\/legend>(.*?)<\/fieldset>/g)].map((m) => m[1]);
+  const [india] = [...html.matchAll(/<fieldset class="space-y-4"><legend[^>]*><span class="min-w-0 flex-1 truncate">India<\/span>.*?<\/legend>(.*?)<\/fieldset>/g)].map((m) => m[1]);
   assert.match(india, /id="af-permit-IN-authorized_now"/);
   assert.equal((india.match(/From your citizenship \(India\)/g) ?? []).length, 2);
 });

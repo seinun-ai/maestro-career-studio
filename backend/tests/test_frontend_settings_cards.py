@@ -262,6 +262,7 @@ _SETTINGS = sorted((_FRONTEND / "components/settings").glob("*.tsx")) + sorted(
 # Diagnostics' Autofill coverage (owner decision D6) is the chart card Analytics had, moved as it was: a
 # ChartCard with a table, whose rows are ruled like every table's. The form-card rhythm is not its rule.
 _CHART_CARD = "autofill-coverage-card.tsx"
+_COUNTRY_RULE = "border-t border-border pt-6 text-title-medium text-foreground"
 
 
 def test_settings_cards_share_one_rhythm():
@@ -275,7 +276,9 @@ def test_settings_cards_share_one_rhythm():
         assert "AutosaveRow" not in src, name
         assert re.search(r'className="[^"]*\bm[tby]-\d', src) is None, name
         assert re.search(r"\b(?:sm|md|lg):grid-cols-", src) is None, name
-        assert "border-t" not in src, name
+        # The one ruled heading: Country answers' sets ask much the same questions each (below).
+        ruled = src.replace(_COUNTRY_RULE, "") if name == "work-permits.tsx" else src
+        assert "border-t" not in ruled, name
         assert re.search(r"<Label\b[^>]*className=\"[^\"]*text-(?:xs|sm)\b", src) is None, name
         for match in re.finditer(r"space-y-\d", src):
             tag = src[src.rfind("<", 0, match.start()) : match.start()]
@@ -288,11 +291,16 @@ def test_every_card_body_is_the_container_its_columns_read():
     assert '<CardContent className="@container/setting">' in card
 
 
-def test_autofill_groups_are_headed_not_ruled():
-    # Country answers: one headed fieldset per country (the other answers are one tile or fold each).
+def test_country_sets_are_titled_over_a_rule():
+    # Country answers: one fieldset per country (the other answers are one tile or fold each). Each set asks much
+    # what the last did, so a muted heading and a gap ran them together: the country's name is a title over a rule
+    # on its legend (a fieldset's own top border is clipped behind a full-width legend), with its line from the tile.
     src = _read("components/profile/work-permits.tsx")
     assert "fieldset~fieldset>legend]:border-t" not in src
-    assert '<legend className={cn(GROUP_HEADING, "flex items-center gap-1.5")}>' in src
+    assert f'const COUNTRY_HEADING = "flex w-full items-center gap-3 {_COUNTRY_RULE}' in src
+    assert "<legend className={COUNTRY_HEADING}>" in src
+    assert "GROUP_HEADING" not in src
+    assert "<DoneMark done={permitAnswered(profile, questionSet, market)} />" in src
     # A fieldset stays block flow: a legend is not a grid item, so gap never reaches it.
     assert re.search(r"<fieldset[^>]*className=\"[^\"]*\bgrid\b", src) is None
     assert '<div className="grid gap-8">' in src
