@@ -136,3 +136,16 @@ experience (India) and over 18 and non-compete (United States) in Screening ques
 marker), Setup's notice step, `lib/autofill-options.ts` and `lib/setup-answers.ts`. Docs: `SYSTEM.md` §10,
 `CHANGELOG.md` Unreleased, `docs/entities/others.md`, `docs/agent-surfaces.md`, `USING_MAESTRO.md`. The
 Companion needs no change: it reads the same slots, and the server normalises what it saves.
+
+## Amended while planning (2026-11-02)
+
+The plan (`docs/plans/2026-11-02-start-and-pay.md`, "Decisions taken while expanding") changes four details here:
+- **Notice converts on read**, not by a one-time startup step: a read computes `notice_days` from readable text, and
+  the next save stores it. No flag, nothing for the always-on copy to skip.
+- **Readiness counts the home pay in `preferences`**, as it counts `desired_salary` today, not in the `work_auth`
+  group: Setup's answers step needs that group complete and Setup never asks pay. Country answers' own tile still shows
+  the home pay as open when it is missing.
+- **With no country chosen, pay reaches every country's form**, as today: the stored home is then a default, not a
+  choice.
+- **When both home figures are stored, the home's own `expected_pay` wins** and the generic one goes; and a job in a
+  country with no market (France) keeps the home pay in the form and the check, as today (open for the owner).
