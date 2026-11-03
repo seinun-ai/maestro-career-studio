@@ -92,6 +92,58 @@ def test_unchanged_stored_text_beside_new_days_leaves_the_days(db_session, tmp_p
     assert _stored(tmp_path) == {"preferences": {"notice_days": 30}}
 
 
+@pytest.mark.parametrize("days", [60, "60"])
+def test_new_days_and_new_text_in_one_save_keep_the_days(db_session, tmp_path, days):
+    """Days given win: a save that changes the days and sends text too stores the days, whatever the text."""
+    autofill_profile.set_profile({"preferences": {"notice_days": 14}}, db_session)
+    autofill_profile.set_profile({"preferences": {"notice_days": days, "notice_period": "2 weeks"}}, db_session)
+    assert _stored(tmp_path) == {"preferences": {"notice_days": 60}}
+    autofill_profile.patch_profile({"preferences": {"notice_days": 90, "notice_period": "1 month"}}, db_session)
+    assert _stored(tmp_path) == {"preferences": {"notice_days": 90}}
+
+
+# Days that say no days: no answer, so storage, the view, the fill and readiness agree and nothing is guessed.
+_NOT_DAYS = [14.5, "14.5", -1, "-1", "1e1", "soon", True, False, [], {}, [14]]
+
+
+@pytest.mark.parametrize("given", _NOT_DAYS)
+def test_days_that_say_no_days_are_no_answer(db_session, client, tmp_path, given):
+    _write(db_session, {"preferences": {"notice_days": given, "how_heard": "A friend"}})
+    view = autofill_profile.get_profile(db_session)
+    assert view["preferences"] == {"how_heard": "A friend"}
+    assert _filled(db_session) == {"how_heard": "A friend"}
+    counted = _start_and_pay(client)
+    _write(db_session, {"preferences": {"how_heard": "A friend"}})
+    assert _start_and_pay(client) == counted
+    autofill_profile.set_profile({"preferences": {"notice_days": given, "how_heard": "A friend"}}, db_session)
+    assert _stored(tmp_path) == {"preferences": {"how_heard": "A friend"}}
+
+
+@pytest.mark.parametrize("given", _NOT_DAYS)
+def test_legacy_text_survives_days_that_say_no_days(db_session, tmp_path, given):
+    """The legacy text answers until days are given, and a value that says no days is none."""
+    _write(db_session, {"preferences": {"notice_days": given, "notice_period": "2 weeks"}})
+    assert autofill_profile.get_profile(db_session)["preferences"] == {"notice_days": 14}
+    _write(db_session, {"preferences": {"notice_days": given, "notice_period": "negotiable"}})
+    assert autofill_profile.get_profile(db_session)["preferences"] == {"notice_period": "negotiable"}
+    assert _filled(db_session) == {"notice_period": "negotiable"}
+    autofill_profile.set_profile({"preferences": {"notice_days": given, "notice_period": "negotiable"}}, db_session)
+    assert _stored(tmp_path) == {"preferences": {"notice_period": "negotiable"}}
+
+
+@pytest.mark.parametrize("given, days, words", [
+    (14.0, 14, "2 weeks"), ("2 weeks", 14, "2 weeks"), (" 3 months ", 90, "3 months"), ("now", 0, "Immediately"),
+])
+def test_days_written_another_way_are_read_as_days(db_session, tmp_path, given, days, words):
+    """A whole float (a hand edit) is its number, and text that says days ("2 weeks", an agent's or a
+    hand edit's) is read as notice text is."""
+    _write(db_session, {"preferences": {"notice_days": given, "notice_period": "negotiable"}})
+    assert autofill_profile.get_profile(db_session)["preferences"] == {"notice_days": days}
+    assert _filled(db_session) == {"notice_days": days, "notice_period": words}
+    autofill_profile.set_profile({"preferences": {"notice_days": given}}, db_session)
+    assert _stored(tmp_path) == {"preferences": {"notice_days": days}}
+
+
 @pytest.mark.parametrize("stored", [
     {"notice_days": 14},
     {"notice_days": 0, "earliest_start_date": "2026-12-01"},

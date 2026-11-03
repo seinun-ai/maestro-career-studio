@@ -354,7 +354,8 @@ def test_non_eeo_market_can_reach_full_autofill_readiness():
     client.put("/api/settings/autofill", json={"value": {
         # Citizenship answers with a country (a French one settles nothing in the US or India).
         "personal": {**{key: "x" for key in required["personal"]}, "citizenships": ["FR"]},
-        "preferences": {key: "x" for key in required["preferences"]},
+        # Notice is days: an "x" there says none and is no answer.
+        "preferences": {**{key: "x" for key in required["preferences"]}, "notice_days": 14},
         "work_auth_by_country": {"US": work_auth, "IN": work_auth},
         "answers_by_country": {"IN": {"expected_pay": "x"}},
     }})

@@ -24,3 +24,14 @@ def test_days_from_text_leaves_what_it_cannot_read(text):
 ])
 def test_notice_words(days, words):
     assert notice.notice_words(days) == words
+
+
+@pytest.mark.parametrize("value,days", [(14, 14), (0, 0), ("14", 14), (" 30 ", 30), (14.0, 14), (0.0, 0)])
+def test_whole_days_reads_a_number_of_days(value, days):
+    assert notice.whole_days(value) == days   # a number box sends "14"; a hand edit may write 14.0
+
+
+@pytest.mark.parametrize("value", [14.5, "14.5", -1, "-1", "1e1", "", None, True, False, "2 weeks", [14],
+                                   float("inf"), float("nan")])
+def test_whole_days_leaves_what_is_no_whole_number_of_days(value):
+    assert notice.whole_days(value) is None

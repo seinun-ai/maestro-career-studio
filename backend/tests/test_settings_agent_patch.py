@@ -11,7 +11,7 @@ import pytest
 
 from app.config import settings
 from app.db import SessionLocal
-from app.services import autofill_profile, market_settings, money_settings
+from app.services import autofill_profile, market_settings, money_settings, text_settings
 
 PROFILE = {
     "personal": {"first_name": "Ana", "city": "Lyon"},
@@ -367,7 +367,9 @@ def test_another_save_cannot_land_between_a_patchs_read_and_its_write(db_session
     worker.join(timeout=35)
     assert not errors, errors
     db_session.expire_all()
-    stored = autofill_profile.peek_profile(db_session)
+    stored = json.loads(
+        text_settings.peek_text(autofill_profile.AUTOFILL_KEY, autofill_profile.AUTOFILL_FILE, db_session)
+    )
     assert stored["personal"] == {"first_name": "Sam", "city": "Porto"}
     assert stored["preferences"] == {"notice_days": 30}  # "1 month", stored as days
 

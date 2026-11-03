@@ -28,12 +28,17 @@ def days_from_text(text: Any) -> int | None:
 
 
 def whole_days(value: Any) -> int | None:
-    """`notice_days` as a number, else None: an int, or a string of digits (the number boxes in Profile,
-    Next up and Setup send text, so "14" arrives for 14). Unlike `days_from_text` a bare number is
-    read here, since this answer is days by name."""
+    """`notice_days` as a whole number of days, 0 or more, else None: an int, a whole float (14.0, a
+    hand edit), or a string of digits (the number boxes in Profile, Next up and Setup send text, so
+    "14" arrives for 14). Unlike `days_from_text` a bare number is read here, since this answer is
+    days by name; a part day (14.5), a negative or a yes/no is none."""
+    if isinstance(value, bool):  # an int subclass, never a number of days
+        return None
     if isinstance(value, str) and value.strip().isdecimal():
         value = int(value.strip())
-    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+    elif isinstance(value, float) and value.is_integer():
+        value = int(value)
+    return value if isinstance(value, int) and value >= 0 else None
 
 
 def notice_words(days: int) -> str:

@@ -236,14 +236,21 @@ def pay_for(profile: Any, market: str | None, home: str | None) -> str | None:
     return _figure(preferences.get(DESIRED_SALARY) if isinstance(preferences, dict) else None)
 
 
-def _blank(value: Any) -> bool:
-    return value is None or (isinstance(value, str) and not value.strip())
+def _days_given(preferences: Any) -> int | None:
+    """The days a `preferences` group gives under `notice_days`: a whole number, 0 or more
+    (`notice.whole_days`: 14, "14" from a number box), or text that says days
+    (`notice.days_from_text`: an agent or a hand edit may write "2 weeks" there). Anything else
+    (14.5, -1, "1e1", a yes/no, a blank) gives none, never a guess."""
+    value = preferences.get(NOTICE_DAYS) if isinstance(preferences, dict) else None
+    days = notice.whole_days(value)
+    return days if days is not None else notice.days_from_text(value)
 
 
 def _with_notice_days(profile: dict[str, Any]) -> dict[str, Any]:
     """`profile` with notice as one answer in days, the read view's and every save's (Decisions 1 and
-    9 of docs/plans/2026-11-02-start-and-pay.md). Days given win: a whole number sent as text ("14",
-    from a number box) is the number, and the text beside them goes. With none, text that says days
+    9 of docs/plans/2026-11-02-start-and-pay.md). Days given win (`_days_given`), stored as a
+    number, and the text beside them goes. A `notice_days` that says no days is no answer and goes
+    too, so storage, the view, the fill and readiness agree on it. With no days, text that says days
     (`notice.days_from_text`: "2 weeks", "now") becomes them and goes; text that says none
     ("negotiable", a bare "2") stays as the legacy answer, which forms get as written and readiness
     counts (the served field's `legacy`), until days are given.
@@ -252,19 +259,22 @@ def _with_notice_days(profile: dict[str, Any]) -> dict[str, Any]:
     reads as days today and lands in storage on its next save of any kind, with no startup step, no
     flag and nothing for a sync peer to miss; on a profile saved since, it changes nothing."""
     preferences = profile.get("preferences")
-    if not isinstance(preferences, dict):
+    if not isinstance(preferences, dict) or not {NOTICE_DAYS, NOTICE_TEXT} & preferences.keys():
         return profile
-    given = preferences.get(NOTICE_DAYS)
-    days = notice.days_from_text(preferences.get(NOTICE_TEXT)) if _blank(given) else notice.whole_days(given)
-    if _blank(given) and days is None:
-        return profile  # no days, and text that says none: the legacy answer
-    out = {k: v for k, v in preferences.items() if k != NOTICE_TEXT}
+    days = _days_given(preferences)
+    if days is None:
+        days = notice.days_from_text(preferences.get(NOTICE_TEXT))
+    out = {k: v for k, v in preferences.items() if k not in (NOTICE_DAYS, NOTICE_TEXT)}
     if days is not None:
         out[NOTICE_DAYS] = days
+    elif NOTICE_TEXT in preferences:
+        out[NOTICE_TEXT] = preferences[NOTICE_TEXT]  # text that says no days: the legacy answer
     return {**profile, "preferences": out}
 
 
-def _with_new_notice_text(profile: dict[str, Any], stored_text: dict[str, Any]) -> dict[str, Any]:
+def _with_new_notice_text(
+    profile: dict[str, Any], before: dict[str, Any], stored_text: dict[str, Any]
+) -> dict[str, Any]:
     """`profile` with the notice text this save sends read as its days, when it is new and says them.
 
     A client that knows notice only in words (a Companion from before days learning "1 month", an
@@ -273,14 +283,16 @@ def _with_new_notice_text(profile: dict[str, Any], stored_text: dict[str, Any]) 
     Compared with the stored text (`_parse_stored`), never with the read view, which has already
     turned it into days or left it out, so the view's text would always read as new (Decision 10 of
     docs/plans/2026-11-02-start-and-pay.md). The stored text sent back unchanged, as an echo of a
-    legacy answer, is no new answer, and the days beside it stand. New text that says no days is
+    legacy answer, is no new answer. Nor is any text in a save whose days differ from the read
+    view's (`before`): that save gives new days, and days given win. New text that says no days is
     left for `_with_notice_days`: kept while the days are blank, dropped once they are given."""
     preferences = profile.get("preferences")
     if not isinstance(preferences, dict) or NOTICE_TEXT not in preferences:
         return profile
     stored = stored_text.get("preferences")
     sent = preferences[NOTICE_TEXT]
-    if isinstance(stored, dict) and stored.get(NOTICE_TEXT) == sent:
+    new_days = _days_given(preferences) != _days_given(before.get("preferences"))
+    if new_days or (isinstance(stored, dict) and stored.get(NOTICE_TEXT) == sent):
         return profile
     days = notice.days_from_text(sent)
     return profile if days is None else {**profile, "preferences": {**preferences, NOTICE_DAYS: days}}
@@ -406,10 +418,11 @@ def _as_stored(
       or an older client's echo of the stored one. A save of the view that changes
       `desired_salary` keeps the change: the stored entry's figure is never merged back over it.
     - **Notice is `preferences.notice_days`, a number.** Notice text the save sends that differs
-      from the stored text's is the new answer, read as days when it says them
-      (`_with_new_notice_text`, compared with `stored_text`: the read view has already turned the
-      stored text into days); then the read view's rule (`_with_notice_days`): days sent as text are
-      stored as a number, and once days are given no text is stored.
+      from the stored text's is the new answer, read as days when it says them, unless the save
+      changes the days as well, which win (`_with_new_notice_text`, compared with `stored_text`:
+      the read view has already turned the stored text into days); then the read view's rule
+      (`_with_notice_days`): days sent as text are stored as a number, a value that says no days is
+      none, and once days are given no text is stored.
     - **Citizenships are ISO codes** (`_with_citizenship_codes`).
     - **A view's own keys are dropped** (`_VIEW_ONLY`: `work_auth_market`, and the job view's
       `work_auth_country` and `country_answered`), so a /context profile sent back stores none."""
@@ -434,7 +447,10 @@ def _as_stored(
         out[BY_COUNTRY] = entries
     if country_answers:
         out[ANSWERS_BY_COUNTRY] = country_answers
-    out = _with_notice_days(_with_new_notice_text(_with_home_pay(out, chosen_home), stored_text))
+    out = _with_home_pay(out, chosen_home)
+    # The save's new notice text first: `_with_notice_days` drops the text once days are given.
+    out = _with_new_notice_text(out, before, stored_text)
+    out = _with_notice_days(out)
     return _with_citizenship_codes(out)
 
 
