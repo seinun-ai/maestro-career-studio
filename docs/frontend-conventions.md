@@ -1261,8 +1261,8 @@
   language. A question only some countries ask leads its hint line with the served `askedBy` sentence ("Asked
   by forms in India."), wherever it is asked: every editor, Languages, Next up and Setup (`fieldHint`, wired
   with `aria-describedby`); a `hints` entry replaces the field's own hint, never that marker. Notice is
-  `notice_days`, a number box; while only older words stand (`notice_period`, text the server could not read as
-  days) its hint says forms get them until days are given (`legacyNote`). Every answer saves as you go
+  `notice_days`, a number box whose label names its unit ("Notice period (days)"); while only older words stand (`notice_period`, text the server could not read as
+  days) its hint says forms get them until days are given (`noticeLegacyNote`). Every answer saves as you go
   (`AutofillProfileProvider`: one `useAutosave` for the answers). Each editor's status follows its own newest
   edit (`lib/save-surfaces.ts`): Saving until a write that carries it lands, Not saved when the last one
   failed, nothing while it has no edit waiting, so it never says Saved before its own edit is on the server

@@ -277,7 +277,7 @@ _INDIA = {
 # read from today's text until given, in today's place; and the desired salary is the home country's
 # pay, asked in its set wherever the home is applied in, as it is in every golden here.
 _NOTICE_DAYS = {
-    "key": "notice_days", "label": "Notice period",
+    "key": "notice_days", "label": "Notice period (days)",
     "hint": "0 if you can start now. Forms that offer fixed choices get the next one up.",
     "type": "number", "legacy": "notice_period",
 }
@@ -682,7 +682,8 @@ def test_notice_is_one_answer_in_days_for_everyone():
         assert "notice_period" not in keys and keys.count("notice_days") == 1
         days = _field_of(qs, "preferences", "notice_days")
         assert days.optional is False and days.legacy == "notice_period" and days.askedBy is None
-        assert (days.label, days.type) == ("Notice period", "number")
+        # The label carries the unit: the box takes a number, and a blank one must say of what.
+        assert (days.label, days.type) == ("Notice period (days)", "number")
 
 
 def test_pack_fields_say_who_asks():

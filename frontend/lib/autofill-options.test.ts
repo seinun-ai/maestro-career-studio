@@ -24,10 +24,10 @@ import {
   groupCount,
   groupFields,
   languageFields,
-  legacyNote,
   missingAnswers,
   missingKey,
   missingValue,
+  noticeLegacyNote,
   openAnswersWords,
   openPermitFields,
   permitAnswers,
@@ -44,6 +44,7 @@ import {
   withCountryAnswer,
   withField,
   withMissingAnswer,
+  wholeDays,
   withPermit,
 } from "./autofill-options.ts";
 import type { DerivedAnswer, FieldDef, MarketOption, QuestionSet } from "./types.ts";
@@ -621,7 +622,7 @@ test("next up asks the state where it is required, never where it is served opti
 // Someone who lives in the United States and applies there and in Germany, as served: the home's set asks its pay
 // (`home`, required, read from the desired salary, so Start and pay no longer lists it), Germany's own pay is
 // optional, and notice is one answer in days whose older words (`notice_period`) still answer it.
-const NOTICE: FieldDef = { key: "notice_days", label: "Notice period", type: "number", legacy: "notice_period" };
+const NOTICE: FieldDef = { key: "notice_days", label: "Notice period (days)", type: "number", legacy: "notice_period" };
 const RELOCATE = yesNo("willing_to_relocate", "Willing to relocate?");
 const HOME_SET: QuestionSet = (() => {
   const set = withCitizenship(servedFor(["US", "DE"], { offersEeo: false }));
@@ -753,17 +754,29 @@ test("a question only some countries ask says which first, in its hint line, and
 
 test("notice written in words before says so beside the empty days, until days are given", () => {
   assert.equal(
-    legacyNote(NOTICE, { notice_period: "negotiable" }),
+    noticeLegacyNote(NOTICE, { notice_period: "negotiable" }),
     "You wrote \u201cnegotiable\u201d before. Forms get that until you give days.",
   );
-  assert.equal(legacyNote(NOTICE, { notice_period: " negotiable " })?.includes("\u201cnegotiable\u201d"), true);
+  assert.equal(noticeLegacyNote(NOTICE, { notice_period: " negotiable " })?.includes("\u201cnegotiable\u201d"), true);
   // Days given, 0 included, are the answer: no note, whatever older words are still held.
   for (const days of [0, 14, "0", "14"]) {
-    assert.equal(legacyNote(NOTICE, { notice_days: days, notice_period: "negotiable" }), undefined, String(days));
+    assert.equal(noticeLegacyNote(NOTICE, { notice_days: days, notice_period: "negotiable" }), undefined, String(days));
   }
-  assert.equal(legacyNote(NOTICE, { notice_days: 0 }), undefined);
-  assert.equal(legacyNote(NOTICE, { notice_period: "  " }), undefined);
-  assert.equal(legacyNote(NOTICE, {}), undefined);
-  // A field with no older key has no older words.
-  assert.equal(legacyNote(RELOCATE, { notice_period: "negotiable" }), undefined);
+  assert.equal(noticeLegacyNote(NOTICE, { notice_days: 0 }), undefined);
+  assert.equal(noticeLegacyNote(NOTICE, { notice_period: "  " }), undefined);
+  assert.equal(noticeLegacyNote(NOTICE, {}), undefined);
+  // The words are notice's: a field with no older key has none, nor would another field given one.
+  assert.equal(noticeLegacyNote(RELOCATE, { notice_period: "negotiable" }), undefined);
+  const another: FieldDef = { key: "how_heard", label: "How did you hear about the job?", legacy: "source" };
+  assert.equal(noticeLegacyNote(another, { source: "A friend" }), undefined);
+});
+
+test("notice in whole days, by the server's rule: a number, or the digits a number box sends", () => {
+  for (const [stored, days] of [[0, 0], [14, 14], ["14", 14], [" 45 ", 45], ["0", 0], [14.0, 14]] as const) {
+    assert.equal(wholeDays(stored), days, String(stored));
+  }
+  // No days: a part day, a negative, exponent or sign text, a yes or no, a blank, and notice in words.
+  for (const stored of [14.5, -1, "-1", "1e1", "+3", "4.5", true, "", "  ", "2 weeks", null, undefined]) {
+    assert.equal(wholeDays(stored), undefined, String(stored));
+  }
 });

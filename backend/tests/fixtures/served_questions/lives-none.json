@@ -209,7 +209,7 @@
         },
         {
           "key": "notice_days",
-          "label": "Notice period",
+          "label": "Notice period (days)",
           "type": "number",
           "hint": "0 if you can start now. Forms that offer fixed choices get the next one up.",
           "legacy": "notice_period"

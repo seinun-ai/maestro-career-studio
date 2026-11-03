@@ -588,7 +588,7 @@ const US_ANSWERED = {
 test("next up asks a question with its hint line, read with its control", () => {
   const html = render({ ...US_HOME, profile: US_ANSWERED });
   assert.match(html, /Next up · Start and pay/);
-  assert.match(html, /<h2[^>]*><label for="[^"]+">Notice period<\/label><\/h2>/);
+  assert.match(html, /<h2[^>]*><label for="[^"]+">Notice period \(days\)<\/label><\/h2>/);
   assert.deepEqual(nextUpHint(html), {
     hint: "0 if you can start now. Forms that offer fixed choices get the next one up.", described: true,
   });

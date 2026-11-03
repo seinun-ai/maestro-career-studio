@@ -793,14 +793,6 @@ def test_the_covenant_question_explains_its_legal_term():
     assert "useFieldMessage({ warning, hintId })" in control  # … and the input through its message wiring
 
 
-def test_a_hint_line_says_who_asks_before_the_hint():
-    """A pack's question leads its hint line with who asks it (`askedBy`, "Asked by forms in India."), in
-    every editor (`fieldHint`); what an editor says instead of the hint (a stale answer, an older answer's
-    note) replaces the hint only, never that marker."""
-    helper = _between(_read("lib/autofill-options.ts"), "export function fieldHint(", "\n}\n")
-    assert "[field.askedBy, override ?? field.hint]" in helper
-
-
 def test_gender_offers_non_binary_and_self_describe():
     """The owner's options, in this order; the stored values are what
     extension/content/eeo.js maps to a form's own wording."""

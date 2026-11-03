@@ -193,7 +193,7 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
         "if (country.home && key === EXPECTED_PAY) {",
         ("frontend/components/profile/work-permits.tsx", "values={countryAnswerEntry(profile, country)}"),
     )),
-    ("Start and pay", "Notice period", (asked("preferences", "notice_days", label="Notice period"), _PREFERENCES)),
+    ("Start and pay", "Notice period", (asked("preferences", "notice_days", label="Notice period (days)"), _PREFERENCES)),
     ("Start and pay", "Earliest start date", (asked("preferences", "earliest_start_date", label="Earliest start date"), _PREFERENCES)),
     ("Start and pay", "Willing to relocate?", (asked("preferences", "willing_to_relocate", label="Willing to relocate?"), _PREFERENCES)),
     ("Start and pay", "How did you hear about the job?",
@@ -338,8 +338,8 @@ _SETUP: list[tuple[str, str, tuple[Needle, ...]]] = [
     )),
     # Notice in days, the served question (Profile's number box); each quick choice stores its days.
     ("Form answers", "Notice period", (
-        "How soon could you start?", asked("preferences", "notice_days", label="Notice period"),
-        'return groupFields(questionSet, "preferences").find((field) => field.key === "notice_days");',
+        "How soon could you start?", asked("preferences", "notice_days", label="Notice period (days)"),
+        'return groupFields(questionSet, "preferences").find((field) => field.key === NOTICE_DAYS);',
         "<Label htmlFor={noticeId}>{field.label}</Label>", '{ value: 14, label: "2 weeks" }',
         'withPreference(current, questionSet, "notice_days", choice)',
     )),

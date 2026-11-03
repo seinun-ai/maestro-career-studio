@@ -555,15 +555,24 @@ export function fieldHint(field: FieldDef, override?: string): string {
   return [field.askedBy, override ?? field.hint].filter((part) => !isBlank(part)).join(" ");
 }
 
-/** What a field's older answer says while its own is blank (`legacy`, read as `answeredIn` reads it): notice
- *  written in words before it was days, text the server could not read as days ("negotiable"), which forms
- *  get as written until days are given. Only notice has an older key, so the words are notice's. */
-export function legacyNote(field: FieldDef, values: Record<string, unknown>): string | undefined {
-  if (field.legacy === undefined || answered(field, values[field.key])) return undefined;
+/** The one answer notice is, in whole days for everyone (backend `autofill_profile.NOTICE_DAYS`). */
+export const NOTICE_DAYS = "notice_days";
+
+/** Notice as whole days, by the server's rule (backend `notice.whole_days`): a number 0 or more with no part
+ *  day, or the digits a number box sends ("14" until its save lands). A part day, a negative, exponent or sign
+ *  text ("1e1", "+3"), a yes or no, a blank or words are no days, never a guess. */
+export function wholeDays(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isInteger(value) && value >= 0 ? value : undefined;
+  return typeof value === "string" && /^\s*\d+\s*$/.test(value) ? Number(value) : undefined;
+}
+
+/** What notice's older answer says while its days are blank (its `legacy` key, read as `answeredIn` reads
+ *  it): notice written in words before it was days, text the server could not read as days ("negotiable"),
+ *  which forms get as written until days are given. None for any other field: the words are notice's. */
+export function noticeLegacyNote(field: FieldDef, values: Record<string, unknown>): string | undefined {
+  if (field.key !== NOTICE_DAYS || field.legacy === undefined || answered(field, values[field.key])) return undefined;
   const older = values[field.legacy];
-  return typeof older === "string" && older.trim()
-    ? `You wrote “${older.trim()}” before. Forms get that until you give days.`
-    : undefined;
+  return isBlank(older) ? undefined : `You wrote “${String(older).trim()}” before. Forms get that until you give days.`;
 }
 
 export type Count = { answered: number; answerable: number };

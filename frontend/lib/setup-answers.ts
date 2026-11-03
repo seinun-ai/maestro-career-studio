@@ -6,6 +6,7 @@
  * load it bare).
  */
 import {
+  NOTICE_DAYS,
   answered,
   answeredIn,
   booleanAnswer,
@@ -20,6 +21,7 @@ import {
   permitAnswered,
   permitEntry,
   permitQuestions,
+  wholeDays,
   withCitizenshipList,
   withCitizenships,
   withField,
@@ -98,9 +100,10 @@ export function withPermitAnswer(
 }
 
 /** The profile with one of the Start and pay answers Setup asks: notice in days (a choice's 0, 14, 30 or 90, or
- *  the digits typed into the box; undefined, a cleared box, removes it) or relocation. Once an answer is given,
- *  the older answer it replaces (the served field's `legacy`: notice in words) leaves the held answers, so the
- *  autosave never sends that text again (the server drops it too, since days given win). */
+ *  the digits typed into the box; undefined, a cleared box, removes it) or relocation. Once days the server
+ *  reads as days are given (`wholeDays`), notice's older words (the served field's `legacy`) leave the held
+ *  answers, so the autosave never sends that text again (the server drops it too, since days given win). Input
+ *  it reads as no days ("-1", "1e1") keeps them: they are still the answer forms get. */
 export function withPreference(
   profile: Profile,
   questionSet: QuestionSet,
@@ -108,11 +111,23 @@ export function withPreference(
   value: string | number | boolean | undefined,
 ): Profile {
   const next = withField(profile, questionSet, "preferences", key, value);
-  const field = groupFields(questionSet, "preferences").find((f) => f.key === key);
-  if (!field?.legacy || !answered(field, value)) return forSaving(next);
-  const { [field.legacy]: _older, ...preferences } = groupValues(next, "preferences");
+  const legacy = key === NOTICE_DAYS ? noticeField(questionSet)?.legacy : undefined;
+  if (!legacy || wholeDays(value) === undefined) return forSaving(next);
+  const { [legacy]: _older, ...preferences } = groupValues(next, "preferences");
   void _older;
   return forSaving({ ...next, preferences });
+}
+
+/** Notice as Setup reads it, in whole days by the server's rule (`wholeDays`): a choice is picked when they
+ *  equal its days. */
+export function noticeDays(profile: Profile): number | undefined {
+  return wholeDays(groupValues(profile, "preferences")[NOTICE_DAYS]);
+}
+
+/** Relocation as Setup reads it: a yes or no, stored as a boolean or as the Companion's pause row types it
+ *  (`booleanAnswer`). */
+export function willingToRelocate(profile: Profile): boolean | undefined {
+  return booleanAnswer(groupValues(profile, "preferences").willing_to_relocate);
 }
 
 /** The profile with one diversity answer (`eeo`), or with the rest declined: every blank question that has a
@@ -134,7 +149,7 @@ export function withDiversityDeclined(profile: Profile, questionSet: QuestionSet
 /** Notice, as served: one answer in days (`notice_days`) for everyone, whose older words (`legacy`) still answer
  *  it. Setup's notice question asks it. */
 export function noticeField(questionSet: QuestionSet): FieldDef | undefined {
-  return groupFields(questionSet, "preferences").find((field) => field.key === "notice_days");
+  return groupFields(questionSet, "preferences").find((field) => field.key === NOTICE_DAYS);
 }
 
 /** Whether a question holds its answer, for its progress dot: a passed or skipped question is not answered
@@ -156,7 +171,7 @@ export function questionAnswered(
       return field !== undefined && answeredIn(field, groupValues(profile, "preferences"));
     }
     case "relocate":
-      return booleanAnswer(groupValues(profile, "preferences").willing_to_relocate) !== undefined;
+      return willingToRelocate(profile) !== undefined;
     default: {
       const count = groupCount(profile, questionSet, "eeo");
       return count.answered === count.answerable;

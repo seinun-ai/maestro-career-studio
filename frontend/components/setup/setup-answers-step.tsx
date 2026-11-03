@@ -31,23 +31,25 @@ import {
   groupFields,
   groupValues,
   isBlank,
-  legacyNote,
+  noticeLegacyNote,
   permitEntry,
   profileForEditing,
   staleAnswers,
 } from "@/lib/autofill-options";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import {
+  noticeDays,
   noticeField,
   permitAsks,
   questionAnswered,
+  willingToRelocate,
   withCitizenshipAnswer,
   withDiversityAnswer,
   withDiversityDeclined,
   withPermitAnswer,
   withPreference,
 } from "@/lib/setup-answers";
-import { preference, questionKey, type AutofillProfile, type FormQuestion } from "@/lib/setup-flow";
+import { questionKey, type AutofillProfile, type FormQuestion } from "@/lib/setup-flow";
 import type { EeoConsent, QuestionSet } from "@/lib/types";
 import { useAutosave } from "@/lib/use-autosave";
 import { cn } from "@/lib/utils";
@@ -290,8 +292,8 @@ function Question({ question, ...props }: QuestionProps & { question: FormQuesti
     // picked from the days held, compared as numbers (the server sends 14; the box holds "14" until it lands).
     const field = noticeField(questionSet);
     const values = groupValues(profile, "preferences");
-    const days = preference(profile, "notice_days");
-    const hint = field ? fieldHint(field, legacyNote(field, values)) : "";
+    const days = noticeDays(profile);
+    const hint = field ? fieldHint(field, noticeLegacyNote(field, values)) : "";
     const hintId = hint ? `${noticeId}-hint` : undefined;
     return (
       <div className="flex flex-col gap-4">
@@ -301,7 +303,7 @@ function Question({ question, ...props }: QuestionProps & { question: FormQuesti
         <Choices
           labelledBy={titleId}
           options={NOTICE_CHOICES}
-          value={typeof days === "number" ? days : undefined}
+          value={days}
           onPick={(choice) => {
             update((current) => withPreference(current, questionSet, "notice_days", choice));
             advance();
@@ -329,7 +331,7 @@ function Question({ question, ...props }: QuestionProps & { question: FormQuesti
     );
   }
   if (question.kind === "relocate") {
-    const value = preference(profile, "willing_to_relocate");
+    const value = willingToRelocate(profile);
     return (
       <div className="flex flex-col gap-4">
         <h3 id={titleId} ref={headingRef} tabIndex={-1} className="text-title-large outline-none">
@@ -338,7 +340,7 @@ function Question({ question, ...props }: QuestionProps & { question: FormQuesti
         <Choices
           labelledBy={titleId}
           options={YES_NO}
-          value={typeof value === "boolean" ? value : undefined}
+          value={value}
           onPick={(answer) => {
             update((current) => withPreference(current, questionSet, "willing_to_relocate", answer));
             advance();

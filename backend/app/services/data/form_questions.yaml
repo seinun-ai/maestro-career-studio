@@ -192,9 +192,10 @@ groups:
       # that offer fixed buckets (Indian forms: Sources 21; sources doc rows
       # India 2a-2d) get the next one up, never down. Text stored under
       # `notice_period`, from when notice was free text, still answers it
-      # until days are given.
+      # until days are given. The label names the unit: the box takes a
+      # number, and a blank one would not say of what.
       - key: notice_days
-        label: Notice period
+        label: Notice period (days)
         hint: 0 if you can start now. Forms that offer fixed choices get the next one up.
         type: number
         legacy: notice_period

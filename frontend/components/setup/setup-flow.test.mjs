@@ -16,12 +16,13 @@ const { SetupAnswersStep } = load("components/setup/setup-answers-step.tsx");
 const { formQuestions, stepsDone } = load("lib/setup-flow.ts");
 const { buildSetupSteps } = load("components/setup/setup-steps.ts");
 const { countryCodes } = load("lib/autofill-options.ts");
-const { preference } = load("lib/setup-flow.ts");
 const {
   citizenshipNext,
+  noticeDays,
   permitAsks,
   questionAnswered,
   questionsToAsk,
+  willingToRelocate,
   withCitizenshipAnswer,
   withCitizenshipListed,
   withDiversityDeclined,
@@ -602,7 +603,7 @@ test("Setup's box takes any other number of days, and the older words go once da
   // Typed, the box sends what it holds (the server keeps it as a whole number), and no choice reads as picked.
   const typed = withPreference({ preferences: { willing_to_relocate: false } }, SERVED, "notice_days", "45");
   assert.deepEqual(typed, { preferences: { willing_to_relocate: false, notice_days: "45" } });
-  assert.equal(preference(typed, "notice_days"), 45);
+  assert.equal(noticeDays(typed), 45);
   const html = noticeCard({ preferences: { notice_days: 45 } });
   assert.deepEqual(pressedChoices(html), []);
   assert.equal(daysBox(html).value, "45");
@@ -612,6 +613,22 @@ test("Setup's box takes any other number of days, and the older words go once da
   assert.deepEqual(withPreference(older, SERVED, "notice_days", "45").preferences, { desired_salary: "80k", notice_days: "45" });
   // A cleared box removes the days.
   assert.deepEqual(withPreference({ preferences: { notice_days: 14 } }, SERVED, "notice_days", undefined), { preferences: {} });
+  // What the server reads as no days (a negative, exponent text) keeps the older words: they are still the answer.
+  for (const invalid of ["-1", "1e1"]) {
+    assert.equal(withPreference(older, SERVED, "notice_days", invalid).preferences.notice_period, "negotiable", invalid);
+  }
+});
+
+test("Setup reads notice in whole days and relocation as a yes or no, as stored or as the Companion types it", () => {
+  for (const [stored, days] of [[0, 0], [14, 14], ["14", 14]]) {
+    assert.equal(noticeDays({ preferences: { notice_days: stored } }), days, String(stored));
+  }
+  assert.equal(noticeDays({ preferences: { notice_days: "1e1" } }), undefined);
+  assert.equal(noticeDays({ preferences: { notice_period: "1 month" } }), undefined);
+  assert.equal(noticeDays({}), undefined);
+  assert.equal(willingToRelocate({ preferences: { willing_to_relocate: "Yes" } }), true);
+  assert.equal(willingToRelocate({ preferences: { willing_to_relocate: false } }), false);
+  assert.equal(willingToRelocate({}), undefined);
 });
 
 test("Setup's days box is Profile's, described by the served hint, or by the older words while they stand", () => {
@@ -620,7 +637,7 @@ test("Setup's days box is Profile's, described by the served hint, or by the old
   assert.equal(blank.value, "");
   assert.equal(blank.hint, "0 if you can start now. Forms that offer fixed choices get the next one up.");
   const html = noticeCard();
-  assert.match(html, /<label[^>]*for="[^"]+"[^>]*>Notice period<\/label>/);
+  assert.match(html, /<label[^>]*for="[^"]+"[^>]*>Notice period \(days\)<\/label>/);
   assert.doesNotMatch(html, /in your own words/);
   // Words the server could not read as days answer the question, so it is done, though no choice is picked.
   const older = { preferences: { notice_period: "negotiable" } };

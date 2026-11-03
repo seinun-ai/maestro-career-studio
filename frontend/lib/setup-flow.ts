@@ -29,33 +29,10 @@ export const SETUP_STEPS: readonly { id: SetupStepId; title: string; time: strin
 /** The autofill profile as Setup reads it: `PUT /api/settings/autofill` takes any JSON object. */
 export type AutofillProfile = Record<string, unknown>;
 
-function object(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-/** A yes or no as stored: a boolean from the web app, or "Yes" / "No" as the Companion's pause row types it. */
-function yesNo(value: unknown): boolean | undefined {
-  if (typeof value === "boolean") return value;
-  if (typeof value !== "string") return undefined;
-  const word = value.trim().toLowerCase();
-  return word === "yes" ? true : word === "no" ? false : undefined;
-}
-
-/** Notice as whole days, as the server keeps it (backend `notice.whole_days`): a number, or the digits a number
- *  box sends ("14" until its save lands). A part day, a negative, a yes or no or words are no days. */
-function wholeDays(value: unknown): number | undefined {
-  if (typeof value === "number") return Number.isInteger(value) && value >= 0 ? value : undefined;
-  return typeof value === "string" && /^\s*\d+\s*$/.test(value) ? Number(value) : undefined;
-}
-
 /** The Start and pay answers Setup asks: notice in days (Setup asks no pay, Decision 8 of
- *  docs/plans/2026-11-02-start-and-pay.md) and relocation. */
+ *  docs/plans/2026-11-02-start-and-pay.md) and relocation. Read with lib/setup-answers.ts `noticeDays` and
+ *  `willingToRelocate`, written with its `withPreference`. */
 export type PreferenceKey = "notice_days" | "willing_to_relocate";
-
-export function preference(profile: AutofillProfile, key: PreferenceKey): number | boolean | undefined {
-  const value = object(profile.preferences)[key];
-  return key === "willing_to_relocate" ? yesNo(value) : wholeDays(value);
-}
 
 export type FormQuestion =
   | { kind: "citizenship" }

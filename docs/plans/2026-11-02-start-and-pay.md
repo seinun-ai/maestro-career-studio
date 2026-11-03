@@ -76,6 +76,11 @@ Added after the plan review (2026-11-02):
     lists `preferences.desired_salary` in `COUNTRY_ANSWERED`, so `_pay_describe` words it in the home's terms and the
     Companion learns a home pay into the country map, which the server folds.
 
+Added after the Task 10 review (2026-11-03):
+
+14. **The notice label names its unit.** `notice_days` reads "Notice period (days)": the box takes a number, and a
+    blank one said no unit in Profile, Next up or Setup. Setup's heading, "How soon could you start?", is unchanged.
+
 Known limit (no Companion release in scope): the Companion's Undo of a learned home pay (`unlearnAnswers`,
 `extension/panel/actions/pause.js`) nulls the home entry, but the fold has already overwritten `desired_salary`, so Undo
 cannot bring the old figure back. Task 4 pins it with a test that documents the gap; `docs/deferred.md` gets an item.
@@ -170,7 +175,7 @@ def test_notice_words(days, words):
 - `form_questions.yaml` preferences: remove `notice_period`; `notice_days` loses `pack`, becomes required, and reads:
   ```yaml
   - key: notice_days
-    label: Notice period
+    label: Notice period (days)
     hint: 0 if you can start now. Forms that offer fixed choices get the next one up.
     type: number
     legacy: notice_period

@@ -71,7 +71,7 @@ with none (never a figure converted from another country). Each market's pay nam
 
 ## 2. Notice: one answer, in days
 
-**Profile.** Start and pay has one "Notice period", `preferences.notice_days` (whole days, required), for
+**Profile.** Start and pay has one "Notice period (days)", `preferences.notice_days` (whole days, required), for
 everyone: it leaves the `india_basics` pack. Hint: "0 if you can start now. Forms that offer fixed choices get
 the next one up." The free-text `notice_period` field is gone from the tile.
 
