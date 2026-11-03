@@ -38,6 +38,15 @@ in the map or stored before the rule, is read and saved as `desired_salary`
 (`_with_home_pay`), and a move of home first pins the old home's figure to it
 (`pin_home_pay`). With no country chosen, `desired_salary` is the one figure for
 every country and nothing moves.
+
+**Notice is one answer in days** (owner decision 3 of the same design):
+`preferences.notice_days`, a whole number. Notice was free text under
+`notice_period` before, and text that says days ("2 weeks", "now") is read as
+them, on read and on the next save of any kind, with no startup step and no flag
+(`_with_notice_days`); text that says none ("negotiable") stays as the legacy
+answer until days are given. A save that sends new text, an older Companion
+learning it or an agent's PATCH, is the new answer (`_with_new_notice_text`).
+A form that asks in words gets the days in words (`autofill_catalog.with_fill_rules`).
 """
 
 import json
@@ -48,7 +57,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.schemas.autofill_profile import WorkAuth
-from app.services import countries, form_questions, markets, text_settings
+from app.services import countries, form_questions, markets, notice, text_settings
 
 AUTOFILL_KEY = "autofill_profile"
 AUTOFILL_FILE = "autofill.json"
@@ -72,6 +81,9 @@ CITIZENSHIPS = "citizenships"
 # A country's own pay, under its `answers_by_country` entry; the home's is `preferences.desired_salary`.
 EXPECTED_PAY = "expected_pay"
 DESIRED_SALARY = "desired_salary"
+# Under `preferences`: the notice period in whole days, and the free text it was asked in before.
+NOTICE_DAYS = "notice_days"
+NOTICE_TEXT = "notice_period"
 
 # A profile is "new shape" if it carries ANY typed key. Detecting on one or two
 # chosen keys would send a profile holding only `sponsorship_now` down the
@@ -224,6 +236,56 @@ def pay_for(profile: Any, market: str | None, home: str | None) -> str | None:
     return _figure(preferences.get(DESIRED_SALARY) if isinstance(preferences, dict) else None)
 
 
+def _blank(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _with_notice_days(profile: dict[str, Any]) -> dict[str, Any]:
+    """`profile` with notice as one answer in days, the read view's and every save's (Decisions 1 and
+    9 of docs/plans/2026-11-02-start-and-pay.md). Days given win: a whole number sent as text ("14",
+    from a number box) is the number, and the text beside them goes. With none, text that says days
+    (`notice.days_from_text`: "2 weeks", "now") becomes them and goes; text that says none
+    ("negotiable", a bare "2") stays as the legacy answer, which forms get as written and readiness
+    counts (the served field's `legacy`), until days are given.
+
+    The same rule on read and on save, so the text a profile was stored with before notice was days
+    reads as days today and lands in storage on its next save of any kind, with no startup step, no
+    flag and nothing for a sync peer to miss; on a profile saved since, it changes nothing."""
+    preferences = profile.get("preferences")
+    if not isinstance(preferences, dict):
+        return profile
+    given = preferences.get(NOTICE_DAYS)
+    days = notice.days_from_text(preferences.get(NOTICE_TEXT)) if _blank(given) else notice.whole_days(given)
+    if _blank(given) and days is None:
+        return profile  # no days, and text that says none: the legacy answer
+    out = {k: v for k, v in preferences.items() if k != NOTICE_TEXT}
+    if days is not None:
+        out[NOTICE_DAYS] = days
+    return {**profile, "preferences": out}
+
+
+def _with_new_notice_text(profile: dict[str, Any], stored_text: dict[str, Any]) -> dict[str, Any]:
+    """`profile` with the notice text this save sends read as its days, when it is new and says them.
+
+    A client that knows notice only in words (a Companion from before days learning "1 month", an
+    agent's PATCH of `notice_period`, an older page) sends the read view, days and all, with its
+    text beside them; that text is the new answer when it differs from the text stored now.
+    Compared with the stored text (`_parse_stored`), never with the read view, which has already
+    turned it into days or left it out, so the view's text would always read as new (Decision 10 of
+    docs/plans/2026-11-02-start-and-pay.md). The stored text sent back unchanged, as an echo of a
+    legacy answer, is no new answer, and the days beside it stand. New text that says no days is
+    left for `_with_notice_days`: kept while the days are blank, dropped once they are given."""
+    preferences = profile.get("preferences")
+    if not isinstance(preferences, dict) or NOTICE_TEXT not in preferences:
+        return profile
+    stored = stored_text.get("preferences")
+    sent = preferences[NOTICE_TEXT]
+    if isinstance(stored, dict) and stored.get(NOTICE_TEXT) == sent:
+        return profile
+    days = notice.days_from_text(sent)
+    return profile if days is None else {**profile, "preferences": {**preferences, NOTICE_DAYS: days}}
+
+
 def _with_work_auth_by_country(
     data: dict[str, Any], home: str | None, *, chosen_home: str | None
 ) -> dict[str, Any]:
@@ -319,10 +381,12 @@ def _with_citizenship_codes(profile: dict[str, Any]) -> dict[str, Any]:
 
 
 def _as_stored(
-    profile: dict[str, Any], before: dict[str, Any], home: str | None, *, chosen_home: str | None
+    profile: dict[str, Any], before: dict[str, Any], home: str | None, *, chosen_home: str | None,
+    stored_text: dict[str, Any],
 ) -> dict[str, Any]:
     """What a save stores: `work_auth_by_country` alone, never one market's answers written over
-    another's, and the home's pay in one place.
+    another's, the home's pay in one place and notice in days. `before` is the read view of what is
+    stored, `stored_text` the stored text as it is (`_parse_stored`).
 
     - **The map is merged by market.** A market the save sends replaces that market's answers (sent
       as null, they go); a market it leaves out, or a save with no map at all, keeps its stored
@@ -341,6 +405,11 @@ def _as_stored(
       one only when this save sends it, and then it is the home's own, which wins whether it is new
       or an older client's echo of the stored one. A save of the view that changes
       `desired_salary` keeps the change: the stored entry's figure is never merged back over it.
+    - **Notice is `preferences.notice_days`, a number.** Notice text the save sends that differs
+      from the stored text's is the new answer, read as days when it says them
+      (`_with_new_notice_text`, compared with `stored_text`: the read view has already turned the
+      stored text into days); then the read view's rule (`_with_notice_days`): days sent as text are
+      stored as a number, and once days are given no text is stored.
     - **Citizenships are ISO codes** (`_with_citizenship_codes`).
     - **A view's own keys are dropped** (`_VIEW_ONLY`: `work_auth_market`, and the job view's
       `work_auth_country` and `country_answered`), so a /context profile sent back stores none."""
@@ -365,7 +434,8 @@ def _as_stored(
         out[BY_COUNTRY] = entries
     if country_answers:
         out[ANSWERS_BY_COUNTRY] = country_answers
-    return _with_citizenship_codes(_with_home_pay(out, chosen_home))
+    out = _with_notice_days(_with_new_notice_text(_with_home_pay(out, chosen_home), stored_text))
+    return _with_citizenship_codes(out)
 
 
 def chosen_home(session: Session | None = None) -> str | None:
@@ -399,7 +469,8 @@ def _parse_profile(raw: str, home: str | None, *, chosen_home: str | None) -> di
         return {}
     if not isinstance(data, dict):
         return {}
-    return _with_work_auth_by_country(_with_current_words(data), home, chosen_home=chosen_home)
+    view = _with_work_auth_by_country(_with_current_words(data), home, chosen_home=chosen_home)
+    return _with_notice_days(view)
 
 
 def _parse_stored(raw: str) -> dict[str, Any]:
@@ -501,13 +572,15 @@ def set_profile(profile: dict[str, Any], session: Session | None = None) -> dict
     if refusal := job_view_refusal(profile):
         raise ValueError(refusal)
     raw = text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session)
+    stored_text = _parse_stored(raw)
     home, chosen_home = _homes(session)
     # The hint outlasts any save that does not answer the question: whatever is stored, or the client's
     # own marker, keeps it; an explicit veteran answer clears it.
-    stale = _marks_veteran_stale(profile) or _marks_veteran_stale(_parse_stored(raw))
+    stale = _marks_veteran_stale(profile) or _marks_veteran_stale(stored_text)
     profile = _as_stored(
         {k: v for k, v in profile.items() if k != STALE_KEY},
         _parse_profile(raw, home, chosen_home=chosen_home), home, chosen_home=chosen_home,
+        stored_text=stored_text,
     )
     if stale and not _answered_veteran(profile):
         profile = {**profile, STALE_KEY: [STALE_VETERAN]}

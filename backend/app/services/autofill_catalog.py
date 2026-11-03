@@ -28,10 +28,12 @@ from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
-from app.services import countries, form_questions, markets
+from app.services import countries, form_questions, markets, notice
 from app.services.autofill_profile import (
     CITIZENSHIPS,
     COUNTRY_ANSWERED,
+    NOTICE_DAYS,
+    NOTICE_TEXT,
     WORK_AUTH_MARKET,
     canonical_identity_from_profile,
 )
@@ -368,11 +370,22 @@ def _stale_notice_keys(preferences: dict[str, Any], today: date) -> set[str]:
     return {"serving_notice", "last_working_day"} if last < today else set()
 
 
+def _with_notice_words(preferences: dict[str, Any]) -> dict[str, Any]:
+    """The notice period in words (`notice.notice_words`: "2 weeks", "Immediately") under
+    `notice_period`, the slot a form asking in words is filled from (the Companion's rules and
+    /choose read it), whenever `notice_days` holds days. The days stay beside it: their catalog
+    `describe` has a form with fixed choices take the next one up. With no days, the legacy text
+    is left as it is, so a "negotiable" from before notice was days is filled as written."""
+    days = notice.whole_days(preferences.get(NOTICE_DAYS))
+    return preferences if days is None else {**preferences, NOTICE_TEXT: notice.notice_words(days)}
+
+
 def with_fill_rules(profile: dict[str, Any], today: date) -> dict[str, Any]:
     """The answers as a form takes them on `today`: citizenships as country names (ISO codes are
-    stored; a form offers names), and no notice answer that no longer holds (`_stale_notice_keys`).
-    The one rule for every fill: `autofill_country.for_market` applies it to the view, and `build`
-    to whatever it is given (both ways the same; applying it twice changes nothing)."""
+    stored; a form offers names), the notice period in words as well as days (`_with_notice_words`),
+    and no notice answer that no longer holds (`_stale_notice_keys`). The one rule for every fill:
+    `autofill_country.for_market` applies it to the view, and `build` to whatever it is given (both
+    ways the same; applying it twice changes nothing)."""
     out = dict(profile)
     personal = out.get("personal")
     if isinstance(personal, dict) and CITIZENSHIPS in personal:
@@ -381,7 +394,7 @@ def with_fill_rules(profile: dict[str, Any], today: date) -> dict[str, Any]:
     preferences = out.get("preferences")
     if isinstance(preferences, dict):
         stale = _stale_notice_keys(preferences, today)
-        out["preferences"] = {k: v for k, v in preferences.items() if k not in stale}
+        out["preferences"] = {k: v for k, v in _with_notice_words(preferences).items() if k not in stale}
     return out
 
 

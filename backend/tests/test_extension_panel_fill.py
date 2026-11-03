@@ -2395,6 +2395,39 @@ def test_undo_of_a_learned_home_pay_cannot_bring_back_the_figure_it_replaced(tmp
     assert after["preferences"] == {"desired_salary": "175000"}   # the gap: 150000 is not back
 
 
+def test_a_learned_notice_is_kept_in_days_and_undo_cannot_bring_back_the_days_it_replaced(
+    tmp_path, client, monkeypatch
+):
+    """The Companion learns notice in words into `preferences.notice_period` beside the days the read view
+    serves; the save reads the new text as days (`autofill_profile._with_new_notice_text`), so "1 month"
+    is stored as 30. A KNOWN GAP, pinned so its fix shows (the notice twin of the home-pay Undo above,
+    docs/deferred.md): Undo puts back the text it replaced, which the view never held, so the days stay
+    the learned ones. A fix (the Companion learning notice into `notice_days`) flips the last assertion."""
+    from app.services import text_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path / "settings")
+    assert client.put("/api/settings/autofill", json={"value": {
+        "preferences": {"notice_days": 14}}}).status_code == 200
+
+    def step(**spec):
+        served = client.get("/api/settings/autofill").json()["value"]
+        out = run_node(_LEARN_STEP_DRIVER_JS, {
+            "profile": served, "market": "US", "country": "United States",
+            "job": {"company": "Globex", "location": "Austin, TX", "applicationId": "app-1"}, **spec},
+            tmp_path, source=PANEL_SOURCE)
+        [put] = out["puts"]
+        assert client.put("/api/settings/autofill", json={"value": put}).status_code == 200
+        return put, out.get("saved")
+
+    put, saved = step(items=[{"label": "Notice period", "answer": "1 month"}])
+    assert put["preferences"] == {"notice_days": 14, "notice_period": "1 month"}
+    assert client.get("/api/settings/autofill").json()["value"]["preferences"] == {"notice_days": 30}
+
+    put, _ = step(saved=saved)
+    assert "notice_period" not in put["preferences"]
+    assert client.get("/api/settings/autofill").json()["value"]["preferences"] == {"notice_days": 30}  # the gap
+
+
 def _learned(tmp_path, items, profile=SERVED_INDIA, market="IN", country="India"):
     return run_node(_LEARN_DRIVER_JS, {
         "profile": profile, "items": items, "market": market, "country": country,

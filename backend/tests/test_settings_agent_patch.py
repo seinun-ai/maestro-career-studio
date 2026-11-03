@@ -45,7 +45,7 @@ def test_answers_merge_key_by_key_and_other_sections_stay_as_stored(client, sett
     assert saved.status_code == 200, saved.text
     stored = _stored_profile(settings_dir)
     assert stored["personal"] == {"first_name": "Ana", "city": "Leeds", "phone": "+44 1"}
-    assert stored["preferences"] == PROFILE["preferences"]
+    assert stored["preferences"] == {"notice_days": 14}  # the PUT's "2 weeks", stored as days
     assert stored["custom"] == PROFILE["custom"]
     assert stored["eeo"] == PROFILE["eeo"]  # the user's, written back as it was
     # The read view's projection of the home set is never stored as a second copy.
@@ -369,7 +369,7 @@ def test_another_save_cannot_land_between_a_patchs_read_and_its_write(db_session
     db_session.expire_all()
     stored = autofill_profile.peek_profile(db_session)
     assert stored["personal"] == {"first_name": "Sam", "city": "Porto"}
-    assert stored["preferences"] == {"notice_period": "1 month"}
+    assert stored["preferences"] == {"notice_days": 30}  # "1 month", stored as days
 
 
 # ---------- job preferences ----------

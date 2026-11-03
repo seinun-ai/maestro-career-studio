@@ -27,6 +27,15 @@ def days_from_text(text: Any) -> int | None:
     return int(match[1]) * _UNIT_DAYS[match[2].lower().rstrip("s")]
 
 
+def whole_days(value: Any) -> int | None:
+    """`notice_days` as a number, else None: an int, or a string of digits (the number boxes in Profile,
+    Next up and Setup send text, so "14" arrives for 14). Unlike `days_from_text` a bare number is
+    read here, since this answer is days by name."""
+    if isinstance(value, str) and value.strip().isdecimal():
+        value = int(value.strip())
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
 def notice_words(days: int) -> str:
     """`days` in words: 0 "Immediately", 7, 14 or 21 in weeks, 30, 60 or 90 in months, anything else in days."""
     if days == 0:

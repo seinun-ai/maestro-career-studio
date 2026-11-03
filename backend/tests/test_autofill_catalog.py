@@ -1036,6 +1036,31 @@ def test_the_last_working_day_holds_only_while_serving_notice(serving, last_day,
     assert got == kept
 
 
+@pytest.mark.parametrize("days, words", [
+    (0, "Immediately"), (14, "2 weeks"), (30, "1 month"), (45, "45 days"), ("21", "3 weeks"),
+])
+def test_notice_in_days_is_also_a_fact_in_words(days, words):
+    """A form that asks notice in words gets the days in words (`preferences.notice_period`, the slot the
+    Companion's rules and /choose read); one with fixed choices reads the days (`notice_days`' describe)."""
+    f = cat.build({"preferences": {"notice_days": days}}, [], [], today=TODAY)
+    assert f["preferences.notice_period"].value == words
+    assert f["preferences.notice_days"].value == str(days)
+
+
+def test_notice_text_with_no_days_is_filled_as_written():
+    """Text from before notice was days that says none ("negotiable") is the legacy answer, as it is."""
+    f = cat.build({"preferences": {"notice_period": "negotiable"}}, [], [], today=TODAY)
+    assert f["preferences.notice_period"].value == "negotiable"
+    assert "preferences.notice_days" not in f
+
+
+def test_the_notice_words_leave_the_stale_notice_rule_as_it_was():
+    profile = {"preferences": {"notice_days": 30, "serving_notice": True, "last_working_day": "2026-09-25"}}
+    once = cat.with_fill_rules(profile, TODAY)
+    assert once["preferences"] == {"notice_days": 30, "notice_period": "1 month"}
+    assert cat.with_fill_rules(once, TODAY) == once  # applying the rules twice changes nothing
+
+
 def test_a_dutch_pay_answer_is_described_in_dutch_terms():
     facts = _job_facts({"preferences": {"desired_salary": "60000"},
                         "answers_by_country": {"NL": {"expected_pay": "4500"}}}, "NL")

@@ -758,4 +758,4 @@ def test_a_stored_view_marker_never_blocks_a_save(db_session, tmp_path, client):
     assert patch.status_code == 200
     stored = _stored(tmp_path)
     assert autofill_country.COUNTRY_ANSWERED not in stored and autofill_country.WORK_AUTH_COUNTRY not in stored
-    assert stored["preferences"] == {"desired_salary": "150000", "notice_period": "2 weeks"}
+    assert stored["preferences"] == {"desired_salary": "150000", "notice_days": 14}  # "2 weeks", as days

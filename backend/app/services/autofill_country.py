@@ -222,10 +222,10 @@ def for_market(
     (`with_work_auth`), its own answers over the slots they fill and its pay, or none
     (`with_country_answers`, by `chosen_home`), no per-country map at all (no other country's answer
     is there), and the answers as a form takes them on `today` (`autofill_catalog.with_fill_rules`:
-    citizenships as country names, no stale notice). `profile` is a read view (`get_profile`), its
-    legacy one-set `work_auth` already placed as the home's, so no stored home is taken here: the one
-    home this view takes is `chosen_home`, the pay's. /context adds `work_auth_by_country` back for
-    agents."""
+    citizenships as country names, notice in words as well as days, no stale notice). `profile` is a
+    read view (`get_profile`), its legacy one-set `work_auth` already placed as the home's, so no
+    stored home is taken here: the one home this view takes is `chosen_home`, the pay's. /context
+    adds `work_auth_by_country` back for agents."""
     view = with_country_answers(with_work_auth(profile, market), market, chosen_home=chosen_home)
     if not isinstance(view, dict):
         return view
