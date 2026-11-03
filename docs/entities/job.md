@@ -140,16 +140,19 @@ has no application: no draft time to read).
   country's answers (a job with no country, the home market's; inv-work-permit-per-country). Salary
   reads the pay a form in the job's country gets (`autofill_profile.pay_for`, once countries are chosen):
   the home's desired salary at home and on a job with no country or in one no market covers, another
-  country's own expected pay there, and no check where that country has none; unchosen, the one desired
-  salary on every job. A monthly figure (markets.yaml `pay.period`) counts twelve times; only a yearly
-  posting is compared. It compares in one currency: the posted ceiling converted (`money.convert`, ECB
-  rates) into the figure's currency, the one its text names, else the home currency for the home's and
-  the market's own for another's (a bare "$" names none, so it is the home's unless that market pays in
-  dollars); with no rate, or a side that names no currency, the check is
-  `cant_compare` (Can't compare), never a pass or a warning. Its messages say "your expected pay" for
-  every figure. A job pay it could not compare links its Not run chip to where that figure is given:
-  Country answers once countries are chosen, Start and pay before that, and Start and pay too for a
-  job that reads the home's pay while the home is not applied in (the home pay then stays there). On the job page
+  country's own expected pay there, and no check where that country has none or where the figure is more
+  than a plain amount ("₹40 lakh"; `money.parse_amount(whole=True)`); unchosen, the one desired salary on
+  every job, read as before. The figure is made yearly by its market's `pay.period` (`money.to_yearly`: a
+  month counts twelve times); only a yearly posting is compared. It compares in one currency: the posted
+  ceiling converted (`money.convert`, ECB rates) into the figure's currency, the one its text names, else
+  its market's, the home's included (its label names it), and unchosen the home currency. A bare "$" names
+  none: it is the market's only where that pays in dollars, else the home's when that is a dollar, else no
+  currency. With no rate, or a side that names no currency, the check is `cant_compare` (Can't compare),
+  never a pass or a warning. Its messages say "your expected pay" for every figure. When the profile has no
+  figure to check a yearly posting with, the job page's Not run chip links to where that figure is given:
+  Start and pay while no country is chosen; once chosen, Country answers for a country applied in, Where you
+  apply for one that is not, and for a job that reads the home's pay (at home, no country, or a country no
+  market covers) Country answers, or Start and pay while the home is not applied in (its pay stays there). On the job page
   (step 1, Job) only a conflict or a missing profile answer is a banner, with a per-check chip strip (OK /
   Conflict / Warning / Add answer / Not listed / Not run / Can't compare); anything else is one small line
   in the Job details card. It is

@@ -20,20 +20,21 @@ Salary never conflicts — pay is negotiable — it only warns. Once you choose
 your countries it compares the pay a form in the job's country gets
 (`autofill_profile.pay_for`): the home's desired salary at home and on a job
 whose country no market covers, another country's own expected pay there, and
-no check where that country has none; before that, the one desired salary on
-every job. A monthly figure (the Netherlands, the UAE) is twelve months. It
-compares in one currency: the posted ceiling is converted into the figure's
-currency (the one its text names, else your home currency for the home's and
-the country's own for another's; a bare "$" is the home's unless that country
-pays in dollars) on the ECB reference rates. With no rate, or
-a side that names no currency, the check says it cannot compare
-(``cant_compare``), never a pass or a warning.
+no check where that country has none or where the figure is more than an
+amount ("₹40 lakh"); before that, the one desired salary on every job, in your
+home currency. A monthly figure (the Netherlands, the UAE) is twelve months.
+It compares in one currency: the posted ceiling is converted into the figure's
+currency on the ECB reference rates. The figure's currency is the one its text
+names, else its market's (the home's too: its label names it); a bare "$" is
+that market's only where it pays in dollars, else the home's when that is a
+dollar, else none. With no rate, or a side that names no currency, the check
+says it cannot compare (``cant_compare``), never a pass or a warning.
 """
 
 import re
 from collections.abc import Mapping
 from decimal import Decimal
-from typing import Any
+from typing import Any, NamedTuple
 
 from sqlalchemy.orm import Session
 
@@ -151,15 +152,6 @@ def _opt_verdict(stated: str, status: str | None, holder: bool) -> tuple[str, st
     return "pass", None
 
 
-def parse_desired_salary(raw: Any) -> Decimal | None:
-    """First number in a free-text desired salary; '150k' style honored.
-
-    Returns None when nothing parses — the scan then stays silent rather than
-    comparing against a guess.
-    """
-    return money.parse_amount(raw)[0]
-
-
 def _plain(amount: Decimal, currency: str | None) -> str:
     figure = f"{amount.normalize():f}" if amount == amount.to_integral() else str(amount)
     return f"{figure} {currency}" if currency else figure
@@ -179,26 +171,35 @@ def _cannot_compare(posted: str | None, wanted: str | None, rates: Mapping[str, 
             "expected pay.")
 
 
-def _salary_check(job: Job, figure: Any, period: str, currency: str | None = None,
+class _Pay(NamedTuple):
+    """The figure the salary check compares with: as typed, what it is per (a year, or a month as a
+    market's `pay.period` says), the currency it is in when it names none, and whether it must be a
+    plain amount (`money.parse_amount`'s `whole`: a country's figure, where "₹40 lakh" would read as
+    forty rupees)."""
+
+    figure: Any
+    period: str = "year"
+    currency: str | None = None
+    whole: bool = False
+
+
+def _salary_check(job: Job, pay: _Pay,
                   rates: Mapping[str, Any] | None = None) -> dict[str, Any] | None:
-    """`figure` as the user typed it, what it is per (`period`: a year, or a month, as a market's
-    `pay.period` says), and the currency it is in when it names none (`currency`)."""
     ceiling = job.salary_max if job.salary_max is not None else job.salary_min
     if ceiling is None:
         return None
     # Yearly postings only, as before: comparing with an hourly or monthly posted rate would need a
-    # conversion guess. A figure of the user's that its market asks per month counts twelve times.
+    # conversion guess. The user's figure is made yearly by the period its market asks it in.
     yearly = job.salary_period == "year" or (
         job.salary_period is None and Decimal(ceiling) >= 10000
     )
     if not yearly:
         return None
-    desired, named = money.parse_amount(figure)
+    desired, named = money.parse_amount(pay.figure, whole=pay.whole)
+    desired = money.to_yearly(desired, pay.period)
     if desired is None:
         return None
-    if period == "month":
-        desired *= 12
-    wanted = named or (currency.strip().upper() if currency else None)
+    wanted = named or (pay.currency.strip().upper() if pay.currency else None)
     posted = job.salary_currency.strip().upper() if job.salary_currency else None
     check: dict[str, Any] = {
         "kind": "salary",
@@ -409,31 +410,33 @@ def _work_auth_for_job(job: Job, by_market: dict[str, WorkAuth], home_market: st
     return by_market.get(market or "") or WorkAuth()
 
 
-def _pay_for_job(job: Job, pay_by_market: Mapping[str, tuple[str, str]], home_market: str | None,
-                 home_currency: str | None) -> tuple[str | None, str, str | None]:
-    """The figure a form on this job gets, as `_salary_check` takes it: (figure, period, currency).
-    The job's country's market picks it; a job that names no country, or one in a country no market
-    covers (France), reads the home's, as its form does (`autofill_profile.pay_for`, Decision 12 of
-    docs/plans/2026-11-02-start-and-pay.md). A market with no figure gives none, so no check."""
+def _pay_for_job(job: Job, pay_by_market: Mapping[str, tuple[str, str]],
+                 home_market: str | None) -> _Pay:
+    """The figure a form on this job gets, as `_salary_check` takes it. The job's country's market
+    picks it; a job that names no country, or one in a country no market covers (France), reads the
+    home's, as its form does (`autofill_profile.pay_for`, Decision 12 of
+    docs/plans/2026-11-02-start-and-pay.md). A market with no figure gives none, so no check. Only a
+    plain amount is read (`whole`): lakhs and "LPA" are not, yet."""
     from app.services import autofill_country
 
     market = autofill_country.market_for_job_country(job.country_code) or home_market
     figure, period = pay_by_market.get(market or "") or (None, "year")
-    return figure, period, _figure_currency(figure, market, home_market, home_currency)
+    return _Pay(figure, period, _figure_currency(figure, market, home_market), whole=True)
 
 
-def _figure_currency(figure: Any, market: str | None, home_market: str | None,
-                     home_currency: str | None) -> str | None:
-    """The currency a figure that names none is in: your home currency for the home's, a market's own
-    for its figure. A bare "$" names no one currency, so it is the home's, as `money` reads one,
-    unless the market's own is a dollar: "$90,000" for Canada is Canadian dollars, and "$50,000" for
-    India or the UK is never rupees or pounds."""
+def _figure_currency(figure: Any, market: str | None, home_market: str | None) -> str | None:
+    """The currency a market's figure is in when it names none: the market's own, the home's included
+    (its label names it: "Expected salary (USD)"), whatever currency the money setting shows pay in.
+    A bare "$" names no one currency (`money`): it is the market's only where that is a dollar
+    ("$90,000" for Canada), else the home's when that is a dollar ("$50,000" for India, living in the
+    US), else none, so it cannot be compared; never rupees, pounds or euros."""
     from app.services import markets
 
-    own = home_currency if market == home_market else markets.currency_for(market)
-    if money.bare_dollar(figure) and own not in money.DOLLARS:
-        return home_currency
-    return own
+    own = markets.currency_for(market)
+    if not money.bare_dollar(figure) or own in money.DOLLARS:
+        return own
+    home = markets.currency_for(home_market)
+    return home if home in money.DOLLARS else None
 
 
 def scan_job(
@@ -453,7 +456,7 @@ def scan_job(
     `work_auth_by_market` (`scan_args`). `home_currency` and `rates` (ECB, `fx_rates.current`)
     put the salary check in one currency. `pay_by_market` (`scan_args`, once countries are chosen):
     the job's country's figure is compared (`_pay_for_job`); None, `preferences.desired_salary`, the
-    one yearly figure for every job, as before any country was chosen."""
+    one yearly figure for every job in `home_currency`, as before any country was chosen."""
     if work_auth is None:
         work_auth = _work_auth_for_job(job, work_auth_by_market or {}, home_market)
     # settings/autofill.json is hand-editable loose JSON; `preferences` and `personal` may
@@ -462,12 +465,12 @@ def scan_job(
         preferences = None
     personal = personal if isinstance(personal, dict) else {}
     if pay_by_market is None:
-        pay = ((preferences or {}).get("desired_salary"), "year", home_currency)
+        pay = _Pay((preferences or {}).get("desired_salary"), currency=home_currency)
     else:
-        pay = _pay_for_job(job, pay_by_market, home_market, home_currency)
+        pay = _pay_for_job(job, pay_by_market, home_market)
     optional = (
         _opt_check(job, work_auth),
-        _salary_check(job, *pay, rates),
+        _salary_check(job, pay, rates),
         _experience_check(job, years_experience),
         _on_site_check(job, preferences, personal),
     )

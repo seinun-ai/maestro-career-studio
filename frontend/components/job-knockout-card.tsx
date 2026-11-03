@@ -70,28 +70,31 @@ type PayLink = Pick<Unchecked, "href" | "link">;
 
 /** Where the pay the salary check reads is given (knockout._pay_for_job), never Job preferences' Minimum
  *  salary. Once you choose your countries, each country's pay, the home's included, is in Country answers;
- *  before that, the one figure for every job is Start and pay's Desired salary. */
+ *  before that, the one figure for every job is Start and pay's Desired salary. A country you don't apply in has
+ *  no set in Country answers, so its pay starts at Where you apply. */
 const COUNTRY_PAY: PayLink = { href: anchorHref("/profile", "autofill-work_auth"), link: "Add your expected pay" };
 const ONE_FIGURE: PayLink = { href: anchorHref("/profile", "autofill-preferences"), link: "Add your desired salary" };
+const APPLY_THERE: PayLink = { href: anchorHref("/profile", "market"), link: "Apply in this country to give its pay" };
 
-/** The pay link for this job. Unchosen, the one figure. Chosen, the job's country's pay in Country answers, but
- *  while you apply only away from home the home pay stays in Start and pay, so a job that reads it (one at home,
- *  with no country, or in one no market covers) links there. The job page has the market setting loaded already
+/** The pay link for this job. Unchosen, the one figure. Chosen, a job that reads the home pay (one at home, with
+ *  no country, or in one no market covers) links to Country answers when you apply at home, else to Start and pay,
+ *  where the home pay stays while you apply only abroad; any other job to its country's set in Country answers,
+ *  or to Where you apply when you don't apply there. The job page has the market setting loaded already
  *  (`useHomeCountry`); until it is, the link reads as chosen, as `countriesChosen` reads a setting with no mark. */
 function usePayLink(job: Job): PayLink {
   const { data } = useMarketQuery();
   if (!data) return COUNTRY_PAY;
   if (!countriesChosen(data)) return ONE_FIGURE;
-  if (data.apply_in.includes(data.home)) return COUNTRY_PAY;
   const market = data.markets?.find((m) => m.country_code != null && m.country_code === job.country_code)?.key;
-  return market && market !== data.home ? COUNTRY_PAY : ONE_FIGURE;
+  if (!market || market === data.home) return data.apply_in.includes(data.home) ? COUNTRY_PAY : ONE_FIGURE;
+  return data.apply_in.includes(market) ? COUNTRY_PAY : APPLY_THERE;
 }
 
 /**
- * What the job lists that the scan could not compare. knockout.py leaves the salary check out when the
- * profile has no pay for the job's country (or the pay is not yearly) and the experience check out when the
- * profile has no years, and says nothing, so "unstated" read "No requirements listed" on a job listing both.
- * The yearly rule mirrors `_salary_check`.
+ * What the job lists that the scan did not check. knockout.py leaves the salary check out when the profile has no
+ * pay for the job's country, or one that is more than an amount (or the posted pay is not yearly), and the
+ * experience check out when the profile has no years, and says nothing, so "unstated" read "No requirements
+ * listed" on a job listing both. The yearly rule mirrors `_salary_check`.
  */
 function uncheckedItems(job: Job, scan: KnockoutScan, pay: PayLink = COUNTRY_PAY): Unchecked[] {
   const has = (kind: KnockoutCheck["kind"]) => scan.checks.some((c) => c.kind === kind);

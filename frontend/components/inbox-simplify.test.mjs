@@ -136,8 +136,9 @@ const payChip = (seed, country_code = null) => renderElement(linked(React.create
   scan: { status: "unstated", checks: [] }, job: { ...job, country_code, salary_max: 90000, salary_period: "year" } })), seed);
 const COUNTRY_PAY = /<a[^>]*href="\/profile#autofill-work_auth"[^>]*>.*Pay: Not run.*Add your expected pay/s;
 const ONE_FIGURE = /<a[^>]*href="\/profile#autofill-preferences"[^>]*>.*Pay: Not run.*Add your desired salary/s;
+const APPLY_THERE = /<a[^>]*href="\/profile#market"[^>]*>.*Pay: Not run.*Apply in this country to give its pay/s;
 
-test("a pay the scan could not compare links to the country's pay once countries are chosen", () => {
+test("a pay the scan did not check links to the country's pay once countries are chosen", () => {
   for (const html of [payChip([market(true)]), payChip([]), payChip([market(true, ["US", "IN"])], "IN")]) {
     assert.match(html, COUNTRY_PAY);
   }
@@ -151,7 +152,11 @@ test("living at home and applying only abroad, a job that reads the home pay lin
   // At home, with no country, or in one no market covers (France): the home pay, kept in Start and pay.
   for (const country of ["US", null, "FR"]) assert.match(payChip(abroad, country), ONE_FIGURE, String(country));
   assert.match(payChip(abroad, "IN"), COUNTRY_PAY);
-  assert.match(payChip(abroad, "GB"), COUNTRY_PAY);
+});
+
+test("a job in a country you don't apply in links to Where you apply, which has no pay for it yet", () => {
+  for (const applyIn of [["IN"], ["US", "IN"]]) assert.match(payChip([market(true, applyIn)], "GB"), APPLY_THERE);
+  assert.match(payChip([market(true, ["US", "UK"])], "GB"), COUNTRY_PAY);
 });
 
 // ── A5: the proposal card ───────────────────────────────────────────────────

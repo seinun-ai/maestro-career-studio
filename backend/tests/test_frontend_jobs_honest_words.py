@@ -65,26 +65,17 @@ def test_the_salary_check_reads_the_pay_a_form_in_the_jobs_country_gets():
     form gets it (`autofill_profile.pay_for`); before that, preferences.desired_salary."""
     src = Path(knockout.__file__).read_text(encoding="utf-8")
     assert "autofill_profile.pay_for(profile, key, home) for key in markets.keys()" in src
-    assert '(preferences or {}).get("desired_salary"), "year", home_currency)' in src
+    assert '_Pay((preferences or {}).get("desired_salary"), currency=home_currency)' in src
 
 
-def test_an_unrun_knockout_names_the_check_and_its_salary_field():
-    """Which check, and where the pay it reads is given: each country's in Country answers once
-    countries are chosen, else the one figure in Profile's Start and pay, where the home's stays
-    while the home is not applied in."""
+def test_an_unrun_knockout_names_the_check_and_its_fields():
+    """Which check, and the field each Not run chip opens. Where the pay chip goes (Country answers,
+    Start and pay or Where you apply) is rendered by components/inbox-simplify.test.mjs, which CI and
+    `test_frontend_job_page_simplify` run."""
     card = _read("components/job-knockout-card.tsx")
     assert "uncheckedLabel" not in card and "check: not run yet" not in card
     assert 'const NOT_RUN: Summary = { icon: NotRunIcon, word: "Not run"' in card  # replaces the sentence
     assert 'label: "Not checked yet"' not in card
-    # The chip's action names the field it opens: the country's pay or the one figure, About you's years.
-    assert ('const COUNTRY_PAY: PayLink = { href: anchorHref("/profile", "autofill-work_auth"), '
-            'link: "Add your expected pay" };\n'
-            'const ONE_FIGURE: PayLink = { href: anchorHref("/profile", "autofill-preferences"), '
-            'link: "Add your desired salary" };') in card
-    assert ("  if (!countriesChosen(data)) return ONE_FIGURE;\n"
-            "  if (data.apply_in.includes(data.home)) return COUNTRY_PAY;\n") in card
-    # Applying only abroad, the home pay stays in Start and pay (plan Decision 2).
-    assert "return market && market !== data.home ? COUNTRY_PAY : ONE_FIGURE;" in card
     assert 'link: "Add your years of experience",' in card
 
 
