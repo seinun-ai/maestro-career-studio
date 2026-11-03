@@ -5,13 +5,17 @@ Readiness counts the form-question catalog's required questions
 (services/form_questions, resolved for the stored market), never a list of its
 own. Rules:
 - "Complete" means ANSWERABLE, not filled: "decline" answers count.
-- Optional fields never count, so a country's own answers don't, except the home's pay.
+- Optional fields never count, so a country's own answers don't, except the home's pay, and
+  neither does the desired salary of a home you don't apply in (kept for jobs whose country can't
+  be told).
 - A field with a `legacy` key (notice in days, `notice_period`) is answered by its own value or
   the older key's text, until it is given: notice written in words before still counts.
 - The home country's pay is the desired salary (`preferences.desired_salary`) and counts in
   `preferences`, as it always did, though Country answers asks it once you apply in the country you
-  live in. Setup's answers step needs the `work_auth` group complete and never asks pay, so
-  counting it there would leave that step unfinishable.
+  live in. It is read as a form there gets it (`autofill_profile.pay_for`), so readiness counts the
+  figure the fill sends. Setup's answers step needs the `work_auth` group complete and never asks
+  pay, so counting it there would leave that step unfinishable. With no country chosen it is the
+  one figure, counted in `preferences` alone: no country's set asks it.
 - Work-permit answers count once per country you apply in (`work_auth_by_country`,
   keyed by market); no country chosen asks none.
 - They are the knockout answers the extension reports missing_source on, so they
@@ -102,14 +106,17 @@ def _group(profile: dict, key: str, fields: list[FormField]) -> GroupCompletenes
 
 def _home_pay(profile: dict, questions: QuestionSet) -> GroupCompleteness:
     """The home country's pay, when its set asks it (required there: you apply in the country you
-    live in), answered by the desired salary it is stored as. Counted in `preferences`: see the
+    live in), answered by the figure a form there gets (`autofill_profile.pay_for`: the desired
+    salary it is stored as). The home is the country the served set marks: `questions` was resolved
+    from the same market setting, and marks one only once countries are chosen and you apply in it,
+    so it is the chosen home and nothing else is read for it. Counted in `preferences`: see the
     module's docstring."""
     country = next((c for c in questions.countries if c.home), None)
     if country is None:
         return GroupCompleteness(answered=0, answerable=0)
     answers = form_questions.required_fields(country.answers)
-    required = [f for f in answers if f.key == "expected_pay"]
-    pay = _values(profile, "preferences").get("desired_salary")
+    required = [f for f in answers if f.key == autofill_profile.EXPECTED_PAY]
+    pay = autofill_profile.pay_for(profile, country.market, country.market)
     return GroupCompleteness(
         answered=sum(1 for f in required if _answered(f, pay)), answerable=len(required)
     )

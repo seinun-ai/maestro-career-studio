@@ -745,6 +745,91 @@ def test_the_home_pay_counts_in_preferences_and_notice_in_words_still_counts(
     assert paid["work_auth"] == no_pay["work_auth"]
 
 
+# Start and pay's four required answers once a country is chosen; the pay is counted beside them.
+_START = {"earliest_start_date": "2026-12-01", "willing_to_relocate": False, "how_heard": "A friend"}
+
+
+def test_an_owner_shaped_profile_moves_only_preferences_with_the_home_pay(
+    client, db_session, tmp_path, monkeypatch
+):
+    """A US home applying in the US, India and Ireland, every country's permits answered, notice "0"
+    in words and no citizenship: `work_auth` is 10 of 11 with the home pay or without it, and the pay
+    is the one `preferences` answer it moves. So Setup's answers step (`stepsDone` reads
+    `groups.work_auth` and `work_auth_by_country`) reads the same either way (Decision 8). The pay
+    is read as the home's form gets it, from the read view, so a home figure stored in its country
+    set (written before this change) counts as the desired salary it is served as."""
+    from app.services import autofill_profile
+
+    _chose(db_session, tmp_path, monkeypatch, "US", ["US", "IN", "IE"])
+    permits = {"authorized_now": True, "sponsorship_now": False, "sponsorship_future": False}
+    profile = {
+        "work_auth_by_country": {"US": {"status": "citizen", **permits}, "IN": permits, "IE": permits},
+        "preferences": {"notice_period": "0", **_START},
+    }
+    autofill_profile.set_profile(profile, db_session)
+    no_pay = _status(client)["autofill"]
+    autofill_profile.set_profile(
+        {**profile, "preferences": {**profile["preferences"], "desired_salary": "$80,000"}}, db_session
+    )
+    paid = _status(client)["autofill"]
+    text_settings.set_text(
+        autofill_profile.AUTOFILL_KEY, autofill_profile.AUTOFILL_FILE,
+        json.dumps({**profile, "answers_by_country": {"US": {"expected_pay": "$80,000"}}}), db_session,
+    )
+    stored_in_set = _status(client)["autofill"]
+
+    assert paid["groups"]["work_auth"] == {"answered": 10, "answerable": 11}
+    assert paid["groups"]["preferences"] == {"answered": 5, "answerable": 5}
+    assert no_pay["groups"]["preferences"] == {"answered": 4, "answerable": 5}
+    assert stored_in_set["groups"] == paid["groups"]
+    for key in ("work_auth_by_country", "blocking"):
+        assert no_pay[key] == paid[key]
+    assert no_pay["groups"]["work_auth"] == paid["groups"]["work_auth"]
+    assert paid["blocking"] == []
+
+
+def test_with_no_country_chosen_the_desired_salary_counts_once_in_preferences(
+    client, db_session, tmp_path, monkeypatch
+):
+    """Unchosen, the desired salary is the one figure for every country, asked in Start and pay and
+    counted there as today; no country is applied in, so no country's set counts it again."""
+    from app.services import autofill_profile
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    preferences = {"notice_days": 0, **_START}
+    autofill_profile.set_profile({"preferences": preferences}, db_session)
+    no_pay = _status(client)["autofill"]
+    autofill_profile.set_profile({"preferences": {**preferences, "desired_salary": "$80,000"}}, db_session)
+    paid = _status(client)["autofill"]
+
+    assert paid["chosen"] is False and paid["work_auth_by_country"] == {}
+    assert no_pay["groups"]["preferences"] == {"answered": 4, "answerable": 5}
+    assert paid["groups"]["preferences"] == {"answered": 5, "answerable": 5}
+
+
+def test_a_home_you_do_not_apply_in_counts_no_pay(client, db_session, tmp_path, monkeypatch):
+    """Living in the US and applying only in India: no country's set is the home's, so no pay is
+    required. The desired salary stays in Start and pay, optional (read only for a job whose
+    country Maestro can't tell), and India's pay is optional in its set: neither counts, given or
+    not (Decision 2)."""
+    from app.services import autofill_profile
+
+    _chose(db_session, tmp_path, monkeypatch, "US", ["IN"])
+    preferences = {"notice_period": "0", **_START}
+    autofill_profile.set_profile({"preferences": preferences}, db_session)
+    bare = _status(client)["autofill"]["groups"]["preferences"]
+    autofill_profile.set_profile({
+        "preferences": {**preferences, "desired_salary": "$80,000"},
+        "answers_by_country": {"IN": {"expected_pay": "₹40,00,000"}},
+    }, db_session)
+    stored = autofill_profile.peek_profile(db_session)
+    assert stored["preferences"]["desired_salary"] == "$80,000"
+    assert stored["answers_by_country"]["IN"]["expected_pay"] == "₹40,00,000"
+    paid = _status(client)["autofill"]["groups"]["preferences"]
+
+    assert bare == paid == {"answered": 4, "answerable": 4}
+
+
 def test_with_no_country_chosen_only_citizenship_is_asked_beside_the_permits(
     client, db_session, tmp_path, monkeypatch
 ):
