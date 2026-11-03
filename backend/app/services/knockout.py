@@ -24,7 +24,8 @@ no check where that country has none; before that, the one desired salary on
 every job. A monthly figure (the Netherlands, the UAE) is twelve months. It
 compares in one currency: the posted ceiling is converted into the figure's
 currency (the one its text names, else your home currency for the home's and
-the country's own for another's) on the ECB reference rates. With no rate, or
+the country's own for another's; a bare "$" is the home's unless that country
+pays in dollars) on the ECB reference rates. With no rate, or
 a side that names no currency, the check says it cannot compare
 (``cant_compare``), never a pass or a warning.
 """
@@ -170,12 +171,12 @@ def _rated(code: str, rates: Mapping[str, Any] | None) -> bool:
 
 def _cannot_compare(posted: str | None, wanted: str | None, rates: Mapping[str, Any] | None) -> str:
     if posted is None:
-        return "This job's pay names no currency, so it can't be compared with your desired salary."
+        return "This job's pay names no currency, so it can't be compared with your expected pay."
     if wanted is None:
-        return "Your desired salary names no currency, so this pay can't be compared with it."
+        return "Your expected pay names no currency, so this pay can't be compared with it."
     missing = posted if not _rated(posted, rates) else wanted
     return (f"There's no exchange rate for {missing} yet, so this pay can't be compared with your "
-            "desired salary.")
+            "expected pay.")
 
 
 def _salary_check(job: Job, figure: Any, period: str, currency: str | None = None,
@@ -217,7 +218,7 @@ def _salary_check(job: Job, figure: Any, period: str, currency: str | None = Non
         return {
             **check,
             "result": "warning",
-            "message": "The posted pay tops out below your desired salary.",
+            "message": "The posted pay tops out below your expected pay.",
         }
     return {**check, "result": "pass", "message": None}
 
@@ -413,14 +414,26 @@ def _pay_for_job(job: Job, pay_by_market: Mapping[str, tuple[str, str]], home_ma
     """The figure a form on this job gets, as `_salary_check` takes it: (figure, period, currency).
     The job's country's market picks it; a job that names no country, or one in a country no market
     covers (France), reads the home's, as its form does (`autofill_profile.pay_for`, Decision 12 of
-    docs/plans/2026-11-02-start-and-pay.md). A market with no figure gives none, so no check. The
-    home's figure is in your home currency, another market's in that market's own."""
-    from app.services import autofill_country, markets
+    docs/plans/2026-11-02-start-and-pay.md). A market with no figure gives none, so no check."""
+    from app.services import autofill_country
 
     market = autofill_country.market_for_job_country(job.country_code) or home_market
     figure, period = pay_by_market.get(market or "") or (None, "year")
-    currency = home_currency if market == home_market else markets.currency_for(market)
-    return figure, period, currency
+    return figure, period, _figure_currency(figure, market, home_market, home_currency)
+
+
+def _figure_currency(figure: Any, market: str | None, home_market: str | None,
+                     home_currency: str | None) -> str | None:
+    """The currency a figure that names none is in: your home currency for the home's, a market's own
+    for its figure. A bare "$" names no one currency, so it is the home's, as `money` reads one,
+    unless the market's own is a dollar: "$90,000" for Canada is Canadian dollars, and "$50,000" for
+    India or the UK is never rupees or pounds."""
+    from app.services import markets
+
+    own = home_currency if market == home_market else markets.currency_for(market)
+    if money.bare_dollar(figure) and own not in money.DOLLARS:
+        return home_currency
+    return own
 
 
 def scan_job(

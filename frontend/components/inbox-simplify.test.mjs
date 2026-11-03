@@ -128,18 +128,30 @@ test("unstated and not-run scans are lines too", () => {
 
 // The pay the salary check reads: each country's own in Country answers once countries are chosen, else the
 // one Desired salary in Start and pay (knockout._pay_for_job).
-const market = (chosen) => [["settings", "market"],
-  { key: "market", value: { home: "US", apply_in: ["US"], market: "US", chosen }, home: "US", apply_in: ["US"], currency: "USD" }];
-const payChip = (seed) => renderElement(linked(React.createElement(KnockoutLine, {
-  scan: { status: "unstated", checks: [] }, job: { ...job, salary_max: 90000, salary_period: "year" } })), seed);
+const MARKETS = [["US", "US"], ["IN", "IN"], ["UK", "GB"]].map(([key, country_code]) =>
+  ({ key, label: key, country_code, currency: "USD", date_format: "MDY", offers_eeo: false }));
+const market = (chosen, applyIn = ["US"]) => [["settings", "market"], { key: "market",
+  value: { home: "US", apply_in: applyIn, market: "US", chosen }, home: "US", apply_in: applyIn, markets: MARKETS, currency: "USD" }];
+const payChip = (seed, country_code = null) => renderElement(linked(React.createElement(KnockoutLine, {
+  scan: { status: "unstated", checks: [] }, job: { ...job, country_code, salary_max: 90000, salary_period: "year" } })), seed);
+const COUNTRY_PAY = /<a[^>]*href="\/profile#autofill-work_auth"[^>]*>.*Pay: Not run.*Add your expected pay/s;
+const ONE_FIGURE = /<a[^>]*href="\/profile#autofill-preferences"[^>]*>.*Pay: Not run.*Add your desired salary/s;
 
 test("a pay the scan could not compare links to the country's pay once countries are chosen", () => {
-  for (const html of [payChip([market(true)]), payChip([])]) {
-    assert.match(html, /<a[^>]*href="\/profile#autofill-work_auth"[^>]*>.*Pay: Not run.*Add your expected pay/s);
+  for (const html of [payChip([market(true)]), payChip([]), payChip([market(true, ["US", "IN"])], "IN")]) {
+    assert.match(html, COUNTRY_PAY);
   }
   const unchosen = payChip([market(false)]);
-  assert.match(unchosen, /<a[^>]*href="\/profile#autofill-preferences"[^>]*>.*Pay: Not run.*Add your desired salary/s);
+  assert.match(unchosen, ONE_FIGURE);
   assert.doesNotMatch(unchosen, /expected pay/);
+});
+
+test("living at home and applying only abroad, a job that reads the home pay links to Start and pay", () => {
+  const abroad = [market(true, ["IN"])];
+  // At home, with no country, or in one no market covers (France): the home pay, kept in Start and pay.
+  for (const country of ["US", null, "FR"]) assert.match(payChip(abroad, country), ONE_FIGURE, String(country));
+  assert.match(payChip(abroad, "IN"), COUNTRY_PAY);
+  assert.match(payChip(abroad, "GB"), COUNTRY_PAY);
 });
 
 // ── A5: the proposal card ───────────────────────────────────────────────────

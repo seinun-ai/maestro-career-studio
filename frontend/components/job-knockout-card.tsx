@@ -74,11 +74,17 @@ type PayLink = Pick<Unchecked, "href" | "link">;
 const COUNTRY_PAY: PayLink = { href: anchorHref("/profile", "autofill-work_auth"), link: "Add your expected pay" };
 const ONE_FIGURE: PayLink = { href: anchorHref("/profile", "autofill-preferences"), link: "Add your desired salary" };
 
-/** The pay link for this install. The job page has the market setting loaded already (`useHomeCountry`); until
- *  it is, the link reads as chosen, as `countriesChosen` reads a setting with no mark. */
-function usePayLink(): PayLink {
+/** The pay link for this job. Unchosen, the one figure. Chosen, the job's country's pay in Country answers, but
+ *  while you apply only away from home the home pay stays in Start and pay, so a job that reads it (one at home,
+ *  with no country, or in one no market covers) links there. The job page has the market setting loaded already
+ *  (`useHomeCountry`); until it is, the link reads as chosen, as `countriesChosen` reads a setting with no mark. */
+function usePayLink(job: Job): PayLink {
   const { data } = useMarketQuery();
-  return data && !countriesChosen(data) ? ONE_FIGURE : COUNTRY_PAY;
+  if (!data) return COUNTRY_PAY;
+  if (!countriesChosen(data)) return ONE_FIGURE;
+  if (data.apply_in.includes(data.home)) return COUNTRY_PAY;
+  const market = data.markets?.find((m) => m.country_code != null && m.country_code === job.country_code)?.key;
+  return market && market !== data.home ? COUNTRY_PAY : ONE_FIGURE;
 }
 
 /**
@@ -190,7 +196,7 @@ export function JobKnockoutCard({
   scan: KnockoutScan | null | undefined;
   job: Job;
 }) {
-  const pay = usePayLink();
+  const pay = usePayLink(job);
   if (!scan || !knockoutBanner(scan.status)) return null;
   const { hasStrip, strip } = knockoutParts(scan, job, pay);
   const conflict = scan.checks.find((c) => c.result === "conflict");
@@ -241,7 +247,7 @@ export function KnockoutLine({
   scan: KnockoutScan | null | undefined;
   job: Job;
 }) {
-  const pay = usePayLink();
+  const pay = usePayLink(job);
   if (!scan) return null;
   const { notChecked, rows, unchecked, strip } = knockoutParts(scan, job, pay);
   const shown = knockoutLine(scan.status, notChecked);

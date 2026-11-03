@@ -144,9 +144,12 @@ has no application: no draft time to read).
   salary on every job. A monthly figure (markets.yaml `pay.period`) counts twelve times; only a yearly
   posting is compared. It compares in one currency: the posted ceiling converted (`money.convert`, ECB
   rates) into the figure's currency, the one its text names, else the home currency for the home's and
-  the market's own for another's; with no rate, or a side that names no currency, the check is
-  `cant_compare` (Can't compare), never a pass or a warning. A job pay it could not compare links its
-  Not run chip to Country answers once countries are chosen, else to Start and pay. On the job page
+  the market's own for another's (a bare "$" names none, so it is the home's unless that market pays in
+  dollars); with no rate, or a side that names no currency, the check is
+  `cant_compare` (Can't compare), never a pass or a warning. Its messages say "your expected pay" for
+  every figure. A job pay it could not compare links its Not run chip to where that figure is given:
+  Country answers once countries are chosen, Start and pay before that, and Start and pay too for a
+  job that reads the home's pay while the home is not applied in (the home pay then stays there). On the job page
   (step 1, Job) only a conflict or a missing profile answer is a banner, with a per-check chip strip (OK /
   Conflict / Warning / Add answer / Not listed / Not run / Can't compare); anything else is one small line
   in the Job details card. It is

@@ -101,6 +101,21 @@ _CODE = re.compile(r"(?<![A-Za-z])([A-Z]{3})(?![A-Za-z])")
 _WHOLE = re.compile(r"\s*(?:[A-Z]{0,2}\$)?\s*\d[\d,.]*\s*[kK]?\s*")
 
 
+# Every currency a "$" mark names: a bare "$" may be any of them.
+DOLLARS = frozenset(code for mark, code in _MARKS if "$" in mark)
+
+
+def bare_dollar(raw: Any) -> bool:
+    """Whether a typed figure carries a "$" that names no one currency ("$70,000", not "US$70,000").
+    `parse_amount` names no currency for it, as for a figure with no mark at all; this tells the two
+    apart."""
+    if not isinstance(raw, str):
+        return False
+    for mark, _code in _MARKS:
+        raw = raw.replace(mark, " ")
+    return "$" in raw
+
+
 def _figure(digits: str) -> Decimal | None:
     """ "150,000" and "70.000" (dots grouping thousands, as in German and Dutch) are both whole
     numbers; "70.000,50" is too."""

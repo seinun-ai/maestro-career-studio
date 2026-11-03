@@ -70,7 +70,8 @@ def test_the_salary_check_reads_the_pay_a_form_in_the_jobs_country_gets():
 
 def test_an_unrun_knockout_names_the_check_and_its_salary_field():
     """Which check, and where the pay it reads is given: each country's in Country answers once
-    countries are chosen, else the one figure in Profile's Start and pay."""
+    countries are chosen, else the one figure in Profile's Start and pay, where the home's stays
+    while the home is not applied in."""
     card = _read("components/job-knockout-card.tsx")
     assert "uncheckedLabel" not in card and "check: not run yet" not in card
     assert 'const NOT_RUN: Summary = { icon: NotRunIcon, word: "Not run"' in card  # replaces the sentence
@@ -80,7 +81,10 @@ def test_an_unrun_knockout_names_the_check_and_its_salary_field():
             'link: "Add your expected pay" };\n'
             'const ONE_FIGURE: PayLink = { href: anchorHref("/profile", "autofill-preferences"), '
             'link: "Add your desired salary" };') in card
-    assert "return data && !countriesChosen(data) ? ONE_FIGURE : COUNTRY_PAY;" in card
+    assert ("  if (!countriesChosen(data)) return ONE_FIGURE;\n"
+            "  if (data.apply_in.includes(data.home)) return COUNTRY_PAY;\n") in card
+    # Applying only abroad, the home pay stays in Start and pay (plan Decision 2).
+    assert "return market && market !== data.home ? COUNTRY_PAY : ONE_FIGURE;" in card
     assert 'link: "Add your years of experience",' in card
 
 

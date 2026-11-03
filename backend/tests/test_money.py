@@ -56,6 +56,20 @@ def test_midpoint_of_a_range_or_the_one_end_given():
     assert money.midpoint(None, None) is None
 
 
+@pytest.mark.parametrize("typed, bare", [
+    ("$70,000", True), ("70k $", True),
+    ("70,000", False), (70000, False), (None, False), ("US$70,000", False), ("C$90,000", False),
+])
+def test_a_bare_dollar_is_told_apart_from_no_mark_and_from_a_named_dollar(typed, bare):
+    """`parse_amount` names no currency for "$70,000" or "70,000"; `bare_dollar` says which one it was."""
+    assert money.bare_dollar(typed) is bare
+
+
+def test_the_dollars_are_the_currencies_a_dollar_mark_names():
+    assert {"USD", "CAD", "AUD"} <= money.DOLLARS
+    assert not {"GBP", "EUR", "INR"} & money.DOLLARS
+
+
 # ---------------------------------------------------------------- settings
 
 

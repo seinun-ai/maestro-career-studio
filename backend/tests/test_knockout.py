@@ -203,7 +203,7 @@ def _pay(ceiling, currency, desired, **kw):
 def test_salary_converts_to_one_currency_before_comparing():
     below = _check(_pay(60000, "GBP", "€70,000", home_currency="EUR", rates=_RATES), "salary")
     assert below["result"] == "warning"
-    assert below["message"] == "The posted pay tops out below your desired salary."
+    assert below["message"] == "The posted pay tops out below your expected pay."
     assert below["job_value"] == "60000 GBP" and below["profile_value"] == "70000 EUR"
     above = _check(_pay(62000, "GBP", "€70,000", home_currency="EUR", rates=_RATES), "salary")
     assert above["result"] == "pass"   # £62,000 is about €70,695
@@ -223,14 +223,14 @@ def test_with_no_rate_the_salary_check_cannot_compare_and_never_passes_or_fails(
         check = _check(result, "salary")
         assert check["result"] == "cant_compare"
         assert check["message"] == (f"There's no exchange rate for {currency} yet, so this pay can't be "
-                                    "compared with your desired salary.")
+                                    "compared with your expected pay.")
         assert result["status"] == "unstated"   # not a pass: nothing was compared
 
 
 def test_a_job_with_no_currency_cannot_be_compared_with_one_that_has_one():
     check = _check(_pay(60000, None, "70000", home_currency="EUR", rates=_RATES), "salary")
     assert check["result"] == "cant_compare"
-    assert check["message"] == "This job's pay names no currency, so it can't be compared with your desired salary."
+    assert check["message"] == "This job's pay names no currency, so it can't be compared with your expected pay."
 
 
 def test_the_scan_reads_your_home_currency_and_the_rates(db_session, tmp_path, monkeypatch):
@@ -289,9 +289,24 @@ def test_a_countrys_unmarked_pay_is_in_that_countrys_currency(db_session, tmp_pa
     """A bare figure for India is rupees, not the home's dollars."""
     _live_in_us(db_session, tmp_path, monkeypatch, ["US", "IN"], {
         "preferences": {"desired_salary": "$80,000"},
-        "answers_by_country": {"IN": {"expected_pay": "4000000"}}})
+        "answers_by_country": {"IN": {"expected_pay": "40,00,000"}}})
     [salary] = _salary_for(db_session, "IN", 4_500_000, "INR")
     assert salary["profile_value"] == "4000000 INR" and salary["result"] == "pass"
+
+
+def test_a_bare_dollar_is_that_countrys_only_where_it_pays_in_dollars(db_session, tmp_path, monkeypatch):
+    """A bare "$" names no one currency (`money.parse_amount`): on Canada's figure it is Canada's
+    dollar, on India's or the UK's it is the home's, as every bare "$" is, never rupees or pounds."""
+    _live_in_us(db_session, tmp_path, monkeypatch, ["US", "IN", "CA", "UK"], {
+        "preferences": {"desired_salary": "$80,000"},
+        "answers_by_country": {"IN": {"expected_pay": "$50,000"}, "CA": {"expected_pay": "$90,000"},
+                               "UK": {"expected_pay": "$100,000"}}})
+    [india] = _salary_for(db_session, "IN", 3_500_000, "INR")
+    assert (india["profile_value"], india["result"]) == ("50000 USD", "warning")   # about $42,272
+    [canada] = _salary_for(db_session, "CA", 100_000, "CAD")
+    assert (canada["profile_value"], canada["result"]) == ("90000 CAD", "pass")
+    [uk] = _salary_for(db_session, "GB", 80_000, "GBP")
+    assert (uk["profile_value"], uk["result"]) == ("100000 USD", "warning")   # about $99,156
 
 
 def test_a_monthly_pay_is_compared_as_twelve_months(db_session, tmp_path, monkeypatch):
@@ -441,7 +456,7 @@ _MESSAGES = [
      "This job accepts STEM OPT only."),
     (dict(salary_max=Decimal(120000), salary_period="year"), WorkAuth(),
      {"preferences": {"desired_salary": "$150k"}}, "salary",
-     "The posted pay tops out below your desired salary."),
+     "The posted pay tops out below your expected pay."),
     (dict(years_experience_min=5), WorkAuth(), {"years_experience": 2}, "experience",
      "This job asks for 5+ years. Your profile says 2."),
 ]
