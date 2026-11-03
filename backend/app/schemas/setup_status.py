@@ -15,6 +15,11 @@ class AutofillStep(BaseModel):
     blocking: list[str]  # group keys whose gaps are knockout-grade (work_auth)
     # Each apply-in market's work-permit answers ("UK"), summed in groups["work_auth"].
     work_auth_by_country: dict[str, GroupCompleteness] = {}
+    # The pay of the country you live in, once you apply there (its set asks it, required; 0 of 0
+    # otherwise). In `readiness` and `done` beside the groups, in none of them and never blocking:
+    # Profile asks it in Country answers, whose section is ready only with it, and Setup's answers
+    # step reads groups["work_auth"] and never asks pay.
+    home_pay: GroupCompleteness = GroupCompleteness(answered=0, answerable=0)
     # Whether the user chose where they apply (`MarketSetting.chosen`). Unchosen asks no country's
     # questions, so readiness can read complete while the countries are missing.
     chosen: bool

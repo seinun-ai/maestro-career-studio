@@ -14,6 +14,7 @@ const { SetupFlow } = load("components/setup/setup-flow.tsx");
 const { SetupDone } = load("components/setup/setup-done.tsx");
 const { SetupAnswersStep } = load("components/setup/setup-answers-step.tsx");
 const { formQuestions, stepsDone } = load("lib/setup-flow.ts");
+const { buildSetupSteps } = load("components/setup/setup-steps.ts");
 const { countryCodes } = load("lib/autofill-options.ts");
 const {
   citizenshipNext,
@@ -542,4 +543,21 @@ test("the done screen: Add your first job filled, the agent app and the Companio
   assert.match(early, /Not done yet/);
   assert.doesNotMatch(early, /You&#x27;re set/);
   assert.doesNotMatch(early, /diversity/);
+});
+
+test("only the home's pay missing: the setup card names it and opens Country answers; Setup's answers step stays done", () => {
+  // Setup status counts the home's pay apart from the groups (`home_pay`), so every group reads complete.
+  const count = (answered, answerable) => ({ answered, answerable });
+  const autofill = {
+    done: false, readiness: 0.96, blocking: [], chosen: true,
+    groups: { personal: count(9, 9), work_auth: count(4, 4), preferences: count(4, 4) },
+    work_auth_by_country: { DE: count(3, 3) },
+    home_pay: count(0, 1),
+  };
+  const status = { ...STATUS, autofill };
+  const card = buildSetupSteps(status, "/applications").find((s) => s.id === "autofill");
+  assert.equal(card.detail, "96% done. Expected pay is missing.");
+  assert.deepEqual(card.action, { kind: "navigate", href: "/profile#autofill-work_auth" });
+  // Setup never asks pay (Decision 8): its answers step reads the work-permit counts alone.
+  assert.equal(stepsDone(status, servedQuestions("DE", ["DE"])).answers, true);
 });

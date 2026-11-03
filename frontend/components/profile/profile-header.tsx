@@ -8,11 +8,15 @@ import type { MarketSettingResponse, SetupStatus } from "@/lib/types";
 
 /** The sections setup status counts, ready or not: the form-answer groups it reports (Contact, Country answers,
  *  Start and pay, and Diversity where a country you apply in has a checked set), Jobs you want and How you
- *  come across. Only what the status says, never a count of its own. */
+ *  come across. Country answers (`work_auth`) is ready only with the pay of where you live too (`home_pay`),
+ *  which it asks, so the ring and its tile agree. Only what the status says, never a count of its own. */
 export function readySections(status: SetupStatus): { ready: number; total: number } {
-  const groups = Object.values(status.autofill.groups);
+  const complete = (count: { answered: number; answerable: number }) => count.answered >= count.answerable;
+  const homePay = status.autofill.home_pay;
   const done = [
-    ...groups.map((g) => g.answered >= g.answerable),
+    ...Object.entries(status.autofill.groups).map(
+      ([key, count]) => complete(count) && (key !== "work_auth" || !homePay || complete(homePay)),
+    ),
     status.job_preferences.done,
     status.persona.done,
   ];

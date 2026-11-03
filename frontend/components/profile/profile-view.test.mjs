@@ -71,9 +71,10 @@ function render({
   citizenships = [],
   profile = { personal: PERSONAL },
   consent = CONSENT,
+  status = STATUS,
 } = {}) {
   return renderElement(withRouter(React.createElement(ProfileView, { focus: () => {} })), [
-    [["setup-status"], STATUS],
+    [["setup-status"], status],
     [["settings", "autofill"], { key: "autofill_profile", value: profile }],
     [["settings", "eeo-consent"], { key: "eeo_consent", value: consent }],
     [["settings", "market"], {
@@ -477,4 +478,19 @@ test("notice written in words before is counted set on Start and pay, and never 
   const tile = tileButton(html, "start");
   assert.match(tile, /1 of 4 set · earliest start date, willing to relocate, how did you hear about the job missing/);
   assert.doesNotMatch(tile, /notice period/i);
+});
+
+test("the ring holds Country answers open while only the home's pay is missing, as its tile does", () => {
+  // Setup status counts the home's pay apart from the groups (`home_pay`): every group is complete.
+  const complete = { personal: group(9, 9), work_auth: group(10, 10), preferences: group(4, 4), eeo: group(4, 4) };
+  const autofill = { ...STATUS.autofill, done: false, readiness: 0.96, blocking: [], groups: complete, home_pay: group(0, 1) };
+  const status = { ...STATUS, persona: { done: true, detail: {} }, autofill };
+  const preferences = { notice_days: 0, earliest_start_date: "2026-12-01", willing_to_relocate: false, how_heard: "A friend" };
+  const permits = { work_auth_by_country: { US: US_PERMITS, IN: US_PERMITS, IE: US_PERMITS } };
+  const html = render({ ...US_HOME, status, profile: { personal: PERSONAL, preferences, ...permits } });
+  assert.match(html, /aria-label="5 of 6 sections ready"/);
+  assert.match(tileButton(html, "permits"), /Needs you/);
+  assert.match(tileButton(html, "start"), /Every answer set/);
+  const paid = render({ ...US_HOME, status: { ...status, autofill: { ...autofill, home_pay: group(1, 1) } } });
+  assert.match(paid, /aria-label="6 of 6 sections ready"/);
 });

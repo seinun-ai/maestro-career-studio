@@ -502,10 +502,9 @@ def next_after_render(
     if _suppressed(hints_enabled, brief):
         return None
     autofill = setup_status.get("autofill") or {}
-    groups = autofill.get("groups") or {}
     incomplete_groups = [
         name
-        for name, g in groups.items()
+        for name, g in _answer_counts(autofill).items()
         if (g.get("answered") or 0) < (g.get("answerable") or 0)
     ]
     readiness = {
@@ -805,16 +804,29 @@ def _countries_chosen(status: dict[str, Any]) -> bool:
     return (status.get("autofill") or {}).get("chosen") is not False
 
 
+def _answer_counts(autofill: dict[str, Any]) -> dict[str, Any]:
+    """Setup status's form-answer counts by name: each group, then the pay of where the user lives
+    (`home_pay`), which readiness counts beside the groups and in none of them."""
+    counts = dict(autofill.get("groups") or {})
+    if isinstance(autofill.get("home_pay"), dict):
+        counts["home_pay"] = autofill["home_pay"]
+    return counts
+
+
 def _answers_done(status: dict[str, Any]) -> bool:
-    """Every form-answer group an agent can save is complete, and the countries they are for are
-    chosen: unchosen, no country's permits count, so the groups read complete while every form
-    pauses on them. The diversity answers (`eeo`) count toward the app's own done, but
-    set_autofill_profile refuses them: only the user gives those."""
+    """Every form-answer count an agent can save is complete (the home pay too: it is saved as
+    `preferences.desired_salary`), and the countries they are for are chosen: unchosen, no
+    country's permits count, so the groups read complete while every form pauses on them. The
+    diversity answers (`eeo`) count toward the app's own done, but set_autofill_profile refuses
+    them: only the user gives those."""
     if not _countries_chosen(status):
         return False
-    groups = ((status.get("autofill") or {}).get("groups") or {}).items()
-    open_groups = [g for k, g in groups if k != "eeo" and g.get("answered", 0) < g.get("answerable", 0)]
-    return _step_done(status, "autofill") or bool(groups) and not open_groups
+    autofill = status.get("autofill") or {}
+    open_counts = [
+        g for k, g in _answer_counts(autofill).items()
+        if k != "eeo" and g.get("answered", 0) < g.get("answerable", 0)
+    ]
+    return _step_done(status, "autofill") or bool(autofill.get("groups")) and not open_counts
 
 
 def setup_next_step(status: dict[str, Any]) -> dict[str, Any] | None:

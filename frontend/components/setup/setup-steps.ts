@@ -51,7 +51,12 @@ const GROUP_MISSING: Record<string, string> = {
   eeo: "Diversity questions are missing.",
   eligibility: "Eligibility is missing.",
   preferences: "Preferences are missing.",
+  home_pay: "Expected pay is missing.",
 };
+
+/** Where a count is answered on Profile when not under its own name: the pay of where you live, in Country
+ *  answers (the `work_auth` anchor). */
+const ANSWERED_UNDER: Record<string, string> = { home_pay: "work_auth" };
 
 /** "1 base resume", "3 items": a count agrees with its noun. */
 function count(n: number, one: string, many: string): string {
@@ -66,11 +71,13 @@ function count(n: number, one: string, many: string): string {
  * But a profile can sit below 100% with work auth complete and, say, one
  * preference unanswered; `blocking` is empty there, and aiming at the section
  * as a whole would make the user hunt for the gap. Fall back to the first group
- * that is actually short.
+ * that is actually short, then the pay of where you live (`home_pay`, counted
+ * beside the groups).
  */
 function autofillTarget(autofill: SetupStatus["autofill"]): string | null {
   if (autofill.blocking.length) return autofill.blocking[0];
-  const short = Object.entries(autofill.groups).find(
+  const counts = autofill.home_pay ? { ...autofill.groups, home_pay: autofill.home_pay } : autofill.groups;
+  const short = Object.entries(counts).find(
     ([, g]) => g.answered < g.answerable,
   );
   return short ? short[0] : null;
@@ -135,7 +142,7 @@ export function buildSetupSteps(
       home: "/profile",
       // Aim at the group with the gap, not the section, so the user lands on
       // the actual unanswered question.
-      anchor: target ? `autofill-${target}` : "autofill",
+      anchor: target ? `autofill-${ANSWERED_UNDER[target] ?? target}` : "autofill",
     },
     {
       id: "job_preferences",

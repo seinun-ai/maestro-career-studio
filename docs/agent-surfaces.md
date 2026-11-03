@@ -27,7 +27,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   **Orientation reads** (no writes): `get_setup_status` (every set but templates: `ai_key`, `writer` ("Who writes" below),
   `demo_bases`, the first undone setup step and its set from the pure `workflow.setup_next_step`, which counts form answers done
   without the diversity answers an agent cannot
-  save and never while `autofill.chosen` is false (that step then says to save where the user lives and applies), the set table) and `get_tailoring_options` (tailor and full: each Quick tailor switch
+  save, with the home pay (`autofill.home_pay`, counted beside the groups) and never while `autofill.chosen` is false (that step then says to save where the user lives and applies), the set table) and `get_tailoring_options` (tailor and full: each Quick tailor switch
   with its plain meaning from `QuickTailorProfile`'s field descriptions, the instruction and persona; the presets stay the user's).
   Each set is its own server built from the one registry (`server.build_set`, holding the registry's `Tool` objects): stdio serves
   the set `MAESTRO_CS_MCP_PROFILE` names (default `full`; migration state: §13 `mcp-stdio-venv`), HTTP every set as an

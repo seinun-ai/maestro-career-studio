@@ -10,12 +10,14 @@ own. Rules:
   be told).
 - A field with a `legacy` key (notice in days, `notice_period`) is answered by its own value or
   the older key's text, until it is given: notice written in words before still counts.
-- The home country's pay is the desired salary (`preferences.desired_salary`) and counts in
-  `preferences`, as it always did, though Country answers asks it once you apply in the country you
-  live in. It is read as a form there gets it (`autofill_profile.pay_for`), so readiness counts the
-  figure the fill sends. Setup's answers step needs the `work_auth` group complete and never asks
-  pay, so counting it there would leave that step unfinishable. With no country chosen it is the
-  one figure, counted in `preferences` alone: no country's set asks it.
+- The home country's pay is the desired salary (`preferences.desired_salary`). Once you apply in
+  the country you live in, Country answers asks it, and it counts on its own (`home_pay`): in
+  readiness and `done` beside the groups, in none of them. Not `preferences`, whose tile, Start and
+  pay, no longer asks it, so Profile's ring would hold the wrong section open; not `work_auth`,
+  which Setup's answers step needs complete while it never asks pay, so that step would be
+  unfinishable. Profile's ring holds Country answers open on it. It is read as a form there gets it
+  (`autofill_profile.pay_for`), so readiness counts the figure the fill sends. With no country
+  chosen it is the one figure, asked and counted in `preferences`: no country's set asks it.
 - Work-permit answers count once per country you apply in (`work_auth_by_country`,
   keyed by market); no country chosen asks none.
 - They are the knockout answers the extension reports missing_source on, so they
@@ -109,8 +111,8 @@ def _home_pay(profile: dict, questions: QuestionSet) -> GroupCompleteness:
     live in), answered by the figure a form there gets (`autofill_profile.pay_for`: the desired
     salary it is stored as). The home is the country the served set marks: `questions` was resolved
     from the same market setting, and marks one only once countries are chosen and you apply in it,
-    so it is the chosen home and nothing else is read for it. Counted in `preferences`: see the
-    module's docstring."""
+    so it is the chosen home and nothing else is read for it. 0 of 0 with no such set. Counted on
+    its own: see the module's docstring."""
     country = next((c for c in questions.countries if c.home), None)
     if country is None:
         return GroupCompleteness(answered=0, answerable=0)
@@ -157,12 +159,11 @@ def _autofill_step(db: Session) -> AutofillStep:
     contact = [f for f in fields["personal"] if f.type != "countries"]
     citizenship = _group(profile, "personal", [f for f in fields["personal"] if f.type == "countries"])
     by_country = _work_permits(profile, questions)
+    home_pay = _home_pay(profile, questions)
     groups = {
         "personal": _group(profile, "personal", contact),
         "work_auth": _total([citizenship, *by_country.values()]),
-        "preferences": _total(
-            [_group(profile, "preferences", fields["preferences"]), _home_pay(profile, questions)]
-        ),
+        "preferences": _group(profile, "preferences", fields["preferences"]),
     }
     # The diversity group is the US question set — veteran status, CC-305
     # disability, and the EEO-1's two-part hispanic_latino ethnicity split.
@@ -174,14 +175,14 @@ def _autofill_step(db: Session) -> AutofillStep:
     # unanswered.
     if questions.offers_eeo:
         groups["eeo"] = _group(profile, "eeo", fields["eeo"])
-    total = _total(list(groups.values()))
+    total = _total([*groups.values(), home_pay])
     # Only the knockout answers block (setup-steps.ts `autofillTarget`): a country's permit answers,
     # never the citizenship counted beside them.
     blocking = ["work_auth"] if any(g.answered < g.answerable for g in by_country.values()) else []
     readiness = round(total.answered / total.answerable, 3) if total.answerable else 1.0
     return AutofillStep(
         done=readiness >= 1.0, readiness=readiness, groups=groups, blocking=blocking,
-        work_auth_by_country=by_country, chosen=market.chosen,
+        work_auth_by_country=by_country, home_pay=home_pay, chosen=market.chosen,
     )
 
 

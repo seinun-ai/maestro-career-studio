@@ -718,16 +718,18 @@ def test_answers_that_restate_a_counted_one_change_nothing(
     with_them = _status(client)["autofill"]
 
     assert with_them["groups"] == without["groups"]
+    assert with_them["home_pay"] == without["home_pay"] == {"answered": 1, "answerable": 1}
     assert with_them["readiness"] == without["readiness"] < 1.0
 
 
-def test_the_home_pay_counts_in_preferences_and_notice_in_words_still_counts(
+def test_the_home_pay_counts_on_its_own_and_notice_in_words_still_counts(
     client, db_session, tmp_path, monkeypatch
 ):
-    """Once you apply in the country you live in, its set asks the pay, but it is the desired salary
-    and counts in `preferences`, as it always did, never in `work_auth`: Setup's answers step needs
-    that group complete and never asks pay (docs/plans/2026-11-02-start-and-pay.md, Decision 8).
-    Notice written in words, from before notice was days, still answers it."""
+    """Once you apply in the country you live in, its set asks the pay. It is the desired salary and
+    counts on its own (`home_pay`), in readiness but in no group: not `preferences`, whose tile, Start
+    and pay, no longer asks it, and never `work_auth`, which Setup's answers step needs complete and
+    never asks pay (docs/plans/2026-11-02-start-and-pay.md, Decision 8). Notice written in words,
+    from before notice was days, still answers it."""
     from app.services import autofill_profile
 
     _chose(db_session, tmp_path, monkeypatch, "US", ["US", "IN", "IE"])
@@ -736,28 +738,37 @@ def test_the_home_pay_counts_in_preferences_and_notice_in_words_still_counts(
         "willing_to_relocate": False, "how_heard": "A friend",
     }
     autofill_profile.set_profile({"preferences": preferences}, db_session)
-    no_pay = _status(client)["autofill"]["groups"]
+    no_pay = _status(client)["autofill"]
     autofill_profile.set_profile({"preferences": {**preferences, "desired_salary": "80000"}}, db_session)
-    paid = _status(client)["autofill"]["groups"]
+    paid = _status(client)["autofill"]
 
-    assert no_pay["preferences"] == {"answered": 4, "answerable": 5}
-    assert paid["preferences"] == {"answered": 5, "answerable": 5}
-    assert paid["work_auth"] == no_pay["work_auth"]
+    assert no_pay["groups"]["preferences"] == paid["groups"]["preferences"] == {"answered": 4, "answerable": 4}
+    assert no_pay["home_pay"] == {"answered": 0, "answerable": 1}
+    assert paid["home_pay"] == {"answered": 1, "answerable": 1}
+    assert paid["groups"] == no_pay["groups"]
+    assert paid["readiness"] > no_pay["readiness"]
 
 
-# Start and pay's four required answers once a country is chosen; the pay is counted beside them.
+def _counted_readiness(step: dict) -> float:
+    """The autofill step's readiness as its groups and the home pay count it together."""
+    counts = [*step["groups"].values(), step["home_pay"]]
+    return round(sum(c["answered"] for c in counts) / sum(c["answerable"] for c in counts), 3)
+
+
+# Start and pay's required answers besides notice, once a country is chosen; the home pay counts apart.
 _START = {"earliest_start_date": "2026-12-01", "willing_to_relocate": False, "how_heard": "A friend"}
 
 
-def test_an_owner_shaped_profile_moves_only_preferences_with_the_home_pay(
+def test_an_owner_shaped_profile_moves_only_the_home_pay_count(
     client, db_session, tmp_path, monkeypatch
 ):
     """A US home applying in the US, India and Ireland, every country's permits answered, notice "0"
-    in words and no citizenship: `work_auth` is 10 of 11 with the home pay or without it, and the pay
-    is the one `preferences` answer it moves. So Setup's answers step (`stepsDone` reads
-    `groups.work_auth` and `work_auth_by_country`) reads the same either way (Decision 8). The pay
-    is read as the home's form gets it, from the read view, so a home figure stored in its country
-    set (written before this change) counts as the desired salary it is served as."""
+    in words and no citizenship: every group reads the same with the home pay or without it, `work_auth`
+    10 of 11, and only `home_pay` and readiness move. So Setup's answers step (`stepsDone` reads
+    `groups.work_auth` and `work_auth_by_country`) reads the same either way (Decision 8), and
+    Profile's ring holds Country answers open on `home_pay`. The pay is read as the home's form gets
+    it, from the read view, so a home figure stored in its country set (written before this change)
+    counts as the desired salary it is served as."""
     from app.services import autofill_profile
 
     _chose(db_session, tmp_path, monkeypatch, "US", ["US", "IN", "IE"])
@@ -779,13 +790,14 @@ def test_an_owner_shaped_profile_moves_only_preferences_with_the_home_pay(
     stored_in_set = _status(client)["autofill"]
 
     assert paid["groups"]["work_auth"] == {"answered": 10, "answerable": 11}
-    assert paid["groups"]["preferences"] == {"answered": 5, "answerable": 5}
-    assert no_pay["groups"]["preferences"] == {"answered": 4, "answerable": 5}
-    assert stored_in_set["groups"] == paid["groups"]
-    for key in ("work_auth_by_country", "blocking"):
-        assert no_pay[key] == paid[key]
-    assert no_pay["groups"]["work_auth"] == paid["groups"]["work_auth"]
-    assert paid["blocking"] == []
+    assert paid["groups"]["preferences"] == {"answered": 4, "answerable": 4}
+    one, none = {"answered": 1, "answerable": 1}, {"answered": 0, "answerable": 1}
+    assert (no_pay["home_pay"], paid["home_pay"], stored_in_set["home_pay"]) == (none, one, one)
+    assert no_pay["groups"] == paid["groups"] == stored_in_set["groups"]
+    assert no_pay["work_auth_by_country"] == paid["work_auth_by_country"] and no_pay["blocking"] == paid["blocking"] == []
+    # Readiness counts it beside the groups, so its numbers are the ones a group holding it gave.
+    assert (no_pay["readiness"], paid["readiness"]) == (_counted_readiness(no_pay), _counted_readiness(paid))
+    assert no_pay["readiness"] < paid["readiness"] < 1.0
 
 
 def test_with_no_country_chosen_the_desired_salary_counts_once_in_preferences(
@@ -805,6 +817,7 @@ def test_with_no_country_chosen_the_desired_salary_counts_once_in_preferences(
     assert paid["chosen"] is False and paid["work_auth_by_country"] == {}
     assert no_pay["groups"]["preferences"] == {"answered": 4, "answerable": 5}
     assert paid["groups"]["preferences"] == {"answered": 5, "answerable": 5}
+    assert no_pay["home_pay"] == paid["home_pay"] == {"answered": 0, "answerable": 0}
 
 
 def test_a_home_you_do_not_apply_in_counts_no_pay(client, db_session, tmp_path, monkeypatch):
@@ -828,6 +841,7 @@ def test_a_home_you_do_not_apply_in_counts_no_pay(client, db_session, tmp_path, 
     paid = _status(client)["autofill"]["groups"]["preferences"]
 
     assert bare == paid == {"answered": 4, "answerable": 4}
+    assert _status(client)["autofill"]["home_pay"] == {"answered": 0, "answerable": 0}
 
 
 def test_with_no_country_chosen_only_citizenship_is_asked_beside_the_permits(

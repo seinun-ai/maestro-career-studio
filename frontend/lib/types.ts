@@ -615,6 +615,11 @@ export interface SetupStatus {
     blocking: string[];
     /** Each apply-in market's work-permit answers ("UK"), summed in `groups.work_auth`. */
     work_auth_by_country: Record<string, { answered: number; answerable: number }>;
+    /** The pay of the country you live in, once you apply there (0 of 0 otherwise): counted in `readiness` and
+     *  `done` beside the groups, in none of them. Country answers asks it, so its section is ready only with it
+     *  (`readySections`); Setup never asks pay, so its answers step reads `groups.work_auth` alone. Absent from a
+     *  backend older than it, which counted it in `groups.preferences`. */
+    home_pay?: { answered: number; answerable: number };
     /** Whether you chose where you apply (the market setting's mark): unchosen, no country's permits count,
      *  so readiness can read complete while every form pauses on them. */
     chosen: boolean;

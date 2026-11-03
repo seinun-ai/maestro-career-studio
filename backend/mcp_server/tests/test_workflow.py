@@ -590,6 +590,17 @@ def test_apply_hint_names_the_blocking_group():
     assert "work_auth" in hint["readiness"]["incomplete_groups"]
 
 
+def test_apply_hint_names_a_missing_home_pay():
+    """The pay of where the user lives counts apart from the groups (`autofill.home_pay`): with every
+    group complete and that pay missing, the hint names it, and it blocks nothing."""
+    status = _autofill_setup_status(ready=True)
+    status["autofill"].update(done=False, readiness=0.95, home_pay={"answered": 0, "answerable": 1})
+    hint = workflow.next_after_render(setup_status=status, allowed_tools=None, hints_enabled=True)
+    assert hint["readiness"]["autofill_ready"] is False
+    assert hint["readiness"]["incomplete_groups"] == ["home_pay"]
+    assert hint["readiness"]["blocking_groups"] == []
+
+
 def test_render_hint_brief_and_switch_suppress():
     status = _autofill_setup_status(ready=True)
     assert workflow.next_after_render(
@@ -1161,6 +1172,20 @@ def test_setup_next_step_leaves_the_diversity_answers_to_the_user():
     step = workflow.setup_next_step(status)
     assert step["step"] == "form_answers"
     assert "diversity answers are the user's" in step["says"]
+
+
+def test_setup_next_step_asks_the_home_pay_an_agent_can_save():
+    """The pay of where the user lives counts apart from the groups (`autofill.home_pay`), and
+    set_autofill_profile saves it (`preferences.desired_salary`): with every group but the diversity
+    one complete and that pay missing, the form answers are still the agent's next step."""
+    status = _setup(import_resumes=True, bases=1)
+    status["autofill"]["groups"] = {
+        "personal": {"answered": 12, "answerable": 12}, "work_auth": {"answered": 4, "answerable": 4},
+        "preferences": {"answered": 4, "answerable": 4}, "eeo": {"answered": 0, "answerable": 4}}
+    status["autofill"]["home_pay"] = {"answered": 0, "answerable": 1}
+    assert workflow.setup_next_step(status)["step"] == "form_answers"
+    status["autofill"]["home_pay"]["answered"] = 1
+    assert workflow.setup_next_step(status)["step"] == "job_preferences"
 
 
 def test_the_form_answers_step_names_citizenship():

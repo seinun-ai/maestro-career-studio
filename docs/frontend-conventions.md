@@ -1210,7 +1210,8 @@
 - **Profile** (`app/profile/page.tsx`, `components/profile/*`, board "Profile, facts about you") is facts
   about you, one page with no tabs. The header is your name (from your contact answers, else "Profile"),
   one line of where you live and where you apply (until you choose, that none is chosen), and a ring of the
-  sections setup status reports ready (never a count of its own). **Next up** is the Lead: the first required
+  sections setup status reports ready (never a count of its own; Country answers is ready once `work_auth` and
+  `home_pay`, the pay of where you live it asks, both are: `readySections`). **Next up** is the Lead: the first required
   answer still missing (`lib/autofill-options.ts` `missingAnswers`: while no country is chosen, where you
   apply first, as in Setup; citizenship, with its country picker, then each apply-in country's work permits
   your citizenship does not settle and its pay where you live, then contact, then start and pay; an older

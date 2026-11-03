@@ -549,10 +549,11 @@
   (`personal.citizenships`, `type: countries`) is stored and served in personal but counts in `work_auth`,
   beside the permits it settles, wherever you live and with no country chosen too; it is answered once its
   list names a country (`countries.codes_in`). A country's own answers (`answers_by_country`) are optional and
-  never count, except the home's pay: applying in the country you live in, its set asks it, required, and it counts in
-  `preferences` as the desired salary it is (`autofill_profile.pay_for`), never in `work_auth`, which Setup's answers
-  step needs complete and never asks pay. A home you don't apply in has no set, so its desired salary is optional; unchosen,
-  it is the one figure, required in Start and pay. A field with a `legacy` key (`notice_days`: `notice_period`) is answered
+  never count, except the home's pay: applying in the country you live in, its set asks it, required, and it counts on its
+  own as the desired salary it is (`home_pay`, read through `autofill_profile.pay_for`), in readiness and `done` beside the
+  groups and in none of them: not `preferences`, whose tile no longer asks it, nor `work_auth`, which Setup's answers step
+  needs complete and never asks pay (Profile's ring holds Country answers open on it). A home you don't apply in has no set,
+  so its desired salary is optional and `home_pay` is 0 of 0; unchosen, it is the one figure, required in Start and pay. A field with a `legacy` key (`notice_days`: `notice_period`) is answered
   by that key's text until it is given. The frontend shows each field as served and resolves nothing
   itself (Contact and Next up leave citizenship out, `contactFields`). Work-permit answers count per apply-in
   country (the served `countries`; none when no

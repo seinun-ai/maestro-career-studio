@@ -900,8 +900,9 @@ def get_setup_status() -> Any:
     {step, tool_set, says}; null when none is left), tool_sets (each set's name,
     use_when and holds, in journey order) and steps (the full setup status: each step's
     done and detail, form-answer readiness with autofill.chosen, false while the user has
-    not chosen where they apply, so no country's questions count; suggested bases, PDF
-    engines). The AI key, the writer and the default resume design are set by the user
+    not chosen where they apply, so no country's questions count, and autofill.home_pay,
+    the pay of the country they live in, counted beside the groups and saved as
+    preferences.desired_salary; suggested bases, PDF engines). The AI key, the writer and the default resume design are set by the user
     in the app and are never a next step."""
     status = _client.get_setup_status()
     return {
