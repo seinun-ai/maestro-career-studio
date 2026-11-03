@@ -784,13 +784,21 @@ def test_the_covenant_question_explains_its_legal_term():
     assert field.label == "Subject to a restrictive covenant?"
     assert field.hint == "Such as a non-compete or non-solicit agreement."
     renderer = _between(_FIELDS, "export function FieldGrid(", "\n}\n")
-    assert 'const hint = hints[field.key] ?? (isStale ? field.staleHint : field.hint);' in renderer
+    assert "const hint = fieldHint(field, hints[field.key] ?? (isStale ? field.staleHint : undefined));" in renderer
     assert 'const hintId = hint ? `${id}-hint` : undefined;' in renderer
     assert "<p id={hintId}" in renderer
     assert "hintId={hintId}" in renderer  # handed to the shared control …
     control = _between(_FIELDS, "export function FieldControl(", "\n}\n")
     assert control.count("aria-describedby={hintId}") == 1  # … which the select reads directly …
     assert "useFieldMessage({ warning, hintId })" in control  # … and the input through its message wiring
+
+
+def test_a_hint_line_says_who_asks_before_the_hint():
+    """A pack's question leads its hint line with who asks it (`askedBy`, "Asked by forms in India."), in
+    every editor (`fieldHint`); what an editor says instead of the hint (a stale answer, an older answer's
+    note) replaces the hint only, never that marker."""
+    helper = _between(_read("lib/autofill-options.ts"), "export function fieldHint(", "\n}\n")
+    assert "[field.askedBy, override ?? field.hint]" in helper
 
 
 def test_gender_offers_non_binary_and_self_describe():

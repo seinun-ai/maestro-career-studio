@@ -18,11 +18,13 @@ import {
   derivedPermits,
   differsFromSettled,
   diversityCountries,
+  fieldHint,
   fieldShown,
   forSaving,
   groupCount,
   groupFields,
   languageFields,
+  legacyNote,
   missingAnswers,
   missingKey,
   missingValue,
@@ -729,4 +731,39 @@ test("an open answer of a country's own is worded from its field: the pay by nam
   assert.equal(openAnswersWords([pay]), "expected pay not given");
   assert.equal(openAnswersWords([other]), "1 answer not given");
   assert.equal(openAnswersWords([pay, other]), "2 answers not given");
+});
+
+// India's question about serving notice, as served to someone who applies there: a pack's question says whose
+// forms ask it, and that marker leads whatever hint it has.
+const LAST_DAY: FieldDef = {
+  key: "last_working_day", label: "Last working day", type: "date", optional: true,
+  askedBy: "Asked by forms in India.", hint: "If you're serving notice.",
+};
+
+test("a question only some countries ask says which first, in its hint line, and keeps saying it", () => {
+  assert.equal(fieldHint(LAST_DAY), "Asked by forms in India. If you're serving notice.");
+  assert.equal(fieldHint({ ...LAST_DAY, hint: undefined }), "Asked by forms in India.");
+  assert.equal(fieldHint({ ...LAST_DAY, askedBy: undefined }), "If you're serving notice.");
+  assert.equal(fieldHint({ key: "how_heard", label: "How did you hear about the job?" }), "");
+  // What an editor says in place of the field's own hint (a stale answer's words, a note) replaces that hint
+  // only: the marker stays.
+  assert.equal(fieldHint(LAST_DAY, "Answer again."), "Asked by forms in India. Answer again.");
+  assert.equal(fieldHint({ ...LAST_DAY, askedBy: undefined }, "Answer again."), "Answer again.");
+});
+
+test("notice written in words before says so beside the empty days, until days are given", () => {
+  assert.equal(
+    legacyNote(NOTICE, { notice_period: "negotiable" }),
+    "You wrote \u201cnegotiable\u201d before. Forms get that until you give days.",
+  );
+  assert.equal(legacyNote(NOTICE, { notice_period: " negotiable " })?.includes("\u201cnegotiable\u201d"), true);
+  // Days given, 0 included, are the answer: no note, whatever older words are still held.
+  for (const days of [0, 14, "0", "14"]) {
+    assert.equal(legacyNote(NOTICE, { notice_days: days, notice_period: "negotiable" }), undefined, String(days));
+  }
+  assert.equal(legacyNote(NOTICE, { notice_days: 0 }), undefined);
+  assert.equal(legacyNote(NOTICE, { notice_period: "  " }), undefined);
+  assert.equal(legacyNote(NOTICE, {}), undefined);
+  // A field with no older key has no older words.
+  assert.equal(legacyNote(RELOCATE, { notice_period: "negotiable" }), undefined);
 });

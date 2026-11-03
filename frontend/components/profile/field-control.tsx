@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/select";
 import {
   NOT_SET,
+  fieldHint,
   fieldShown,
   fieldValue,
   isBlank,
@@ -100,12 +101,12 @@ export function FieldControl({
 }
 
 /**
- * A group's fields in the editor's grid, each with its label, its hint (a stale answer's "Answer again"
- * instead, while the question is empty) and its control. A field shown only for one answer of another
- * (`when`), or hidden by one (`unless`), follows that answer (`shownBy`: the answers as the fill reads them,
- * when they differ from what is stored). A field in `settled` shows that instead of its hint and control: an
- * answer your citizenship settles, with its way to answer differently; one in `hints` says that in place of
- * its own hint.
+ * A group's fields in the editor's grid, each with its label, its hint line (`fieldHint`: which countries'
+ * forms ask it, then its hint, or a stale answer's "Answer again" while the question is empty) and its
+ * control. A field shown only for one answer of another (`when`), or hidden by one (`unless`), follows that
+ * answer (`shownBy`: the answers as the fill reads them, when they differ from what is stored). A field in
+ * `settled` shows that instead of its hint and control: an answer your citizenship settles, with its way to
+ * answer differently; one in `hints` says that in place of its own hint, after the marker.
  */
 export function FieldGrid({
   idPrefix,
@@ -134,7 +135,7 @@ export function FieldGrid({
   voluntary?: boolean;
   /** By key: what a field shows in place of its control (its label stays). */
   settled?: Readonly<Record<string, ReactNode>>;
-  /** By key: a hint in place of the field's own. */
+  /** By key: a hint in place of the field's own (the marker of who asks it stays). */
   hints?: Readonly<Record<string, string>>;
   onChange: (key: string, next: string | boolean | undefined) => void;
 }) {
@@ -160,7 +161,7 @@ export function FieldGrid({
         const rawValue = values[field.key];
         const value = fieldValue(field, rawValue);
         const isStale = Boolean(field.staleHint) && isBlank(rawValue) && stale.includes(field.key);
-        const hint = hints[field.key] ?? (isStale ? field.staleHint : field.hint);
+        const hint = fieldHint(field, hints[field.key] ?? (isStale ? field.staleHint : undefined));
         const hintId = hint ? `${id}-hint` : undefined;
         return (
           <div key={field.key} className="grid gap-1.5">

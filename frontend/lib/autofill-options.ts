@@ -50,7 +50,7 @@ function withAnswerIn(
   values: Record<string, unknown>,
   fields: readonly FieldDef[],
   key: string,
-  value: string | boolean | undefined,
+  value: string | number | boolean | undefined,
   { keepBlank = false } = {},
 ): Record<string, unknown> {
   const next = { ...values };
@@ -548,6 +548,24 @@ export function answeredIn(field: FieldDef, values: Record<string, unknown>): bo
   return answered(field, values[field.key]) || (field.legacy !== undefined && !isBlank(values[field.legacy]));
 }
 
+/** A field's hint line, wherever the question is asked: which countries' forms ask it (`askedBy`, served on a
+ *  pack's question), then its own hint, or what an editor says in its place (`override`: a stale answer's
+ *  words, an older answer's note). An override replaces the hint only, never the marker. Empty when neither. */
+export function fieldHint(field: FieldDef, override?: string): string {
+  return [field.askedBy, override ?? field.hint].filter((part) => !isBlank(part)).join(" ");
+}
+
+/** What a field's older answer says while its own is blank (`legacy`, read as `answeredIn` reads it): notice
+ *  written in words before it was days, text the server could not read as days ("negotiable"), which forms
+ *  get as written until days are given. Only notice has an older key, so the words are notice's. */
+export function legacyNote(field: FieldDef, values: Record<string, unknown>): string | undefined {
+  if (field.legacy === undefined || answered(field, values[field.key])) return undefined;
+  const older = values[field.legacy];
+  return typeof older === "string" && older.trim()
+    ? `You wrote “${older.trim()}” before. Forms get that until you give days.`
+    : undefined;
+}
+
 export type Count = { answered: number; answerable: number };
 
 /** How many of a group's required answers are given: the fields setup readiness counts there, as served for
@@ -626,7 +644,7 @@ export function withField(
   questionSet: QuestionSet,
   group: string,
   key: string,
-  value: string | boolean | undefined,
+  value: string | number | boolean | undefined,
 ): Profile {
   const values = withAnswerIn(groupValues(profile, group), groupFields(questionSet, group), key, value, {
     keepBlank: true,

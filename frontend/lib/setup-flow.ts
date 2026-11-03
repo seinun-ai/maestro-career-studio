@@ -41,12 +41,20 @@ function yesNo(value: unknown): boolean | undefined {
   return word === "yes" ? true : word === "no" ? false : undefined;
 }
 
-export type PreferenceKey = "notice_period" | "willing_to_relocate";
+/** Notice as whole days, as the server keeps it (backend `notice.whole_days`): a number, or the digits a number
+ *  box sends ("14" until its save lands). A part day, a negative, a yes or no or words are no days. */
+function wholeDays(value: unknown): number | undefined {
+  if (typeof value === "number") return Number.isInteger(value) && value >= 0 ? value : undefined;
+  return typeof value === "string" && /^\s*\d+\s*$/.test(value) ? Number(value) : undefined;
+}
 
-export function preference(profile: AutofillProfile, key: PreferenceKey): string | boolean | undefined {
+/** The Start and pay answers Setup asks: notice in days (Setup asks no pay, Decision 8 of
+ *  docs/plans/2026-11-02-start-and-pay.md) and relocation. */
+export type PreferenceKey = "notice_days" | "willing_to_relocate";
+
+export function preference(profile: AutofillProfile, key: PreferenceKey): number | boolean | undefined {
   const value = object(profile.preferences)[key];
-  if (key === "willing_to_relocate") return yesNo(value);
-  return typeof value === "string" ? value : undefined;
+  return key === "willing_to_relocate" ? yesNo(value) : wholeDays(value);
 }
 
 export type FormQuestion =

@@ -181,8 +181,16 @@ test("diversity is asked only for the countries with a checked set, and names th
   assert.equal(formQuestions(served(["UK"], { offersEeo: false }), MARKETS).some((q) => q.kind === "diversity"), false);
 });
 
-test("a preference reads as stored: text, or a yes or no as typed", () => {
-  assert.equal(preference({ preferences: { notice_period: "1 month" } }, "notice_period"), "1 month");
+test("a preference reads as stored: notice in whole days, or a yes or no as typed", () => {
+  // The server keeps notice as a whole number; the number box sends digits, so "14" is 14 until the save lands.
+  for (const [stored, days] of [[0, 0], [14, 14], ["14", 14], [" 45 ", 45], ["0", 0]] as const) {
+    assert.equal(preference({ preferences: { notice_days: stored } }, "notice_days"), days, String(stored));
+  }
+  // No days: a part day, a negative, a yes or no, a blank, and notice in words (the server reads those as days).
+  for (const stored of [14.5, -1, true, "", "2 weeks"]) {
+    assert.equal(preference({ preferences: { notice_days: stored } }, "notice_days"), undefined, String(stored));
+  }
+  assert.equal(preference({ preferences: { notice_period: "1 month" } }, "notice_days"), undefined);
   assert.equal(preference({ preferences: { willing_to_relocate: "Yes" } }, "willing_to_relocate"), true);
   assert.equal(preference({}, "willing_to_relocate"), undefined);
 });

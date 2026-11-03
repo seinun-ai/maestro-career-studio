@@ -63,7 +63,8 @@ const PERSONAL = {
   citizenships: ["IN"],
 };
 
-function render({
+// The reads Profile makes, seeded: `render` takes the same options.
+function seeds({
   home = "DE",
   applyIn = ["DE", "UK", "US"],
   served = applyIn,
@@ -73,7 +74,7 @@ function render({
   consent = CONSENT,
   status = STATUS,
 } = {}) {
-  return renderElement(withRouter(React.createElement(ProfileView, { focus: () => {} })), [
+  return [
     [["setup-status"], status],
     [["settings", "autofill"], { key: "autofill_profile", value: profile }],
     [["settings", "eeo-consent"], { key: "eeo_consent", value: consent }],
@@ -90,7 +91,11 @@ function render({
     [["kb", "profile"], { contact: { name: "Ada Lovelace" }, summary: "", skills: [], notes: "", updated_at: "" }],
     [["role-categories"], []],
     [["settings", "money"], { key: "money", value: { home_currency: null, period: "year", hours_per_year: 2080, show_posted: true }, home_currency: "EUR" }],
-  ]);
+  ];
+}
+
+function render(options = {}) {
+  return renderElement(withRouter(React.createElement(ProfileView, { focus: () => {} })), seeds(options));
 }
 
 test("the header: your name, where you live and apply, and the sections setup status says are ready", () => {
@@ -502,4 +507,108 @@ test("a country's line counts its permits and its own required answers, as Next 
   assert.match(countrySets(html)["United States"].legend, /2 of 5 answered<\/span><\/legend>$/);
   assert.match(html, /Next up · Country answers · United States/);
   assert.match(html, /aria-label="2 of 5 answered"/);
+});
+
+// A question's hint line where an editor asks it, and whether that line describes its control.
+const described = (html, id) => {
+  const hint = html.match(new RegExp(`<p id="${id}-hint"[^>]*>([^<]*)</p>`))?.[1];
+  const control = html.match(new RegExp(`<(?:button|input)[^>]*id="${id}"[^>]*>`))?.[0] ?? "";
+  return { hint, wired: control.includes(`aria-describedby="${id}-hint"`) };
+};
+
+test("a question only some countries ask says which in its hint line, read with its control", () => {
+  const html = render({ ...US_HOME, profile: { personal: PERSONAL } });
+  assert.deepEqual(described(html, "af-preferences-serving_notice"), { hint: "Asked by forms in India.", wired: true });
+  // The marker leads the question's own hint.
+  assert.deepEqual(described(html, "af-preferences-last_working_day"), {
+    hint: "Asked by forms in India. If you&#x27;re serving notice.", wired: true,
+  });
+  assert.deepEqual(described(html, "af-preferences-preferred_locations"), {
+    hint: "Asked by forms in India. Up to 10 cities, separated by commas.", wired: true,
+  });
+  assert.deepEqual(described(html, "af-eligibility-over_18"), { hint: "Asked by forms in the United States.", wired: true });
+  // Everyone's questions say no country: notice keeps its own hint, relocation has none.
+  assert.deepEqual(described(html, "af-preferences-notice_days"), {
+    hint: "0 if you can start now. Forms that offer fixed choices get the next one up.", wired: true,
+  });
+  assert.equal(described(html, "af-preferences-willing_to_relocate").hint, undefined);
+  // A country's own set is that country's: nothing in it says who asks.
+  const sets = countrySets(html);
+  assert.deepEqual(Object.keys(sets), ["United States", "India", "Ireland"]);
+  for (const { body } of Object.values(sets)) assert.doesNotMatch(body, /Asked by forms in/);
+});
+
+test("the CEFR level on each language says which countries' forms ask it, read with its control", () => {
+  const html = renderIndia();
+  for (const i of [0, 1]) {
+    assert.deepEqual(described(html, `af-languages-${i}-cefr`), {
+      hint: "Asked by forms in Germany and the Netherlands.", wired: true,
+    });
+    // The levels every form asks carry no hint.
+    assert.equal(described(html, `af-languages-${i}-speak`).hint, undefined);
+  }
+});
+
+test("notice written in words before says so in its hint until days are given; 0 days is an answer", () => {
+  const legacy = render({ ...US_HOME, profile: { personal: PERSONAL, preferences: { notice_period: "negotiable" } } });
+  assert.deepEqual(described(legacy, "af-preferences-notice_days"), {
+    hint: "You wrote “negotiable” before. Forms get that until you give days.", wired: true,
+  });
+  const now = render({ ...US_HOME, profile: { personal: PERSONAL, preferences: { notice_days: 0 } } });
+  assert.equal(
+    described(now, "af-preferences-notice_days").hint,
+    "0 if you can start now. Forms that offer fixed choices get the next one up.",
+  );
+  assert.doesNotMatch(now, /You wrote/);
+  assert.match(now, /<input[^>]*id="af-preferences-notice_days"[^>]*value="0"/);
+});
+
+test("start and pay says what it holds with or without the pay of where you live", () => {
+  const description = /When you can start, and what forms ask with it\./;
+  assert.match(render({ ...US_HOME, profile: { personal: PERSONAL } }), description);
+  assert.match(render({ home: "US", applyIn: ["US"], served: [], chosen: false }), description);
+  assert.doesNotMatch(render(), /what you want to earn/);
+});
+
+// Next up's question: its heading's label names the control, and its hint line describes it.
+const nextUpHint = (html) => {
+  const lead = html.slice(html.indexOf("Next up ·"), html.indexOf("</section>", html.indexOf("Next up ·")));
+  const hintId = lead.match(/<p id="([^"]+-hint)"/)?.[1];
+  return {
+    hint: hintId ? lead.match(new RegExp(`<p id="${hintId}"[^>]*>([^<]*)</p>`))?.[1] : undefined,
+    described: hintId ? new RegExp(`aria-describedby="${hintId}"`).test(lead) : false,
+  };
+};
+const US_ANSWERED = {
+  personal: PERSONAL,
+  work_auth_by_country: { US: US_PERMITS, IN: US_PERMITS, IE: US_PERMITS },
+  preferences: { desired_salary: "$80,000" },
+};
+
+test("next up asks a question with its hint line, read with its control", () => {
+  const html = render({ ...US_HOME, profile: US_ANSWERED });
+  assert.match(html, /Next up · Start and pay/);
+  assert.match(html, /<h2[^>]*><label for="[^"]+">Notice period<\/label><\/h2>/);
+  assert.deepEqual(nextUpHint(html), {
+    hint: "0 if you can start now. Forms that offer fixed choices get the next one up.", described: true,
+  });
+});
+
+test("next up says which countries' forms ask a question only some do", () => {
+  // No served set requires a pack's question today; one that did would be asked with its marker, a Yes or No as well.
+  const served = servedQuestions("US", ["US", "IN", "IE"]);
+  const required = {
+    ...served,
+    groups: served.groups.map((g) => g.key !== "preferences" ? g : {
+      ...g, fields: g.fields.map((f) => f.key === "serving_notice" ? { ...f, optional: false } : f),
+    }),
+  };
+  const profile = { ...US_ANSWERED, preferences: { ...US_ANSWERED.preferences, notice_days: 14 } };
+  const html = renderElement(withRouter(React.createElement(ProfileView, { focus: () => {} })), [
+    ...seeds({ ...US_HOME, profile }).filter(([key]) => key[1] !== "form-questions"),
+    [["settings", "form-questions"], required],
+  ]);
+  assert.match(html, /Next up · Start and pay/);
+  assert.match(html, /<h2[^>]*>Are you serving your notice period\?<\/h2>/);
+  assert.deepEqual(nextUpHint(html), { hint: "Asked by forms in India.", described: true });
 });

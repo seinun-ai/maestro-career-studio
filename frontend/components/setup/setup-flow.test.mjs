@@ -16,6 +16,7 @@ const { SetupAnswersStep } = load("components/setup/setup-answers-step.tsx");
 const { formQuestions, stepsDone } = load("lib/setup-flow.ts");
 const { buildSetupSteps } = load("components/setup/setup-steps.ts");
 const { countryCodes } = load("lib/autofill-options.ts");
+const { preference } = load("lib/setup-flow.ts");
 const {
   citizenshipNext,
   permitAsks,
@@ -480,8 +481,8 @@ test("what Setup writes: each answer on its own country, never the one-set view"
   assert.equal("work_auth" in after, false);
   assert.deepEqual(before.work_auth_by_country.UK, { authorized_now: false }, "the input is not changed");
   assert.deepEqual(withPermitAnswer({}, SERVED, "US", "status", "citizen"), { work_auth_by_country: { US: { status: "citizen" } } });
-  const prefs = withPreference({ preferences: { desired_salary: "80k" }, work_auth: {} }, SERVED, "notice_period", "1 month");
-  assert.deepEqual(prefs, { preferences: { desired_salary: "80k", notice_period: "1 month" } });
+  const prefs = withPreference({ preferences: { desired_salary: "80k" }, work_auth: {} }, SERVED, "notice_days", 30);
+  assert.deepEqual(prefs, { preferences: { desired_salary: "80k", notice_days: 30 } });
   // Declining fills each blank diversity question with its decline choice, the veteran one too, and leaves
   // race or ethnicity (typed, with no decline choice) blank.
   assert.deepEqual(withDiversityDeclined({ eeo: { gender: "female" } }, SERVED).eeo, {
@@ -489,6 +490,7 @@ test("what Setup writes: each answer on its own country, never the one-set view"
   });
   assert.equal("race_ethnicity" in withDiversityDeclined({}, SERVED).eeo, false);
   assert.equal(questionAnswered({ kind: "notice" }, { preferences: { notice_period: "  " } }, SERVED), false);
+  assert.equal(questionAnswered({ kind: "notice" }, { preferences: {} }, SERVED), false);
   assert.equal(questionAnswered({ kind: "relocate" }, { preferences: { willing_to_relocate: "No" } }, SERVED), true);
   const us = formQuestions(servedQuestions("DE", ["US"]), MARKETS).find((q) => q.kind === "permit");
   assert.equal(questionAnswered(us, { work_auth_by_country: { US: PERMITS } }, SERVED), false,
@@ -564,4 +566,68 @@ test("only the home's pay missing: the setup card names it and opens Country ans
   const later = { ...autofill, groups: { ...autofill.groups, preferences: count(3, 4) } };
   const first = buildSetupSteps({ ...STATUS, autofill: later }, "/applications").find((s) => s.id === "autofill");
   assert.equal(first.detail, "96% done. Expected pay is missing.");
+});
+
+// The notice question as the step shows it, holding these answers.
+const noticeCard = (profile = {}) => {
+  const questions = formQuestions(SERVED, MARKETS);
+  return answersStep({ questions, question: questions.findIndex((q) => q.kind === "notice"), profile });
+};
+// The words of each pressed choice, and the days box with what describes it.
+const pressedChoices = (html) =>
+  [...html.matchAll(/<button[^>]*aria-pressed="true"[^>]*>(.*?)<\/button>/g)].map((m) => m[1].replace(/<[^>]+>/g, ""));
+const daysBox = (html) => {
+  const input = html.match(/<input[^>]*type="number"[^>]*>/)?.[0] ?? "";
+  const describedBy = input.match(/aria-describedby="([^"]+)"/)?.[1];
+  const hint = describedBy ? html.match(new RegExp(`<p id="${describedBy}"[^>]*>([^<]*)</p>`))?.[1] : undefined;
+  return { input, value: input.match(/value="([^"]*)"/)?.[1], hint };
+};
+
+test("Setup's notice choices store days, and a choice reads as picked from the days the server sends back", () => {
+  const choices = { Now: 0, "2 weeks": 14, "1 month": 30, "3 months": 90 };
+  for (const [label, days] of Object.entries(choices)) {
+    const picked = withPreference({}, SERVED, "notice_days", days);
+    assert.deepEqual(picked, { preferences: { notice_days: days } }, label);
+    // The server sends the days back as a number: that choice is the one picked, and the question is answered.
+    assert.deepEqual(pressedChoices(noticeCard(picked)), [label]);
+    assert.equal(questionAnswered({ kind: "notice" }, picked, SERVED), true, label);
+  }
+  // Now is 0 days: an answer, compared as a number, never read as blank.
+  assert.equal(daysBox(noticeCard({ preferences: { notice_days: 0 } })).value, "0");
+  // Days typed into the box arrive as digits until the save lands: "14" is still 2 weeks.
+  assert.deepEqual(pressedChoices(noticeCard({ preferences: { notice_days: "14" } })), ["2 weeks"]);
+});
+
+test("Setup's box takes any other number of days, and the older words go once days are given", () => {
+  // Typed, the box sends what it holds (the server keeps it as a whole number), and no choice reads as picked.
+  const typed = withPreference({ preferences: { willing_to_relocate: false } }, SERVED, "notice_days", "45");
+  assert.deepEqual(typed, { preferences: { willing_to_relocate: false, notice_days: "45" } });
+  assert.equal(preference(typed, "notice_days"), 45);
+  const html = noticeCard({ preferences: { notice_days: 45 } });
+  assert.deepEqual(pressedChoices(html), []);
+  assert.equal(daysBox(html).value, "45");
+  // Notice in words from before is dropped from the answers Setup holds, so its save never sends it again.
+  const older = { preferences: { notice_period: "negotiable", desired_salary: "80k" } };
+  assert.deepEqual(withPreference(older, SERVED, "notice_days", 14).preferences, { desired_salary: "80k", notice_days: 14 });
+  assert.deepEqual(withPreference(older, SERVED, "notice_days", "45").preferences, { desired_salary: "80k", notice_days: "45" });
+  // A cleared box removes the days.
+  assert.deepEqual(withPreference({ preferences: { notice_days: 14 } }, SERVED, "notice_days", undefined), { preferences: {} });
+});
+
+test("Setup's days box is Profile's, described by the served hint, or by the older words while they stand", () => {
+  const blank = daysBox(noticeCard());
+  assert.match(blank.input, /min="0"/);
+  assert.equal(blank.value, "");
+  assert.equal(blank.hint, "0 if you can start now. Forms that offer fixed choices get the next one up.");
+  const html = noticeCard();
+  assert.match(html, /<label[^>]*for="[^"]+"[^>]*>Notice period<\/label>/);
+  assert.doesNotMatch(html, /in your own words/);
+  // Words the server could not read as days answer the question, so it is done, though no choice is picked.
+  const older = { preferences: { notice_period: "negotiable" } };
+  const legacy = noticeCard(older);
+  assert.deepEqual(pressedChoices(legacy), []);
+  assert.equal(daysBox(legacy).value, "");
+  assert.equal(daysBox(legacy).hint, "You wrote \u201cnegotiable\u201d before. Forms get that until you give days.");
+  assert.equal(questionAnswered({ kind: "notice" }, older, SERVED), true);
+  assert.equal(daysBox(noticeCard({ preferences: { notice_days: 0 } })).hint, blank.hint);
 });

@@ -19,6 +19,7 @@ import {
   countryQuestions,
   countrySetCount,
   diversityCountries,
+  fieldHint,
   fieldValue,
   groupCount,
   missingAnswers,
@@ -246,6 +247,10 @@ export function NextUp({
   const raw = missingValue(profile, questionSet, current);
   const answer = (value: string | boolean | undefined) =>
     update(SURFACE, (profileNow) => withMissingAnswer(profileNow, questionSet, current, value));
+  // Its hint line, as every editor shows it (`fieldHint`: which countries' forms ask it, then its hint), read
+  // with the Yes or No group or the control.
+  const hint = fieldHint(field);
+  const hintId = hint ? `${controlId}-hint` : undefined;
 
   return (
     <LeadCard
@@ -263,8 +268,13 @@ export function NextUp({
       <h2 id={questionId} ref={headingRef} tabIndex={-1} className="text-headline-small outline-none">
         {field.boolean ? field.label : <label htmlFor={controlId}>{field.label}</label>}
       </h2>
+      {hint ? (
+        <p id={hintId} className="max-w-[65ch] text-body-medium text-muted-foreground">
+          {hint}
+        </p>
+      ) : null}
       {field.boolean ? (
-        <div role="group" aria-labelledby={questionId} className="flex flex-wrap gap-2">
+        <div role="group" aria-labelledby={questionId} aria-describedby={hintId} className="flex flex-wrap gap-2">
           {YES_NO.map((option) => {
             const on = booleanAnswer(raw) === option.value;
             return (
@@ -292,6 +302,7 @@ export function NextUp({
             group={inCountry ? `${current.kind}-${current.market}` : current.group}
             field={field}
             value={fieldValue(field, raw)}
+            hintId={hintId}
             onChange={(value) => {
               setHeld(current);
               answer(value);

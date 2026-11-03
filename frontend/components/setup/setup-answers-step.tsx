@@ -8,12 +8,11 @@ import { FillFromResumeButton, useFillFromResume } from "@/components/profile/co
 import { useCountryCodes } from "@/components/country-picker";
 import { CITIZEN_HINT, CitizenshipPicker } from "@/components/profile/citizenship-picker";
 import { DiversityConsentSwitch, useDiversityConsent } from "@/components/profile/diversity-consent";
-import { FieldGrid } from "@/components/profile/field-control";
+import { FieldControl, FieldGrid } from "@/components/profile/field-control";
 import { AutosaveStatus } from "@/components/settings/autosave-status";
 import type { DiversityChoice } from "@/components/setup/setup-flow";
 import { useLeaveGuard } from "@/hooks/use-leave-guard";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -27,15 +26,19 @@ import {
   booleanAnswer,
   citizenshipEntries,
   citizenshipField,
+  fieldHint,
+  fieldValue,
   groupFields,
   groupValues,
   isBlank,
+  legacyNote,
   permitEntry,
   profileForEditing,
   staleAnswers,
 } from "@/lib/autofill-options";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import {
+  noticeField,
   permitAsks,
   questionAnswered,
   withCitizenshipAnswer,
@@ -49,7 +52,13 @@ import type { EeoConsent, QuestionSet } from "@/lib/types";
 import { useAutosave } from "@/lib/use-autosave";
 import { cn } from "@/lib/utils";
 
-const NOTICE_CHOICES = ["Now", "2 weeks", "1 month", "3 months"] as const;
+/** The quick notice choices and the days each stores; the box takes any other number. */
+const NOTICE_CHOICES: readonly { value: number; label: string }[] = [
+  { value: 0, label: "Now" },
+  { value: 14, label: "2 weeks" },
+  { value: 30, label: "1 month" },
+  { value: 90, label: "3 months" },
+];
 
 type Update = (next: (current: AutofillProfile) => AutofillProfile) => void;
 
@@ -79,7 +88,7 @@ export function useSetupAnswers(served: AutofillProfile): SetupAnswers {
 }
 
 /** A one-of-a-few answer: buttons that say which is chosen (`aria-pressed` and a Check), in a named group. */
-function Choices<T extends string | boolean>({
+function Choices<T extends string | number | boolean>({
   labelledBy,
   options,
   value,
@@ -277,8 +286,13 @@ function Question({ question, ...props }: QuestionProps & { question: FormQuesti
     );
   }
   if (question.kind === "notice") {
-    const value = preference(profile, "notice_period");
-    const text = typeof value === "string" ? value : "";
+    // Notice in days, as Profile asks it: a choice stores its days, the box any other number. A choice reads as
+    // picked from the days held, compared as numbers (the server sends 14; the box holds "14" until it lands).
+    const field = noticeField(questionSet);
+    const values = groupValues(profile, "preferences");
+    const days = preference(profile, "notice_days");
+    const hint = field ? fieldHint(field, legacyNote(field, values)) : "";
+    const hintId = hint ? `${noticeId}-hint` : undefined;
     return (
       <div className="flex flex-col gap-4">
         <h3 id={titleId} ref={headingRef} tabIndex={-1} className="text-title-large outline-none">
@@ -286,25 +300,31 @@ function Question({ question, ...props }: QuestionProps & { question: FormQuesti
         </h3>
         <Choices
           labelledBy={titleId}
-          options={NOTICE_CHOICES.map((choice) => ({ value: choice, label: choice }))}
-          value={NOTICE_CHOICES.find((choice) => choice === text)}
+          options={NOTICE_CHOICES}
+          value={typeof days === "number" ? days : undefined}
           onPick={(choice) => {
-            update((current) => withPreference(current, questionSet, "notice_period", choice));
+            update((current) => withPreference(current, questionSet, "notice_days", choice));
             advance();
           }}
         />
-        <div className="grid max-w-sm gap-1.5">
-          <Label htmlFor={noticeId}>Notice period</Label>
-          <Input
-            id={noticeId}
-            value={text}
-            onChange={(e) => {
-              const next = e.target.value;
-              update((current) => withPreference(current, questionSet, "notice_period", next));
-            }}
-          />
-        </div>
-        <p className="text-body-small text-muted-foreground">Your notice period, in your own words if none fits.</p>
+        {field ? (
+          <div className="grid max-w-sm gap-1.5">
+            <Label htmlFor={noticeId}>{field.label}</Label>
+            {hint ? (
+              <p id={hintId} className="text-muted-foreground text-body-small">
+                {hint}
+              </p>
+            ) : null}
+            <FieldControl
+              id={noticeId}
+              group="preferences"
+              field={field}
+              value={fieldValue(field, values[field.key])}
+              hintId={hintId}
+              onChange={(next) => update((current) => withPreference(current, questionSet, "notice_days", next))}
+            />
+          </div>
+        ) : null}
       </div>
     );
   }

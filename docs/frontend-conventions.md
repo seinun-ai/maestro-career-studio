@@ -1195,7 +1195,10 @@
   the required questions your citizenship does not settle and that were not answered when Setup opened
   (`permitAsks`), so a country your citizenship settles is passed and one you answer here keeps its answers on
   the card; each answer's group is named by the country and the question and saved to that country's own
-  entry. Then notice period and relocation; then diversity, only when an apply-in market `offers_eeo`:
+  entry. Then notice period, in days as Profile asks it (Now, 2 weeks, 1 month and 3 months store 0, 14, 30
+  and 90, picked when the days held equal them; Profile's number box takes any other, and once days are given
+  the older words leave the answers Setup holds), and relocation; then diversity, only when an apply-in market
+  `offers_eeo`:
   **Answer them** or **Decline the rest**, each only once the diversity consent is on record (Profile's
   confirm and the server's stamp; Cancel stores nothing), with the switch beside the answers (D10). As in
   Profile, Decline the rest gives each blank question its decline choice (`declinedEeo`, selects only, the
@@ -1255,7 +1258,11 @@
   `useFormQuestions` by Profile and Setup alike, the `lib/autofill-options.ts` helpers taking it as
   `questionSet`), never a list of the frontend's own; Country answers and Next up ask only the countries it
   lists (`countries`), in its order. Languages adds the served `language_fields` (the CEFR level) to each
-  language. Every answer saves as you go
+  language. A question only some countries ask leads its hint line with the served `askedBy` sentence ("Asked
+  by forms in India."), wherever it is asked: every editor, Languages, Next up and Setup (`fieldHint`, wired
+  with `aria-describedby`); a `hints` entry replaces the field's own hint, never that marker. Notice is
+  `notice_days`, a number box; while only older words stand (`notice_period`, text the server could not read as
+  days) its hint says forms get them until days are given (`legacyNote`). Every answer saves as you go
   (`AutofillProfileProvider`: one `useAutosave` for the answers). Each editor's status follows its own newest
   edit (`lib/save-surfaces.ts`): Saving until a write that carries it lands, Not saved when the last one
   failed, nothing while it has no edit waiting, so it never says Saved before its own edit is on the server

@@ -8,6 +8,7 @@ import { useAutofillQuery } from "@/components/profile/use-autofill-query";
 import { Label } from "@/components/ui/label";
 import {
   booleanAnswer,
+  fieldHint,
   isBlank,
   languageFields,
   languageValue,
@@ -85,14 +86,23 @@ function LanguagesEditor({ questionSet }: { questionSet: QuestionSet }) {
         <div className="grid flex-1 items-end gap-4 @xl/setting:grid-cols-3">
           {languageFields(questionSet).map((field) => {
             const id = `af-languages-${i}-${field.key}`;
+            // The CEFR level says which countries' forms ask it (`askedBy`), read with its control.
+            const hint = fieldHint(field);
+            const hintId = hint ? `${id}-hint` : undefined;
             return (
               <div key={field.key} className="grid gap-1.5">
                 <Label htmlFor={id}>{field.label}</Label>
+                {hint ? (
+                  <p id={hintId} className="text-muted-foreground text-body-small">
+                    {hint}
+                  </p>
+                ) : null}
                 <FieldControl
                   id={id}
                   group="language"
                   field={field}
                   value={languageValue(field, (entry as Record<string, unknown>)[field.key])}
+                  hintId={hintId}
                   onChange={(next) => change(withAnswer(entry, field.key, next))}
                 />
               </div>

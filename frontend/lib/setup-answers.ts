@@ -7,6 +7,7 @@
  */
 import {
   answered,
+  answeredIn,
   booleanAnswer,
   citizenshipAnswered,
   citizenshipIsLoose,
@@ -14,8 +15,8 @@ import {
   derivedPermits,
   forSaving,
   groupCount,
+  groupFields,
   groupValues,
-  isBlank,
   permitAnswered,
   permitEntry,
   permitQuestions,
@@ -27,7 +28,7 @@ import {
   type FieldDef,
   type Profile,
 } from "./autofill-options";
-import type { FormQuestion } from "./setup-flow";
+import type { FormQuestion, PreferenceKey } from "./setup-flow";
 import type { QuestionSet } from "./types";
 
 /** The profile with these citizenships (ISO codes, from the picker). The save reads the questions again, so
@@ -96,13 +97,22 @@ export function withPermitAnswer(
   return forSaving(withPermit(profile, questionSet, market, key, value));
 }
 
+/** The profile with one of the Start and pay answers Setup asks: notice in days (a choice's 0, 14, 30 or 90, or
+ *  the digits typed into the box; undefined, a cleared box, removes it) or relocation. Once an answer is given,
+ *  the older answer it replaces (the served field's `legacy`: notice in words) leaves the held answers, so the
+ *  autosave never sends that text again (the server drops it too, since days given win). */
 export function withPreference(
   profile: Profile,
   questionSet: QuestionSet,
-  key: "notice_period" | "willing_to_relocate",
-  value: string | boolean,
+  key: PreferenceKey,
+  value: string | number | boolean | undefined,
 ): Profile {
-  return forSaving(withField(profile, questionSet, "preferences", key, value));
+  const next = withField(profile, questionSet, "preferences", key, value);
+  const field = groupFields(questionSet, "preferences").find((f) => f.key === key);
+  if (!field?.legacy || !answered(field, value)) return forSaving(next);
+  const { [field.legacy]: _older, ...preferences } = groupValues(next, "preferences");
+  void _older;
+  return forSaving({ ...next, preferences });
 }
 
 /** The profile with one diversity answer (`eeo`), or with the rest declined: every blank question that has a
@@ -121,6 +131,12 @@ export function withDiversityDeclined(profile: Profile, questionSet: QuestionSet
   return forSaving({ ...profile, eeo: { ...groupValues(profile, "eeo"), ...declinedEeo(profile, questionSet) } });
 }
 
+/** Notice, as served: one answer in days (`notice_days`) for everyone, whose older words (`legacy`) still answer
+ *  it. Setup's notice question asks it. */
+export function noticeField(questionSet: QuestionSet): FieldDef | undefined {
+  return groupFields(questionSet, "preferences").find((field) => field.key === "notice_days");
+}
+
 /** Whether a question holds its answer, for its progress dot: a passed or skipped question is not answered
  *  (round means a state, so a dot never says done for a question you left). */
 export function questionAnswered(
@@ -134,8 +150,11 @@ export function questionAnswered(
       return citizenshipAnswered(profile, questionSet, codes);
     case "permit":
       return permitAnswered(profile, questionSet, question.market);
-    case "notice":
-      return !isBlank(groupValues(profile, "preferences").notice_period);
+    case "notice": {
+      // Days given, 0 included, or older words the server could not read as days (`answeredIn`, as readiness).
+      const field = noticeField(questionSet);
+      return field !== undefined && answeredIn(field, groupValues(profile, "preferences"));
+    }
     case "relocate":
       return booleanAnswer(groupValues(profile, "preferences").willing_to_relocate) !== undefined;
     default: {

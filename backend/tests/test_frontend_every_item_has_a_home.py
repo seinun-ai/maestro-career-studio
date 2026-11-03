@@ -127,7 +127,7 @@ _PERSONAL = (
     "fields={contactFields(questionSet)}",
     'return groupFields(questionSet, "personal").filter((field) => field.type !== "countries");',
 )
-_PREFERENCES = 'fields={groupFields(questionSet, "preferences")}'
+_PREFERENCES = 'const fields = groupFields(questionSet, "preferences");'
 _EEO = 'fields={groupFields(questionSet, "eeo")}'
 _ELIGIBILITY = 'const fields = groupFields(questionSet, "eligibility");'
 # Country answers: one set per served country, its permits shown by the answers as the fill reads them.
@@ -336,9 +336,12 @@ _SETUP: list[tuple[str, str, tuple[Needle, ...]]] = [
         "permitAsks(profile, questionSet, question.market, opened).map((q) => {",
         "withPermitAnswer(current, questionSet, question.market, q.key, option.value)",
     )),
+    # Notice in days, the served question (Profile's number box); each quick choice stores its days.
     ("Form answers", "Notice period", (
-        "How soon could you start?", "<Label htmlFor={noticeId}>Notice period</Label>",
-        'withPreference(current, questionSet, "notice_period", choice)',
+        "How soon could you start?", asked("preferences", "notice_days", label="Notice period"),
+        'return groupFields(questionSet, "preferences").find((field) => field.key === "notice_days");',
+        "<Label htmlFor={noticeId}>{field.label}</Label>", '{ value: 14, label: "2 weeks" }',
+        'withPreference(current, questionSet, "notice_days", choice)',
     )),
     ("Form answers", "Willing to relocate",
      ("Open to moving for a job?", 'withPreference(current, questionSet, "willing_to_relocate", answer)')),
