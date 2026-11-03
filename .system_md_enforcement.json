@@ -364,7 +364,9 @@
     "inv-country-answers-stay-home": [
       {"path": "backend/tests/test_autofill_country.py", "symbol": "test_a_uae_job_reads_uae_answers_and_none_of_germanys"},
       {"path": "backend/tests/test_autofill_derive.py", "symbol": "test_derived_answers_are_never_stored"},
-      {"path": "backend/app/services/autofill_profile.py", "symbol": "def job_view_refusal"}
+      {"path": "backend/app/services/autofill_profile.py", "symbol": "def job_view_refusal"},
+      {"path": "backend/tests/test_autofill_country.py", "symbol": "test_a_country_with_no_pay_of_its_own_gets_none"},
+      {"path": "backend/tests/test_home_pay.py", "symbol": "test_a_home_expected_pay_is_saved_as_desired_salary"}
     ]
   },
   "unpinned": {

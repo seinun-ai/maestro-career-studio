@@ -365,7 +365,7 @@ import and profile endpoints and store no progress of their own; frontend-conven
 - **One label-pattern table, two readers** `{#inv-one-label-pattern-table}` (`extension/shared/profile-fields.js`). The patterns naming a
   TYPED home in the autofill profile (`eligibility.*`, `work_auth.*`, `preferences.*`, `answers_by_country.*`) are read by
   `content/autofill.js`'s rule table, which FILLS those fields, and by the panel's `saveTargetFor`, which decides where a pause-row answer
-  is LEARNED. One table, since two drift: an answer learned into `profile.custom` for a field the rules fill from `preferences.notice_period` lands
+  is LEARNED. One table, since two drift: an answer learned into `profile.custom` for a field the rules fill from a typed key lands
   where they never look, and the question pauses on every later form with nothing failing. **The learn store is the autofill profile, never
   `qa_entries`** (application-scoped, never read back into a fill): "pause once, learn forever" holds only for `profile.custom` (the rule
   pass matches it on every later form) and the typed keys. Wiring faults are loud (the
@@ -380,9 +380,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
   `eeo_consent.withhold_unconsented`, strips `profile.eeo` unless `enabled`, and current pay (`AGREEMENT_SLOTS`) unless `consent_forms`, for
   every outward reader — `GET /api/autofill/context`, the `/choose` prompt AND the Jev engine's slot catalog — and fails CLOSED when consent
   cannot be computed; the MCP client keeps its OWN strip (two gates, not a relocated one). Pins (router, `/choose`, Jev):
-  `.system_md_enforcement.json`. No inference or invented EEO answers. Only Submit is human-only at ANY setting
-  (inv-policy-deny-list-single-source); only `consent_forms`, as served, adds `derived.agrees_to_terms`. The stamp, which callers, the chat
-  rule and the provider list: `docs/entities/others.md`, "EEO consent details".
+  `.system_md_enforcement.json`. No inference or invented EEO answers; only `consent_forms`, as served, adds
+  `derived.agrees_to_terms`. The stamp, which callers, the chat rule and the provider list: `docs/entities/others.md`, "EEO consent details".
 - **Provider data** `{#inv-provider-tagged-meta}`: opaque blocks (`ProviderMeta`: Claude thinking signatures, Gemini thought signatures)
   carry their provider and reach only that provider; `replay.for_provider` strips them for any other, a model switch mid-chat included.
   Pinned by `tests/test_replay.py`.
@@ -506,10 +505,11 @@ import and profile endpoints and store no progress of their own; frontend-conven
   (`for_market`, through `autofill_job.view_for`): /context, both /choose engines per label's country, the fill loop's `_Catalog` (the
   Companion's rule pass sees the job's set only). Storage and limits: `docs/entities/others.md`, "Work permits per country". Pinned by
   `tests/test_autofill_country.py`.
-- **A country's answers stay in that country.** `{#inv-country-answers-stay-home}` Typed (`answers_by_country`, `work_auth_by_country`)
-  or derived from citizenship, they reach only that country's jobs: `for_market` folds one market's over the flat slots and drops every
-  map. Derived answers (`autofill_derive.answers_for`; a given answer wins) are computed on read and never stored; a job's view, marked
-  `country_answered`, is never saved (422, `autofill_profile.job_view_refusal`). Pinned by `tests/test_autofill_{country,derive}.py`.
+- **A country's answers stay in that country.** `{#inv-country-answers-stay-home}` Typed (`answers_by_country`, `work_auth_by_country`) or derived from
+  citizenship, they reach only that country's jobs: `for_market` folds one market's over the flat slots and drops every map. Pay too: once countries are
+  chosen, a country with no pay of its own gets none (the Companion asks); the home's is `preferences.desired_salary`. Derived answers
+  (`autofill_derive.answers_for`; a given answer wins) are computed on read, never stored; a job's view (`country_answered`) is never saved (422,
+  `autofill_profile.job_view_refusal`). Pinned by `tests/test_autofill_{country,derive}.py`.
 - **Low stakes are decisive; a draft is read, not trusted.** `{#inv-drafted-answers}` A low-stakes gap is filled and reported `assumed` with
   a fixed note, never left blank and never invented as a fact: a date box asking for more than the fact has takes the 1st (January for a
   year), https goes on a host, a phone type is Mobile, a dialing-code picker takes the profile country's code; the owner's No/Yes safe
@@ -786,6 +786,11 @@ exception, so ingest lands drafts and consent-gated `kb_approve_points` is the o
 - 2026-10-30 — Country questions are data: a market names packs (field tags in that catalog), a status list and pay terms; no country
   chosen asks no permit question (the owner's call); permits a citizenship settles are computed on read; superseded permit and US screening
   questions under a default US, and an "EU citizen?" question, because a permit answer belongs to one country and a given one beats the rule.
+- 2026-11-02 — Pay is one country's (`docs/plans/2026-11-02-start-and-pay.md`): the home's is `preferences.desired_salary`, read in its
+  label's currency, another's its own `expected_pay`, and once countries are chosen a country with none gets none, on its forms (the
+  Companion asks) and in the salary check; notice is one answer in days; a question only some countries ask says which (`askedBy`);
+  superseded the country questions plan's Decision 3 (the generic desired salary filled and counted for every country) because "$80,000"
+  reached Indian and Irish forms, and a figure in another country's currency and terms is no answer there.
 
 ## 11. Known deferred items (priority order)
 
@@ -827,11 +832,11 @@ overflow moves to `docs/deferred.md` under this same contract, each item keeping
     the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits". Do when Phase 3 (run list, Queue view, parallel tabs) is
     built or a listed limit is reproduced.
 
-The other 47 items (3–6, 8, 10, 12, 14–17, 19, 21, 22, 24, 26–30, 32, 33, 37–43, 45–60, 62, 63) live in [`docs/deferred.md`](docs/deferred.md),
+The other 48 items (3–6, 8, 10, 12, 14–17, 19, 21, 22, 24, 26–30, 32, 33, 37–43, 45–57, 60, 62–66) live in [`docs/deferred.md`](docs/deferred.md),
 each keeping its number and carrying its trigger; code citing "§11 item N" for one of them lands there. The design refresh's
-not-fixed observations are 53–60 and 62 there: one diversity set for every country, no per-country work-permit breakdown, Today never
-expiring proposals, mail events dated when learned, no version check on profile saves, the chart palette, a picture from before
-the refresh, the slop ratchet's stale pair, readers still on a job's country text.
+not-fixed observations are 53–57, 60 and 62 there: one diversity set for every country, no per-country work-permit breakdown, Today
+never expiring proposals, mail events dated when learned, no version check on profile saves, the slop ratchet's stale pair, readers
+still on a job's country text.
 
 ## 12. Gotchas that have bitten before
 
@@ -975,6 +980,8 @@ survives as fallback/backup) · `blocked` (trigger cannot be evaluated until a n
 | `native-scripts-to-maestro` | `backend/scripts/native/*.sh` (always-on bot) → the `maestro` command | both-live | The always-on bot runs on `maestro` for one release, then delete `backend/scripts/native/`, `docs/native-install.md` and `tests/test_native_scripts.py`. | medium |
 | `lock-wheel-deps` | `requirements.lock` as the image's whole runtime set (names the old `maestro-career-studio-backend`, no `psutil`) → regenerated lock that omits `nodejs-wheel-binaries` (`pip-compile --unsafe-package`); the image adds the project with `--no-deps -e .` | both-live | Lock regenerated in `python:3.12-slim`: it has `psutil==`, `nodejs-wheel-binaries` not pinned, no `maestro-career-studio-backend`. | small |
 | `market-home-apply-in` | one `market` setting → `home` (where you live: home currency, date format) + `apply_in` (every market you apply in), `schemas/market_settings.py` | new-is-default | A stored `{"market": X}` reads as home = X, apply_in = [X] (mapped when read, never migrated), and `market` (= `home`, a computed field) is still written so a sync peer that has not updated reads the same country. No reader of the setting's `.market` remains: `git grep -nE '\.market\b' backend/app` and `git grep -nE 'value\??\.market\b' frontend` are empty (the frontend's other `.market` is a permit question's own market key). Cut the `market` field when the release after this one has shipped; keep the legacy read until no stored `market` blob lacks `home`. | small |
+| `notice-period-text` | free-text `preferences.notice_period` → `preferences.notice_days`, whole days (`services/notice.py`) | new-is-default | Every read and save turn readable text into days and keep text that says none as the legacy answer (`autofill_profile._with_notice_days`; the served field's `legacy`, which readiness and Profile's `answeredIn` and `noticeLegacyNote` read), and a save's new text from a client that knows notice only in words (a Companion learn, an agent's PATCH) is read as its days (`_with_new_notice_text`). Cut the legacy read once no stored autofill profile holds `preferences.notice_period` and the release after this one has shipped. Keep `_with_new_notice_text` until no client sends the text: the Companion learns notice into `notice_days` (docs/deferred.md item 66) and MCP's `PreferenceAnswers` drops `notice_period`. The fill's `preferences.notice_period` (the days in words, `autofill_catalog._with_notice_words`) is the design. | small |
+| `home-expected-pay-fold` | the home's pay as `answers_by_country[<home>].expected_pay` → `preferences.desired_salary`, its one place once countries are chosen (`autofill_profile.pay_for`) | new-is-default | Every read and save fold a home entry's `expected_pay` (a Companion's learn on a home job, an agent's save, one stored before) into `desired_salary`, the home's own winning (`autofill_profile._with_home_pay`). Cut it once the Companion learns a home pay into `preferences.desired_salary` directly (docs/deferred.md item 66), MCP's `answers_by_country` description no longer offers a home figure, and no stored autofill profile holds its home entry's `expected_pay`. A move puts one there legitimately: `pin_home_pay` leaves the new home's own figure in its entry for this read to adopt until the next save, so the move must adopt it itself first. | small |
 
 **Row notes** (only where the trigger hides a trap):
 
@@ -990,6 +997,9 @@ survives as fallback/backup) · `blocked` (trigger cannot be evaluated until a n
   included, are a frozen projection of the typed reader, not a storage-migration blocker.
 - `job-location-raw`: `JobSummary` exposes ONLY the old field (no `location_raw`), so the list endpoint is
   the hardest blocker to dropping the column.
+- `home-expected-pay-fold`: known limit (plan Decision 11): a Netherlands or UAE home whose only figure is a `desired_salary` saved
+  before the fold (likely yearly) shows under the monthly label and counts twelve times in the salary check (70,000 is 840,000 EUR a
+  year: a warning on every Dutch, French or no-country job) until edited.
 
 **Not migrations — do not re-file these here** (each was proposed as a row and rejected): the 4-way
 application-status vocabulary and the 3-way `quick_tailor_profile` shape are hand-synced by design; the

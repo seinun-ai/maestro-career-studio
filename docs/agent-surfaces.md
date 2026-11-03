@@ -156,7 +156,8 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   mail-status automation read in the user's mail. `get_autofill_profile` returns `work_auth` resolved for the job's country (none
   without one), every country's permits under `work_auth_by_country` (market keys, "UK") and `work_auth_market` naming whose set
   `work_auth` is (§6 inv-work-permit-per-country); with an application its country's own answers are folded into the slots they
-  fill (`country_answered`; a job in no known country folds none), and with none and no question every market's come under
+  fill (`country_answered`; a job in no known country folds none and gets the home pay, and once countries are chosen a country with
+  no pay of its own has no `desired_salary`: §6 inv-country-answers-stay-home), and with none and no question every market's come under
   `answers_by_country`, through the consent gate (current pay
   only under `consent_forms`); `personal.citizenships` reads as country names. Its `questions` is GET
   `/api/settings/autofill/questions` made compact (`client._agent_questions`): `chosen`, and per apply-in market its permit keys with
@@ -207,7 +208,10 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   edit) is kept and none lands between the read and the write (SYSTEM.md §6 inv-mcp-controls). The merge
   (`autofill_profile.patch_profile`, `job_preferences.patch_preferences`, `market_settings.patch_place`): answers key by key, a null
   removing one; work permits and country answers (`answers_by_country`, its keys read from form_questions.yaml `answers`) per market,
-  keyed from `markets.keys()`, a status outside the market's list or an answer it does not ask refused with what it takes;
+  keyed from `markets.keys()`, a status outside the market's list or an answer it does not ask refused with what it takes; once
+  countries are chosen `preferences.desired_salary` is the home country's pay, and a home `expected_pay` sent is saved there, so a read
+  never lists it per country; `notice_days` is the one notice answer in whole days, and `notice_period` text ("2 weeks") is read as
+  days, kept as text only when it says none (docs/entities/others.md, "Pay per country and notice in days");
   citizenships stored as ISO codes; education and languages replace the stored list whole; `custom`,
   the Companion's learn store, upserts by question (case and spacing ignored, same `only_for` and `only_for_kind`) and never removes a
   saved answer, which stays the user's, in Profile; each preference named replaces the stored one (`role_categories` follows

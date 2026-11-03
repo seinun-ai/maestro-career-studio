@@ -870,8 +870,17 @@ know, and each one was learned from a live failure.
   Current/present/previous salary, last drawn salary, current CTC, salary
   history, wage history, compensation history, and an unqualified
   salary/wage/compensation label are blocked by the shared policy. Explicit expectations such as expected, desired, target, or salary
-  range (expected CTC too) may fill `preferences.desired_salary` (on a job
-  whose country has its own expected pay, that country's figure). An expectation
+  range (expected CTC too) may fill `preferences.desired_salary`, the slot
+  /context fills with the job's country's pay: the home pay at home and on a
+  job with no country or in one no market covers, another country's own
+  expected pay there, and once
+  countries are chosen nothing where that country has none, so the question
+  is left for you (an answer typed in its pause row is learned into that
+  country's entry). An expected pay
+  learned on a home job goes to the home's entry, and the server folds it into
+  `desired_salary`; notice learned in words goes to `preferences.notice_period`,
+  and the server reads it as `notice_days`. Undo cannot bring back the figure or
+  the days either replaced (docs/deferred.md item 66). An expectation
   phrase never overrides current or previous pay in the same label ("current
   and expected CTC", "previous CTC and expected CTC") or another policy block such as signature, consent, terms, credentials,
   or government-ID wording. With the permission, "salary requirements" and

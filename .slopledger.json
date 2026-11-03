@@ -176,6 +176,32 @@
         }
       ],
       "hand_check": "Both absent triggers are met: the backend reads no `.market` (offers_eeo reads apply_in), and the frontend reads no `value.market` of the market setting (its other `.market` hits are a permit question's own market key, so the frontend pattern is the setting's value, not a bare `.market`). The release after this one has shipped (a sync peer that has not updated reads the stored `market` key). Then drop the `market` computed field from MarketSetting and from MarketSettingResponse.value in frontend/lib/types.ts. Keep the legacy {\"market\": X} read until no stored market blob lacks `home` (DB check on settings key 'market')."
+    },
+    {
+      "id": "notice-period-text",
+      "status": "new-is-default",
+      "triggers": [
+        {
+          "kind": "absent",
+          "pattern": "\"notice_period\"",
+          "paths": [
+            "extension/shared"
+          ]
+        },
+        {
+          "kind": "absent",
+          "pattern": "notice_period",
+          "paths": [
+            "backend/mcp_server/server.py"
+          ]
+        }
+      ],
+      "hand_check": "Two halves. The legacy read (autofill_profile._with_notice_days turning stored notice_period text into notice_days, keeping text that says no days; the served field's legacy key; the frontend's answeredIn and noticeLegacyNote) goes once no stored autofill profile holds preferences.notice_period (check settings/autofill.json and the autofill_profile Setting row) and the release after this one has shipped. The save-side read of new text (_with_new_notice_text) stays while any client sends notice in words: the machine predicates say the Companion's label table no longer learns into preferences.notice_period (docs/deferred.md item 66: it learns notice_days) and MCP's PreferenceAnswers no longer declares notice_period. extension/content reading preferences.notice_period, the fill's days in words (autofill_catalog._with_notice_words), is the design and deliberately outside the trigger paths."
+    },
+    {
+      "id": "home-expected-pay-fold",
+      "status": "new-is-default",
+      "hand_check": "autofill_profile._with_home_pay folds a chosen home's answers_by_country[home].expected_pay into preferences.desired_salary on every read and save (the home's own wins). Cut it once the Companion learns a home pay into preferences.desired_salary directly (docs/deferred.md item 66; today extension/panel/actions/pause.js inCountry learns every expected pay into answers_by_country[market]), MCP's answers_by_country description no longer offers a home expected_pay, and no stored autofill profile holds its home entry's expected_pay. A move stores one legitimately: pin_home_pay leaves the new home's own figure in its entry for this read to adopt until the next save, so set_market must adopt it itself before the read fold goes. Known limit (plan Decision 11): a Netherlands or UAE home whose only figure is a desired_salary saved before the fold (likely yearly) reads as monthly and counts twelve times in the salary check until edited."
     }
   ],
   "system_md_baselines": {

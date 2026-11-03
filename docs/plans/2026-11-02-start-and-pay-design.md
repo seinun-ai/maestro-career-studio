@@ -84,13 +84,13 @@ and /choose read the same slot; its value is computed from the days (`autofill_c
 "N days". A form with fixed choices takes the shortest choice at least that long, never a shorter one
 (`notice_days`' `describe`, unchanged).
 
-**Existing answers.** A one-time startup step (`notice.days_checked`, a local flag like
-`market.chosen_checked`; the always-on copy skips it, its row arrives by sync) turns a stored `notice_period`
-into `notice_days` when `notice_days` is empty and the text reads as one of: "0", "now", "immediately",
-"immediate", "N day(s)", "N week(s)", "N month(s)" (30 days a month). Text it can't read ("negotiable") stays
-stored: forms get it while the days are empty, Profile shows it beside the empty days box ("You wrote
-'negotiable' before. Forms get that until you give days."), and readiness counts it as answered, so no one's
-count drops.
+**Existing answers.** Every read and every save (`autofill_profile._with_notice_days`) turn a stored
+`notice_period` into `notice_days` when `notice_days` is empty and the text reads as one of: "0", "now",
+"immediately", "immediate", "N day(s)", "N week(s)", "N month(s)" (30 days a month). The read view shows the
+days at once, and the next save of any kind stores them, so there is no flag and nothing for the always-on copy
+to skip. Text it can't read ("negotiable") stays stored: forms get it while the days are empty, Profile shows it
+beside the empty days box ("You wrote 'negotiable' before. Forms get that until you give days."), and readiness
+counts it as answered, so no one's count drops.
 
 **Saving from elsewhere.** A save that carries `notice_period` text (an older Companion learning it, an agent)
 is parsed into `notice_days` on the server the same way; unreadable text is stored as the legacy answer.
@@ -131,7 +131,7 @@ experience (India) and over 18 and non-compete (United States) in Screening ques
 `services/form_questions.py` (`resolve`, `asked_by`), `services/autofill_profile.py` (save normalisers),
 `services/market_settings.py` (move pin), `services/autofill_country.py` (no cross-country pay),
 `services/autofill_catalog.py` (notice words), `services/knockout.py`, `services/job_search_brief.py`,
-`services/setup_status.py`, a startup step beside `mark_answered_installs_chosen`, `mcp_server/server.py`
+`services/setup_status.py`, `services/notice.py` (days from text, days in words), `mcp_server/server.py`
 (docs and types), the Profile tiles (`work-permits.tsx`, `start-and-pay.tsx`, `field-control.tsx` for the
 marker), Setup's notice step, `lib/autofill-options.ts` and `lib/setup-answers.ts`. Docs: `SYSTEM.md` §10,
 `CHANGELOG.md` Unreleased, `docs/entities/others.md`, `docs/agent-surfaces.md`, `USING_MAESTRO.md`. The
@@ -144,7 +144,8 @@ The plan (`docs/plans/2026-11-02-start-and-pay.md`, "Decisions taken while expan
   the next save stores it. No flag, nothing for the always-on copy to skip.
 - **Readiness counts the home pay in `preferences`**, as it counts `desired_salary` today, not in the `work_auth`
   group: Setup's answers step needs that group complete and Setup never asks pay. Country answers' own tile still shows
-  the home pay as open when it is missing.
+  the home pay as open when it is missing. Amended again in the build (plan Decision 8, 2026-11-03): the home pay counts
+  on its own, `autofill.home_pay`, beside the groups, so Profile's ring holds Country answers open on it.
 - **With no country chosen, pay reaches every country's form**, as today: the stored home is then a default, not a
   choice.
 - **When both home figures are stored, the home's own `expected_pay` wins** and the generic one goes; and a job in a

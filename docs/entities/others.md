@@ -353,7 +353,8 @@
   answers, or two countries ("the United States or Canada"), gives none; none named gives the job's (`markets.for_country(country_code)`);
   a job with no country gives none. A set is read as `autofill_derive.answers_for` serves it (the stored answers over the ones a
   citizenship settles there), and the same country's own answers (`answers_by_country`) fill their flat slots
-  (`autofill_country.with_country_answers`: expected pay over `desired_salary`; another country's never reach the form). `countries_authorized`
+  (`autofill_country.with_country_answers`: the `desired_salary` slot holds the pay that country's form gets, `autofill_profile.pay_for`,
+  and is removed where it has none, "Pay per country and notice in days" below; another country's never reach the form). `countries_authorized`
   is derived: the entry's own list, then each citizenship's own country (a country no market covers too, unless the user's answer
   for its market says No), then each market whose `authorized_now` reads Yes, a citizenship-settled one included, by country name. **Readers.** Every fill reads one view, `autofill_country.for_market`: one market's answers, no per-country map,
   citizenships as country names and no notice that has ended; it carries `country_answered`, so a save of it is a 422
@@ -378,9 +379,11 @@
   or a queued run's Resume) goes to one entry: `/context?question=<label>` (with the application, when there is one) names the market
   that question gets in `work_auth_market` (`profile_for_job` with `question`: the country it names, else the job's), and the panel
   writes `work_auth_by_country[<market>]` (promoting that entry's legacy pair first, `workAuthForWrite`) or `answers_by_country[<market>]`,
-  leaving the served `work_auth` as it came. Expected pay ("Expected CTC" on an Indian job) is that market's `expected_pay`, the
-  generic `desired_salary` only when no country is known, and not learned for a country no market covers (a Singapore job), so it never
-  becomes every other form's answer. A backend that does not fold country answers (0.12.0: its job's view has no `country_answered`)
+  leaving the served `work_auth` as it came. Expected pay ("Expected CTC" on an Indian job) is that market's `expected_pay` (on a home
+  job the home's entry, which the save folds into `desired_salary`), the generic `desired_salary` only when no country is known, and not
+  learned for a country no market covers (a Singapore job), so it never becomes every other form's answer. A notice learned in words
+  goes to `preferences.notice_period`, which the save reads as days. Undo cannot bring back the home pay or the days either fold
+  replaced (`docs/deferred.md` item 66). A backend that does not fold country answers (0.12.0: its job's view has no `country_answered`)
   gets expected pay as `desired_salary` and a country answer as a custom one, where it reads them (docs/RELEASING.md rule 2; work permits
   are per country on both). Current pay is never learned (`ns.currentPayRe`: "current and expected CTC" often holds both
   figures). Undo puts back each key, and sends a country's entry the learn made as null, so the save removes it. `work_auth_country` names that question's one country in words, a country no market
@@ -390,6 +393,31 @@
   "it isn't clear which country's work permit this is"; "answers" and "which country this answer is for" for a country answer). The
   label table stays one (inv-one-label-pattern-table): it names `work_auth.*` and `answers_by_country.*`, the rules read the flat
   slots /context folds the job's country's answers into, and only the learn maps a row onto the country's entry.
+- **Pay per country and notice in days** (inv-country-answers-stay-home; `services/autofill_profile.py`, `notice.py`,
+  `autofill_catalog.py`; `docs/plans/2026-11-02-start-and-pay.md`). **Pay.** Once countries are chosen, the pay of the country you live
+  in is `preferences.desired_salary` alone, asked as the home set's `expected_pay` in Country answers (required there, under its
+  label, "Expected salary (USD)"); every other country's is `answers_by_country[<market>].expected_pay`, optional.
+  `pay_for(profile, market, chosen_home(session))` says which figure a form gets: the home market, no market and a country no market
+  covers (France) get `desired_salary`; another market its own figure or none, never the home's. Unchosen (`chosen_home` is None), a
+  market's own figure, else `desired_salary`, the one figure for every country. A home entry's `expected_pay` (a Companion's learn on a
+  home job, an agent's save, one stored before) is folded into `desired_salary` on every read and save, the home's own winning when both
+  are stored (`_with_home_pay`; SYSTEM.md §13 `home-expected-pay-fold`). Before a chosen home moves, its figure is pinned to its own
+  entry unless that holds one (`pin_home_pay`, beside `pin_legacy_work_auth` in `market_settings.set_market`), and the new home's own
+  figure, if any, reads as `desired_salary` from then on; a first choice of countries pins nothing, so the new home adopts the one
+  figure. A home you don't apply in has no set: its `desired_salary` stays in Start and pay, optional, for jobs whose country Maestro
+  can't tell. Each market's pay names its period (`markets.yaml` `pay.period`: `month` for the Netherlands and the UAE, else `year`),
+  which the salary check reads (docs/entities/job.md, "Knock-out pre-scan"). **Notice.** `preferences.notice_days` is the one notice
+  answer, whole days, 0 or more (`notice.whole_days`: a number box's "14" is stored as 14). Every read and save (`_with_notice_days`)
+  keeps days given and drops the text beside them; with no days, `notice_period` text that says days (`notice.days_from_text`: "0",
+  "now", "immediately", "N days", "N weeks", "N months", a month being 30 days) becomes them, and text that says none ("negotiable", a
+  bare "2") stays as the legacy answer: forms get it as written, and the served field's `legacy` key lets readiness and Profile count
+  it, until days are given. A `notice_days` that says no days (14.5, -1, "1e1") is no answer and goes. New text a save sends (a
+  Companion learn, an agent's PATCH of `notice_period`) is read as its days when it differs from the stored text
+  (`_with_new_notice_text`, compared with the stored profile, never the read view), unless the save's days differ from the view's: then
+  days given win. The fill says the days in words under `preferences.notice_period` (`autofill_catalog._with_notice_words`: 0
+  "Immediately", 7, 14 and 21 in weeks, 30, 60 and 90 in months, else days), the slot the Companion's rules and /choose read; a form
+  with fixed choices gets the shortest choice at least that long. SYSTEM.md §13 `notice-period-text`. Pins: `tests/test_home_pay.py`,
+  `test_notice.py`, `test_notice_profile.py`, `test_autofill_country.py`.
 - **Answers decided in code, and the polarity retry** (live check 7; `services/autofill_pick.py`, `autofill_step.py`, `autofill_education.py`, `autofill_place.py`, `autofill_polarity.py`).
   **Relocate**: "Are you located in X and/or willing to relocate?" over a saved `preferences.willing_to_relocate` Yes is the same way as the fact, decided by code with no model
   (`_located_or_relocate`, in `/pick` and `/step`). It must be ONE question: both halves in one sentence that is a question (or an unpunctuated last line addressed to "you"),

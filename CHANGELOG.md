@@ -59,8 +59,8 @@ once, and each country hears only its own.
 - **Pay in each country's terms.** Expected pay can be given per country, worded as that country's forms
   ask it: Expected CTC (₹ per year) in India, gross monthly excluding holiday allowance in the Netherlands,
   gross annual in Germany, base excluding super in Australia, total monthly in the UAE. On that country's
-  jobs it fills over your expected salary, which stays the answer everywhere else and the one Setup counts.
-  Current CTC is filled only while the Companion may fill agreements and signatures.
+  jobs it is the pay the form gets. Current CTC is filled only while the Companion may fill agreements and
+  signatures.
 - **Agents see each country too.** `set_autofill_profile` takes `answers_by_country` and the new keys
   (citizenships, notice in days, serving notice, last working day, preferred locations, total experience,
   CEFR). `get_autofill_profile` lists each country's questions, choices and settled answers, and whether a
@@ -82,16 +82,47 @@ once, and each country hears only its own.
 - **The Companion keeps a learned answer in its country.** A work permit, expected pay or "Are you in the
   UAE now?" learned on a job is saved for that job's country, so "Expected CTC" on an Indian job never
   fills a form somewhere else. With no country known, a country answer is filled and not kept, and expected
-  pay falls back to your expected salary. The note says "Saved to Profile › Country answers (India)."
+  pay falls back to your desired salary. The note says "Saved to Profile › Country answers (India)."
   Current pay is never learned. This reaches the Chrome Web Store with the next Companion release; until
-  you update Maestro itself, the Companion keeps expected pay as your expected salary and a UAE answer as a
+  you update Maestro itself, the Companion keeps expected pay as your desired salary and a UAE answer as a
   saved answer, as before.
+- **Pay belongs to one country.** Country answers ends each country's set with its pay. The pay for where
+  you live is your desired salary, now asked there and required; Start and pay shows Desired salary only
+  while no country is chosen, or for jobs whose country Maestro can't tell when you don't apply where you
+  live. A country you give no pay of its own gets none on its forms, and the Companion asks on that job.
+  Profile counts the pay for where you live under Country answers, and Next up asks it there; Setup still
+  asks no pay.
+- **Notice is one answer, in days.** Start and pay asks **Notice period (days)** for every country, 0 if you
+  can start now. Forms that ask in words get "2 weeks" or "Immediately", and forms with fixed choices get the
+  next one up. Notice you wrote in words before reads as days ("1 month" is 30); words Maestro can't read
+  ("negotiable") still answer forms, and Profile shows them, until you give days. Setup's Now, 2 weeks,
+  1 month and 3 months store 0, 14, 30 and 90 days. Agents and older Companions that send notice in words
+  keep working.
+- **A question only some countries ask says which.** "Asked by forms in India." under serving notice, last
+  working day and preferred locations, "Asked by forms in Germany and the Netherlands." under the CEFR level,
+  wherever the question is asked: Profile, Next up and Setup.
+- **The salary check compares a job only with its own country's pay.** A job where you live, with no
+  country, or in a country Maestro keeps no answers for meets your desired salary; a job in another country
+  meets that country's own expected pay, and gets no check where you gave none. A figure is read in the
+  currency its label names, whatever currency Settings › Basics › Money shows pay in, and a monthly one (the
+  Netherlands, the UAE) counts twelve times against a yearly posting. A figure that is more than a plain
+  amount ("₹40 lakh") gets no check. When a job has no figure to check, its Not run chip links to where that
+  pay is given: Country answers, Start and pay, or Where you apply for a country you don't apply in. If you
+  live in the Netherlands or the UAE, check your pay in Country answers: a desired salary saved before this
+  release, likely yearly, now reads as monthly and counts twelve times until you edit it.
 
 ### Fixed
 
 - A German or UAE application could be offered your home country's work-permit answers: Jev read only your
   home country's set, and the fast model got every country's at once. Every fill now reads the job's own
   country, and a question that names another country gets that country's answers.
+- Your desired salary reached Indian and Irish forms: a country with no expected pay of its own fell back to
+  it, in dollars. That country now gets no pay, and the Companion asks.
+- Indian jobs were flagged as paying below your desired salary converted into rupees at today's rate. A job
+  is now compared only with the pay you gave for its own country.
+- A pay figure written with a bare "$" was read as the currency of a country that doesn't pay in dollars (a
+  British home's "$100,000" as pounds). A "$" now names that country's currency only where it pays in dollars,
+  else yours where you live in a dollar country, and otherwise the salary check says it can't compare.
 - Leaving a job page by Back to Jobs or the browser's Back now morphs the job back into its row, and the Jobs list keeps its scroll position and filters.
 
 ## [0.12.0] — 2026-10-28

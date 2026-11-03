@@ -108,6 +108,18 @@ A new install opens **Setup** once. It walks through four steps: **AI model**,
 **Profile** then holds the facts job forms ask for, one tile each. **Next up**
 at the top asks the next question still open.
 
+**Country answers** starts with your citizenship, then lists each country you
+apply in with its work permits and its own answers, ending with its pay in that
+country's terms: **Expected salary (USD)**, **Expected CTC (₹ per year)**, a
+gross monthly figure for the Netherlands. The pay for the country you live in is
+required. Another country's is optional, and a country you give no pay gets
+none on its forms: the Companion asks on that job. **Start and pay** asks when
+you can start; notice is one answer, **Notice period (days)** (0 if you can
+start now; a form that asks in words gets "2 weeks" or "Immediately"). It shows
+**Desired salary** only while you have chosen no country, or when you don't
+apply where you live, for jobs whose country Maestro can't tell. A question only some
+countries' forms ask says which under its label: "Asked by forms in India."
+
 ![Today: Next up with where that job stands and its next move, three counts under Also today, and this week's applications, replies and interviews](assets/today.png)
 
 **Today** is the home page. **Next up** is the job to act on now, **Also
@@ -167,9 +179,11 @@ about work authorization, visa (OPT) policy, salary and years of experience,
 compared with your profile — so a mismatch shows up now, not at the screening
 call. It is a banner only when something blocks you (a conflict, or an answer
 your profile is missing); otherwise it is one small line in the job's details
-(**No knock-outs**), with a chip for anything worth a look.
+(**No knock-outs**), with a chip for anything worth a look. Salary is compared
+only with the pay you gave for the job's own country (your home pay for a job
+at home or with no country), and a country you gave none gets no salary check.
 
-![A London job's details: the pay converted to US dollars with the posted pounds under it, and a pay warning because it tops out below the desired salary](assets/money.png)
+![A London job's details: the pay converted to US dollars with the posted pounds under it, and a pay warning because it tops out below your expected pay](assets/money.png)
 
 Pay posted in another currency shows in your home currency (Settings › Basics ›
 **Money**), with the amount as posted under it.

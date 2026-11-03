@@ -164,3 +164,13 @@
     countries (`questionSet.countries`: the apply-in ones, none while unchosen), so the answer is used and never shown, and is
     changed only by adding the country or by hand. Permits were kept so before country answers too. Do when a user reports a filled
     answer they cannot find in Profile, or Country answers is next changed.
+66. The Companion's Undo cannot bring back a home pay or a notice it replaced. It learns a home job's expected pay into the home's
+    entry (`answers_by_country[<home>].expected_pay`) and a notice in words into `preferences.notice_period`, and the server folds
+    each into its one place on the save (`autofill_profile._with_home_pay` into `preferences.desired_salary`, `_with_new_notice_text`
+    into `notice_days`). Undo puts back only the key the learn wrote: it sends the home entry as null and drops the notice text, which
+    leaves `desired_salary` and `notice_days` as the learn made them, so the figure and the days they replaced are gone. Pinned as
+    known gaps in `tests/test_extension_panel_fill.py`: `test_undo_of_a_learned_home_pay_cannot_bring_back_the_figure_it_replaced` and
+    `test_a_learned_notice_is_kept_in_days_and_undo_cannot_bring_back_the_days_it_replaced`. The fix is a Companion release that
+    learns into `preferences.desired_salary` and `notice_days` directly, so Undo puts the old value back where it was (the Companion
+    half of what SYSTEM.md §13 `home-expected-pay-fold` and `notice-period-text` wait on). Do when the Companion's learn or Undo is
+    next changed, or a lost pay or notice after an Undo is reported.

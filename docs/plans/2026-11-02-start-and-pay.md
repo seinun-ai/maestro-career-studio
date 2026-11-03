@@ -81,9 +81,23 @@ Added after the Task 10 review (2026-11-03):
 14. **The notice label names its unit.** `notice_days` reads "Notice period (days)": the box takes a number, and a
     blank one said no unit in Profile, Next up or Setup. Setup's heading, "How soon could you start?", is unchanged.
 
+Owner calls taken during the build (2026-11-03, Task 7's reviews):
+
+15. **The home figure is read in the home market's currency.** Once countries are chosen, a bare home figure ("80000")
+    is in the currency its label names ("Expected salary (USD)", the Dutch monthly euro label), not the currency
+    Settings › Basics › Money shows pay in: the label wins. Unchosen keeps `money_settings.home_currency`. A bare "$"
+    names no one currency: it is a market's only where that market pays in dollars, else the home's when that is a
+    dollar, else none (the check says it can't compare). Only a plain amount is compared (`parse_amount(whole=True)`), so
+    "₹40 lakh" gets no check rather than reading as forty rupees.
+16. **The pay link follows where that pay lives.** A job page's Not run pay chip links to Start and pay while no country
+    is chosen; once chosen, to Country answers for a country applied in, to Where you apply for one that is not ("Apply
+    in this country to give its pay"), and for a job that reads the home pay (at home, no country, or a country no market
+    covers) to Country answers, or to Start and pay while the home is not applied in.
+
 Known limit (no Companion release in scope): the Companion's Undo of a learned home pay (`unlearnAnswers`,
 `extension/panel/actions/pause.js`) nulls the home entry, but the fold has already overwritten `desired_salary`, so Undo
-cannot bring the old figure back. Task 4 pins it with a test that documents the gap; `docs/deferred.md` gets an item.
+cannot bring the old figure back; its Undo of a learned notice likewise leaves the days the save read from the text.
+Both are pinned by tests that document the gap (`tests/test_extension_panel_fill.py`); `docs/deferred.md` item 66.
 
 ## Shared shapes
 
