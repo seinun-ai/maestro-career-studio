@@ -98,11 +98,11 @@ def set_market(setting: MarketSetting, session: Session | None = None) -> Market
     owns_session = session is None
     session = session or SessionLocal()
     try:
-        before = peek_market(session)
-        if setting.home != before.home:
-            autofill_profile.pin_legacy_work_auth(before.home, session)
-            if before.chosen:
-                autofill_profile.pin_home_pay(before.home, session)
+        stored = peek_market(session)
+        if setting.home != stored.home:
+            autofill_profile.pin_legacy_work_auth(stored.home, session)
+            if stored.chosen:
+                autofill_profile.pin_home_pay(stored.home, session)
         return MARKET.set(setting.model_copy(update={"chosen": True}), session)
     finally:
         if owns_session:

@@ -96,6 +96,7 @@ def test_unchosen_folds_nothing(db_session, tmp_path):
     one figure, and an entry under the default's key stays where it is, on read and on save. A
     legacy one-set `work_auth` is still read as that default's, as before."""
     assert market_settings.peek_market(db_session).chosen is False
+    assert autofill_profile.chosen_home(db_session) is None
     stored = {"preferences": {"desired_salary": "$80,000"},
               "answers_by_country": {"US": {"expected_pay": "$95,000"}},
               "work_auth": {"authorized_now": True}}
@@ -116,17 +117,45 @@ def test_unchosen_folds_nothing(db_session, tmp_path):
 # --- pay_for ------------------------------------------------------------------------------------
 
 def test_pay_for_home_other_none_and_no_market(db_session):
+    from app.services.autofill_country import market_for_job_country
+
     _live_in("US", ["US", "IN", "IE"], db_session)
     autofill_profile.set_profile({"preferences": {"desired_salary": "$80,000"},
                                   "answers_by_country": {"IN": {"expected_pay": INDIA_PAY},
                                                          "IE": {"expected_pay": " "}}}, db_session)
     view = autofill_profile.get_profile(db_session)
-    assert autofill_profile.pay_for(view, "US", "US") == "$80,000"
-    assert autofill_profile.pay_for(view, "in", "US") == INDIA_PAY
-    assert autofill_profile.pay_for(view, "IE", "US") is None      # a blank is no pay of its own
-    assert autofill_profile.pay_for(view, "UK", "US") is None      # never the home figure
-    assert autofill_profile.pay_for(view, None, "US") == "$80,000"  # no market: the home pay
-    assert autofill_profile.pay_for({}, "US", "US") is None
+    home = autofill_profile.chosen_home(db_session)
+    assert home == "US"
+    assert autofill_profile.pay_for(view, "US", home) == "$80,000"
+    assert autofill_profile.pay_for(view, "in", home) == INDIA_PAY
+    assert autofill_profile.pay_for(view, "IE", home) is None      # a blank is no pay of its own
+    assert autofill_profile.pay_for(view, "UK", home) is None      # never the home figure
+    assert autofill_profile.pay_for(view, None, home) == "$80,000"  # no market: the home pay
+    assert autofill_profile.pay_for({}, "US", home) is None
+    # Both keys are read as market keys.
+    assert autofill_profile.pay_for(view, "us", "us") == "$80,000"
+    assert autofill_profile.pay_for(view, "IN", " us ") == INDIA_PAY
+    assert autofill_profile.pay_for(view, "IE", "us") is None
+    # A job's market is its country's (`market_for_job_country`): a country no market covers is no
+    # market and reads the home figure (Decision 12); the UK has none of its own here.
+    assert autofill_profile.pay_for(view, market_for_job_country("FR"), home) == "$80,000"
+    assert autofill_profile.pay_for(view, market_for_job_country("GB"), home) is None
+
+
+def test_pay_for_with_no_country_chosen_reads_as_today(db_session):
+    """Unchosen (Decision 7): a country's own figure when it has one, else the one figure for every
+    country, as the fill has always read them."""
+    autofill_profile.set_profile({"preferences": {"desired_salary": "$80,000"},
+                                  "answers_by_country": {"IN": {"expected_pay": INDIA_PAY},
+                                                         "IE": {"expected_pay": " "}}}, db_session)
+    view = autofill_profile.get_profile(db_session)
+    home = autofill_profile.chosen_home(db_session)
+    assert home is None
+    assert autofill_profile.pay_for(view, "IN", home) == INDIA_PAY
+    assert autofill_profile.pay_for(view, "in ", home) == INDIA_PAY
+    assert autofill_profile.pay_for(view, "IE", home) == "$80,000"   # a blank: the one figure
+    assert autofill_profile.pay_for(view, "US", home) == "$80,000"
+    assert autofill_profile.pay_for(view, None, home) == "$80,000"
 
 
 # --- move ---------------------------------------------------------------------------------------
@@ -187,3 +216,19 @@ def test_a_first_choice_of_countries_pins_nothing(db_session, tmp_path):
     assert stored["preferences"] == {"desired_salary": "$80,000"} and "answers_by_country" not in stored
     assert stored["work_auth_by_country"] == {"US": {"authorized_now": True}}
     assert autofill_profile.get_profile(db_session)["preferences"]["desired_salary"] == "$80,000"
+
+
+def test_a_first_choice_of_a_home_with_its_own_pay_adopts_that_figure(db_session, tmp_path):
+    """Intended (Decisions 3 and 11 of docs/plans/2026-11-02-start-and-pay.md): unchosen, India's own
+    figure and the one figure for every country are both stored. Choosing India as home makes India's
+    own figure the home pay, and the first save after keeps only it: the one figure was no country's
+    in particular, so a first choice pins it nowhere, and with both home figures stored the home's
+    own wins."""
+    autofill_profile.set_profile({"preferences": {"desired_salary": "$80,000"},
+                                  "answers_by_country": {"IN": {"expected_pay": INDIA_PAY}}}, db_session)
+    assert market_settings.peek_market(db_session).chosen is False
+    _live_in("IN", ["IN"], db_session)
+    view = autofill_profile.get_profile(db_session)
+    assert view["preferences"] == {"desired_salary": INDIA_PAY} and "answers_by_country" not in view
+    autofill_profile.set_profile(view, db_session)
+    assert _stored(tmp_path) == {"preferences": {"desired_salary": INDIA_PAY}}

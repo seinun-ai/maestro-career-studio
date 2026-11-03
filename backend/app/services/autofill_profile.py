@@ -157,20 +157,22 @@ def _figure(value: Any) -> str | None:
     return str(value).strip() or None
 
 
-def _with_home_pay(profile: dict[str, Any], pay_home: str | None) -> dict[str, Any]:
+def _with_home_pay(profile: dict[str, Any], chosen_home: str | None) -> dict[str, Any]:
     """`profile` with the home's pay in its one place, `preferences.desired_salary`: the home entry's
     `expected_pay`, when it is a figure (`_figure`), is written over it, so with both stored the
     home's own wins and the generic one goes (Decision 11 of docs/plans/2026-11-02-start-and-pay.md).
-    The entry loses `expected_pay` whatever it held, and an entry left empty goes. `pay_home` is the
-    home only once a country is chosen (`_homes`): unchosen (None), `desired_salary` is the one
-    figure for every country and nothing moves. The country answers must be keyed by market
-    (`_by_market`), as the read view and a save's merge key them."""
+    The entry loses `expected_pay` whatever it held, and an entry left empty goes. Unchosen (a
+    `chosen_home` of None, as `chosen_home()` returns it), `desired_salary` is the one figure for
+    every country and nothing moves. The country answers must be keyed by market (`_by_market`), as
+    the read view and a save's merge key them."""
     entries = profile.get(ANSWERS_BY_COUNTRY)
-    own = entries.get(pay_home) if pay_home and isinstance(entries, dict) else None
+    own = entries.get(chosen_home) if chosen_home and isinstance(entries, dict) else None
     if not own or EXPECTED_PAY not in own:
         return profile
     rest = {k: v for k, v in own.items() if k != EXPECTED_PAY}
-    others = {m: a for m, a in entries.items() if m != pay_home} | ({pay_home: rest} if rest else {})
+    others = {m: a for m, a in entries.items() if m != chosen_home}
+    if rest:
+        others[chosen_home] = rest
     out = {k: v for k, v in profile.items() if k != ANSWERS_BY_COUNTRY}
     if others:
         out[ANSWERS_BY_COUNTRY] = others
@@ -182,33 +184,49 @@ def _with_home_pay(profile: dict[str, Any], pay_home: str | None) -> dict[str, A
     return out
 
 
-def pay_for(profile: Any, market: str | None, home: str) -> str | None:
+def _market_key(market: Any) -> str:
+    """A market as its key ("us " is "US"); "" for none."""
+    return market.strip().upper() if isinstance(market, str) else ""
+
+
+def pay_for(profile: Any, market: str | None, home: str | None) -> str | None:
     """The pay a form in `market` gets: the home's `desired_salary`, another market's own
     `expected_pay`, or None for a market with none. No market (a job whose country can't be told):
     `desired_salary`.
 
-    `profile` is a read view (`get_profile`), its home pay already in `desired_salary`; `home` is
-    the chosen home. Unchosen there is no home pay to tell apart: `desired_salary` is every market's
-    figure (Decision 7 of docs/plans/2026-11-02-start-and-pay.md), so a caller with no chosen home
-    reads it as such. A figure comes back as written, trimmed (`_figure`); a blank is none."""
-    key = market.strip().upper() if isinstance(market, str) else ""
-    if key and key != home:
-        return _figure(answers_entries(profile).get(key, {}).get(EXPECTED_PAY))
+    `profile` is a read view (`get_profile`), its home pay already in `desired_salary`. `market` is a
+    market key ("UK"); for a job, `autofill_country.market_for_job_country(job.country_code)`, which
+    is None for a country no market covers, so such a job (France) reads the home figure as a job
+    with no country does (Decision 12 of docs/plans/2026-11-02-start-and-pay.md). Callers pass the
+    chosen home (`chosen_home`) or None:
+    - **Chosen** (`home` given): the home market and no market get `desired_salary`; another market
+      gets its own `expected_pay` or None, never the home figure (owner decision 1).
+    - **Unchosen** (`home` None): as before any country was chosen (Decision 7), a market's own
+      `expected_pay` when it has one, else `desired_salary`, the one figure for every country: what
+      the fill has always done (`autofill_country.with_country_answers`).
+    Both keys are read as market keys ("us " is "US"). A figure comes back as written, trimmed
+    (`_figure`); a blank is none."""
+    key, home_key = _market_key(market), _market_key(home)
+    own = _figure(answers_entries(profile).get(key, {}).get(EXPECTED_PAY)) if key else None
+    if home_key and key and key != home_key:
+        return own  # chosen: another country's own, or none
+    if own is not None and not home_key:
+        return own  # unchosen: a country's own over the one figure
     preferences = profile.get("preferences") if isinstance(profile, dict) else None
     return _figure(preferences.get(DESIRED_SALARY) if isinstance(preferences, dict) else None)
 
 
 def _with_work_auth_by_country(
-    data: dict[str, Any], home: str | None, *, pay_home: str | None
+    data: dict[str, Any], home: str | None, *, chosen_home: str | None
 ) -> dict[str, Any]:
     """The read view: every market's answers under `work_auth_by_country`, `work_auth` as the home
     market's (absent when it has none), and `work_auth_market` naming the home whenever the profile
     holds any work-permit answers, so a client that adds or edits the one set says whose it is.
     Country answers are served keyed by market as permits are ("in " is "IN"), with the home's pay
-    in its one place (`_with_home_pay`; `pay_home` is None until a country is chosen, while `home`
-    places a legacy one set either way). A view's own key found in the stored text (`_VIEW_ONLY`, a
-    hand edit) is not served: sent back, a job view's marker would refuse every save
-    (`job_view_refusal`)."""
+    in its one place (`_with_home_pay`; `chosen_home` is None until a country is chosen, while
+    `home` places a legacy one set either way). A view's own key found in the stored text
+    (`_VIEW_ONLY`, a hand edit) is not served: sent back, a job view's marker would refuse every
+    save (`job_view_refusal`)."""
     entries = work_auth_entries(data, home)
     country_answers = answers_entries(data)
     view = {
@@ -223,7 +241,7 @@ def _with_work_auth_by_country(
             view[WORK_AUTH_MARKET] = home
     if home in entries:
         view[WORK_AUTH] = dict(entries[home])
-    return _with_home_pay(view, pay_home)
+    return _with_home_pay(view, chosen_home)
 
 
 def _sent_entries(sent: Any) -> dict[str, dict[str, Any] | None]:
@@ -293,7 +311,7 @@ def _with_citizenship_codes(profile: dict[str, Any]) -> dict[str, Any]:
 
 
 def _as_stored(
-    profile: dict[str, Any], before: dict[str, Any], home: str | None, *, pay_home: str | None
+    profile: dict[str, Any], before: dict[str, Any], home: str | None, *, chosen_home: str | None
 ) -> dict[str, Any]:
     """What a save stores: `work_auth_by_country` alone, never one market's answers written over
     another's, and the home's pay in one place.
@@ -339,24 +357,32 @@ def _as_stored(
         out[BY_COUNTRY] = entries
     if country_answers:
         out[ANSWERS_BY_COUNTRY] = country_answers
-    return _with_citizenship_codes(_with_home_pay(out, pay_home))
+    return _with_citizenship_codes(_with_home_pay(out, chosen_home))
 
 
-def _homes(session: Session | None) -> tuple[str, str | None]:
-    """Where the user lives, as its two readers here need it. Non-mutating.
-
-    - The market a legacy one-set `work_auth` is read as: the stored home, chosen or not (an
-      unchosen install has been answering for the default country).
-    - The market whose pay is `preferences.desired_salary` (`_with_home_pay`): the home only once
-      chosen, else None. Unchosen, the stored home is a default, not a choice, and `desired_salary`
-      is the one figure for every country (Decision 7 of docs/plans/2026-11-02-start-and-pay.md)."""
+def chosen_home(session: Session | None = None) -> str | None:
+    """The stored home when the user has chosen their countries, else None: the market whose pay is
+    `preferences.desired_salary` (`_with_home_pay`), and the `home` every pay reader passes
+    (`pay_for`). Unchosen, the stored home is a default, not a choice, and `desired_salary` is the
+    one figure for every country (Decision 7 of docs/plans/2026-11-02-start-and-pay.md). Elsewhere
+    in this module `home` alone is the stored home, chosen or not; `pay_for`'s `home` is this one.
+    Non-mutating."""
     from app.services import market_settings
 
     stored = market_settings.peek_market(session)
-    return stored.home, stored.home if stored.chosen else None
+    return stored.home if stored.chosen else None
 
 
-def _parse_profile(raw: str, home: str | None, *, pay_home: str | None) -> dict[str, Any]:
+def _homes(session: Session | None) -> tuple[str, str | None]:
+    """Where the user lives, as its two readers here need it: the market a legacy one-set
+    `work_auth` is read as, the stored home chosen or not (an unchosen install has been answering
+    for the default country), and `chosen_home`. Non-mutating."""
+    from app.services import market_settings
+
+    return market_settings.peek_market(session).home, chosen_home(session)
+
+
+def _parse_profile(raw: str, home: str | None, *, chosen_home: str | None) -> dict[str, Any]:
     if not raw.strip():
         return {}
     try:
@@ -365,7 +391,7 @@ def _parse_profile(raw: str, home: str | None, *, pay_home: str | None) -> dict[
         return {}
     if not isinstance(data, dict):
         return {}
-    return _with_work_auth_by_country(_with_current_words(data), home, pay_home=pay_home)
+    return _with_work_auth_by_country(_with_current_words(data), home, chosen_home=chosen_home)
 
 
 def _parse_stored(raw: str) -> dict[str, Any]:
@@ -438,14 +464,14 @@ def pin_home_pay(market: str, session: Session | None = None) -> None:
 
 def get_profile(session: Session | None = None) -> dict[str, Any]:
     raw = text_settings.get_text(AUTOFILL_KEY, AUTOFILL_FILE, session)
-    home, pay_home = _homes(session)
-    return _parse_profile(raw, home, pay_home=pay_home)
+    home, chosen_home = _homes(session)
+    return _parse_profile(raw, home, chosen_home=chosen_home)
 
 
 def peek_profile(session: Session | None = None) -> dict[str, Any]:
     raw = text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session)
-    home, pay_home = _homes(session)
-    return _parse_profile(raw, home, pay_home=pay_home)
+    home, chosen_home = _homes(session)
+    return _parse_profile(raw, home, chosen_home=chosen_home)
 
 
 def job_view_refusal(profile: Any) -> str | None:
@@ -467,20 +493,20 @@ def set_profile(profile: dict[str, Any], session: Session | None = None) -> dict
     if refusal := job_view_refusal(profile):
         raise ValueError(refusal)
     raw = text_settings.peek_text(AUTOFILL_KEY, AUTOFILL_FILE, session)
-    home, pay_home = _homes(session)
+    home, chosen_home = _homes(session)
     # The hint outlasts any save that does not answer the question: whatever is stored, or the client's
     # own marker, keeps it; an explicit veteran answer clears it.
     stale = _marks_veteran_stale(profile) or _marks_veteran_stale(_parse_stored(raw))
     profile = _as_stored(
         {k: v for k, v in profile.items() if k != STALE_KEY},
-        _parse_profile(raw, home, pay_home=pay_home), home, pay_home=pay_home,
+        _parse_profile(raw, home, chosen_home=chosen_home), home, chosen_home=chosen_home,
     )
     if stale and not _answered_veteran(profile):
         profile = {**profile, STALE_KEY: [STALE_VETERAN]}
     text_settings.set_text(
         AUTOFILL_KEY, AUTOFILL_FILE, json.dumps(profile, indent=2, sort_keys=True), session
     )
-    return _with_work_auth_by_country(profile, home, pay_home=pay_home)
+    return _with_work_auth_by_country(profile, home, chosen_home=chosen_home)
 
 
 # The sections an agent's save writes (`PATCH /api/settings/autofill`, MCP `set_autofill_profile`). `eeo`
