@@ -138,9 +138,15 @@ has no application: no draft time to read).
   every read. Verdicts are `conflict` / `clear` / `incomplete_profile` / `unstated`: unstated is
   NEVER a pass, and salary only warns (pay is negotiable). Work authorization is screened with the job's
   country's answers (a job with no country, the home market's; inv-work-permit-per-country). Salary
-  compares in one currency: the posted ceiling converted (`money.convert`, ECB rates) into the desired
-  salary's currency, the one its text names, else the home currency; with no rate, or a side that names
-  no currency, the check is `cant_compare` (Can't compare), never a pass or a warning. On the job page
+  reads the pay a form in the job's country gets (`autofill_profile.pay_for`, once countries are chosen):
+  the home's desired salary at home and on a job with no country or in one no market covers, another
+  country's own expected pay there, and no check where that country has none; unchosen, the one desired
+  salary on every job. A monthly figure (markets.yaml `pay.period`) counts twelve times; only a yearly
+  posting is compared. It compares in one currency: the posted ceiling converted (`money.convert`, ECB
+  rates) into the figure's currency, the one its text names, else the home currency for the home's and
+  the market's own for another's; with no rate, or a side that names no currency, the check is
+  `cant_compare` (Can't compare), never a pass or a warning. A job pay it could not compare links its
+  Not run chip to Country answers once countries are chosen, else to Start and pay. On the job page
   (step 1, Job) only a conflict or a missing profile answer is a banner, with a per-check chip strip (OK /
   Conflict / Warning / Add answer / Not listed / Not run / Can't compare); anything else is one small line
   in the Job details card. It is

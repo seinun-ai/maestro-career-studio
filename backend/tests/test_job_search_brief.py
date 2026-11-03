@@ -547,6 +547,18 @@ def test_a_monthly_expected_pay_says_it_is_monthly(db_session, tmp_path, monkeyp
         assert "monthly" in by_country[market]["expected_pay_label"], market
 
 
+def test_the_homes_expected_pay_is_the_desired_salary(db_session, tmp_path, monkeypatch):
+    """The home's pay lives in `desired_salary` (a read folds the home's own figure into it), so the
+    home's entry carries that, in the home's terms."""
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path)
+    _chose_us(db_session)
+    autofill_profile.set_profile({"preferences": {"desired_salary": "$80,000"}}, db_session)
+
+    us = _get_brief(db_session).json()["profile"]["work_auth_by_country"]["US"]
+
+    assert (us["expected_pay"], us["expected_pay_label"]) == ("$80,000", "Expected salary (USD)")
+
+
 def test_the_home_set_reads_a_citizenship_as_its_country_entry_does(db_session, tmp_path, monkeypatch):
     """The one set kept for a release says what the home's own entry says, citizenship included."""
     from app.schemas.market_settings import MarketSetting

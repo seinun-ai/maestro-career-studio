@@ -60,18 +60,27 @@ def test_an_unstated_knockout_says_what_it_could_not_check():
     assert "<JobKnockoutCard scan={data?.knockout} job={job} />" in _read(_JOB_PAGE)
 
 
-def test_an_unrun_knockout_names_the_check_and_its_salary_field():
-    """Which check, and which of the two salary fields it reads: knockout reads
-    preferences.desired_salary (Profile's Start and pay), not Job preferences' Minimum salary."""
+def test_the_salary_check_reads_the_pay_a_form_in_the_jobs_country_gets():
+    """Never Job preferences' Minimum salary: once countries are chosen, each country's figure as its
+    form gets it (`autofill_profile.pay_for`); before that, preferences.desired_salary."""
     src = Path(knockout.__file__).read_text(encoding="utf-8")
+    assert "autofill_profile.pay_for(profile, key, home) for key in markets.keys()" in src
+    assert '(preferences or {}).get("desired_salary"), "year", home_currency)' in src
+
+
+def test_an_unrun_knockout_names_the_check_and_its_salary_field():
+    """Which check, and where the pay it reads is given: each country's in Country answers once
+    countries are chosen, else the one figure in Profile's Start and pay."""
     card = _read("components/job-knockout-card.tsx")
     assert "uncheckedLabel" not in card and "check: not run yet" not in card
     assert 'const NOT_RUN: Summary = { icon: NotRunIcon, word: "Not run"' in card  # replaces the sentence
     assert 'label: "Not checked yet"' not in card
-    assert '(preferences or {}).get("desired_salary")' in src
-    # The chip's action names the field it opens: Autofill's desired salary, About you's years.
-    assert 'href: anchorHref("/profile", "autofill-preferences"),' in card
-    assert 'link: "Add your desired salary",' in card
+    # The chip's action names the field it opens: the country's pay or the one figure, About you's years.
+    assert ('const COUNTRY_PAY: PayLink = { href: anchorHref("/profile", "autofill-work_auth"), '
+            'link: "Add your expected pay" };\n'
+            'const ONE_FIGURE: PayLink = { href: anchorHref("/profile", "autofill-preferences"), '
+            'link: "Add your desired salary" };') in card
+    assert "return data && !countriesChosen(data) ? ONE_FIGURE : COUNTRY_PAY;" in card
     assert 'link: "Add your years of experience",' in card
 
 

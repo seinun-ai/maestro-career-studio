@@ -2,6 +2,8 @@
 
 import type { LucideIcon } from "lucide-react";
 import { GuardedLink as Link } from "@/components/guarded-link";
+import { countriesChosen } from "@/components/profile/country-fields";
+import { useMarketQuery } from "@/hooks/use-market";
 
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { knockoutBanner, knockoutLine } from "@/lib/knockout-line";
@@ -64,14 +66,28 @@ function autofillHref(kind: KnockoutCheck["kind"] | undefined): string {
 }
 
 type Unchecked = { kind: KnockoutCheck["kind"]; href: string; link: string };
+type PayLink = Pick<Unchecked, "href" | "link">;
+
+/** Where the pay the salary check reads is given (knockout._pay_for_job), never Job preferences' Minimum
+ *  salary. Once you choose your countries, each country's pay, the home's included, is in Country answers;
+ *  before that, the one figure for every job is Start and pay's Desired salary. */
+const COUNTRY_PAY: PayLink = { href: anchorHref("/profile", "autofill-work_auth"), link: "Add your expected pay" };
+const ONE_FIGURE: PayLink = { href: anchorHref("/profile", "autofill-preferences"), link: "Add your desired salary" };
+
+/** The pay link for this install. The job page has the market setting loaded already (`useHomeCountry`); until
+ *  it is, the link reads as chosen, as `countriesChosen` reads a setting with no mark. */
+function usePayLink(): PayLink {
+  const { data } = useMarketQuery();
+  return data && !countriesChosen(data) ? ONE_FIGURE : COUNTRY_PAY;
+}
 
 /**
  * What the job lists that the scan could not compare. knockout.py leaves the salary check out when the
- * profile has no desired salary (or the pay is not yearly) and the experience check out when the profile
- * has no years, and says nothing, so "unstated" read "No requirements listed" on a job listing both.
+ * profile has no pay for the job's country (or the pay is not yearly) and the experience check out when the
+ * profile has no years, and says nothing, so "unstated" read "No requirements listed" on a job listing both.
  * The yearly rule mirrors `_salary_check`.
  */
-function uncheckedItems(job: Job, scan: KnockoutScan): Unchecked[] {
+function uncheckedItems(job: Job, scan: KnockoutScan, pay: PayLink = COUNTRY_PAY): Unchecked[] {
   const has = (kind: KnockoutCheck["kind"]) => scan.checks.some((c) => c.kind === kind);
   const ceiling = Number(job.salary_max ?? job.salary_min ?? Number.NaN);
   const yearly =
@@ -79,12 +95,7 @@ function uncheckedItems(job: Job, scan: KnockoutScan): Unchecked[] {
     (job.salary_period === "year" || (job.salary_period == null && ceiling >= 10000));
   const items: Unchecked[] = [];
   if (yearly && !has("salary")) {
-    items.push({
-      kind: "salary",
-      // Autofill's Desired salary (knockout._salary_check), not Job preferences' Minimum salary.
-      href: anchorHref("/profile", "autofill-preferences"),
-      link: "Add your desired salary",
-    });
+    items.push({ kind: "salary", ...pay });
   }
   if (job.years_experience_min != null && !has("experience")) {
     items.push({
@@ -124,8 +135,8 @@ export function knockoutNotChecked(scan: KnockoutScan, job: Job): boolean {
 }
 
 /** What both renderings read from a scan: the chips, the detail rows and what could not be compared. */
-function knockoutParts(scan: KnockoutScan, job: Job) {
-  const unchecked = uncheckedItems(job, scan);
+function knockoutParts(scan: KnockoutScan, job: Job, pay: PayLink) {
+  const unchecked = uncheckedItems(job, scan, pay);
   const notChecked = knockoutNotChecked(scan, job);
   const rows = scan.checks.filter((c) => ROW_RESULTS.has(c.result) && c.message);
 
@@ -179,8 +190,9 @@ export function JobKnockoutCard({
   scan: KnockoutScan | null | undefined;
   job: Job;
 }) {
+  const pay = usePayLink();
   if (!scan || !knockoutBanner(scan.status)) return null;
-  const { hasStrip, strip } = knockoutParts(scan, job);
+  const { hasStrip, strip } = knockoutParts(scan, job, pay);
   const conflict = scan.checks.find((c) => c.result === "conflict");
   const missing = scan.checks.find((c) => c.result === "profile_missing");
   const isConflict = scan.status === "conflict";
@@ -229,8 +241,9 @@ export function KnockoutLine({
   scan: KnockoutScan | null | undefined;
   job: Job;
 }) {
+  const pay = usePayLink();
   if (!scan) return null;
-  const { notChecked, rows, unchecked, strip } = knockoutParts(scan, job);
+  const { notChecked, rows, unchecked, strip } = knockoutParts(scan, job, pay);
   const shown = knockoutLine(scan.status, notChecked);
   if (!shown) return null;
   // `clear` is any pass or warning (knockout.py): a warning chip can sit under it, and a check the

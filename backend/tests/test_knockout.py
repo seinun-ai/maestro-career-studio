@@ -243,6 +243,131 @@ def test_the_scan_reads_your_home_currency_and_the_rates(db_session, tmp_path, m
     assert args["home_currency"] == "EUR" and args["rates"] == _RATES
 
 
+# --- each country's own pay (start-and-pay Task 7) ---------------------------------------------
+#
+# Once countries are chosen, a job's pay is compared with the figure a form in its country gets
+# (`autofill_profile.pay_for`): the home's desired salary at home, another country's own expected
+# pay there, and nothing where that country has none. Unchosen, the one figure, as before.
+
+_RATES_INR = {**_RATES, "rates": {**_RATES["rates"], "INR": Decimal("90.00")}}
+
+
+def _live_in_us(db_session, tmp_path, monkeypatch, apply_in, profile):
+    from app.schemas.market_settings import MarketSetting
+    from app.services import fx_rates, market_settings
+
+    monkeypatch.setattr(settings, "settings_dir", tmp_path)
+    monkeypatch.setattr(fx_rates, "current", lambda session: _RATES_INR)
+    market_settings.set_market(MarketSetting(home="US", apply_in=apply_in), db_session)
+    autofill_profile.set_profile(profile, db_session)
+
+
+def _salary_for(db_session, country_code, ceiling, currency):
+    from app.services import knockout
+
+    job = _mk_job(db_session, country_code=country_code, salary_max=Decimal(ceiling), salary_period="year",
+                  salary_currency=currency)
+    return [c for c in knockout.scan_for(db_session, job)["checks"] if c["kind"] == "salary"]
+
+
+def test_a_country_with_no_pay_of_its_own_has_no_salary_check(db_session, tmp_path, monkeypatch):
+    """The US figure is in dollars and US terms: an Indian posting is not compared with it."""
+    _live_in_us(db_session, tmp_path, monkeypatch, ["US", "IN"], {"preferences": {"desired_salary": "$80,000"}})
+    assert _salary_for(db_session, "IN", 3_000_000, "INR") == []
+
+
+def test_a_countrys_own_pay_is_compared_in_its_currency(db_session, tmp_path, monkeypatch):
+    _live_in_us(db_session, tmp_path, monkeypatch, ["US", "IN"], {
+        "preferences": {"desired_salary": "$80,000"},
+        "answers_by_country": {"IN": {"expected_pay": "₹40,00,000"}}})
+    [salary] = _salary_for(db_session, "IN", 3_500_000, "INR")
+    assert (salary["job_value"], salary["profile_value"]) == ("3500000 INR", "4000000 INR")
+    assert salary["result"] == "warning"
+
+
+def test_a_countrys_unmarked_pay_is_in_that_countrys_currency(db_session, tmp_path, monkeypatch):
+    """A bare figure for India is rupees, not the home's dollars."""
+    _live_in_us(db_session, tmp_path, monkeypatch, ["US", "IN"], {
+        "preferences": {"desired_salary": "$80,000"},
+        "answers_by_country": {"IN": {"expected_pay": "4000000"}}})
+    [salary] = _salary_for(db_session, "IN", 4_500_000, "INR")
+    assert salary["profile_value"] == "4000000 INR" and salary["result"] == "pass"
+
+
+def test_a_monthly_pay_is_compared_as_twelve_months(db_session, tmp_path, monkeypatch):
+    """The Netherlands asks gross monthly pay: €5,000 a month is €60,000 against a yearly posting."""
+    _live_in_us(db_session, tmp_path, monkeypatch, ["US", "NL"], {
+        "preferences": {"desired_salary": "$80,000"},
+        "answers_by_country": {"NL": {"expected_pay": "€5,000"}}})
+    [below] = _salary_for(db_session, "NL", 55_000, "EUR")
+    assert below["profile_value"] == "60000 EUR" and below["result"] == "warning"
+    [above] = _salary_for(db_session, "NL", 65_000, "EUR")
+    assert above["result"] == "pass"
+
+
+def test_a_monthly_pay_is_not_compared_with_a_monthly_posting(db_session, tmp_path, monkeypatch):
+    """Yearly postings only, as before: a posting's own period is never converted."""
+    from app.services import knockout
+
+    _live_in_us(db_session, tmp_path, monkeypatch, ["US", "NL"], {
+        "answers_by_country": {"NL": {"expected_pay": "€5,000"}}})
+    job = _mk_job(db_session, country_code="NL", salary_max=Decimal(4000), salary_period="month",
+                  salary_currency="EUR")
+    assert not [c for c in knockout.scan_for(db_session, job)["checks"] if c["kind"] == "salary"]
+
+
+def test_a_home_job_reads_the_desired_salary(db_session, tmp_path, monkeypatch):
+    _live_in_us(db_session, tmp_path, monkeypatch, ["US", "IN"], {"preferences": {"desired_salary": "$80,000"}})
+    [salary] = _salary_for(db_session, "US", 70_000, "USD")
+    assert (salary["profile_value"], salary["result"]) == ("80000 USD", "warning")
+
+
+def test_a_job_in_a_country_no_market_covers_reads_the_home_pay(db_session, tmp_path, monkeypatch):
+    """France has no market, so its form gets the home figure (Decision 12), and the check compares
+    that: €70,000 is about $76,090, below $80,000."""
+    _live_in_us(db_session, tmp_path, monkeypatch, ["US", "IN"], {"preferences": {"desired_salary": "$80,000"}})
+    [salary] = _salary_for(db_session, "FR", 70_000, "EUR")
+    assert (salary["profile_value"], salary["result"]) == ("80000 USD", "warning")
+
+
+def test_a_job_with_no_country_reads_the_home_pay(db_session, tmp_path, monkeypatch):
+    _live_in_us(db_session, tmp_path, monkeypatch, ["US", "IN"], {"preferences": {"desired_salary": "$80,000"}})
+    [salary] = _salary_for(db_session, None, 90_000, "USD")
+    assert (salary["profile_value"], salary["result"]) == ("80000 USD", "pass")
+
+
+def test_unchosen_the_one_figure_is_compared_everywhere(db_session, tmp_path, monkeypatch):
+    """No country chosen (Decision 7): the desired salary stands for every country, as before."""
+    from app.services import fx_rates, knockout
+
+    monkeypatch.setattr(settings, "settings_dir", tmp_path)
+    monkeypatch.setattr(fx_rates, "current", lambda session: _RATES_INR)
+    autofill_profile.set_profile({"preferences": {"desired_salary": "$80,000"}}, db_session)
+    assert knockout.scan_args(db_session)["pay_by_market"] is None
+    [salary] = _salary_for(db_session, "IN", 3_000_000, "INR")
+    assert salary["profile_value"] == "80000 USD"
+    assert salary["result"] == "warning"   # ₹3,000,000 is about $36,233
+
+
+def test_the_scan_args_carry_each_countrys_pay_and_its_period(db_session, tmp_path, monkeypatch):
+    """Every market with a figure, keyed as the market setting keys them; one with none is left out."""
+    from app.services import knockout
+
+    _live_in_us(db_session, tmp_path, monkeypatch, ["US", "IN", "NL"], {
+        "preferences": {"desired_salary": "$80,000"},
+        "answers_by_country": {"NL": {"expected_pay": "€5,000"}}})
+    assert knockout.scan_args(db_session)["pay_by_market"] == {
+        "US": ("$80,000", "year"), "NL": ("€5,000", "month")}
+
+
+def test_a_direct_scan_reads_the_desired_salary_as_before():
+    """A caller that passes `preferences` and no `pay_by_market` gets the one figure on any job."""
+    check = _check(scan_job(
+        _job(country_code="IN", salary_max=Decimal(3_000_000), salary_period="year", salary_currency="INR"),
+        WorkAuth(), preferences={"desired_salary": "$80,000"}, home_currency="USD", rates=_RATES_INR), "salary")
+    assert (check["profile_value"], check["result"]) == ("80000 USD", "warning")
+
+
 # --- years of experience --------------------------------------------------
 
 def test_experience_below_the_posted_minimum_warns_but_does_not_block():

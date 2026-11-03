@@ -364,9 +364,10 @@
   group their fields by the set each question gets and decide each group on its own catalog (a second model call only when a question
   names a country whose answers differ from the job's); `/step` takes its question's set; `/sections` and `/reason` the job's; run-trace
   redaction every country's; the answer flags (`filled_answers.flag_context`) the job's. The knock-out scan screens with the job's
-  country's set, and a job with no country with the home set (an advisory check, not an answer given); its pay check reads the generic
-  desired salary, a yearly figure, never a country's own. `get_job_search_brief` serves each
-  apply-in market's set as readers see it in the brief's yes/no keys, with its `expected_pay` and that market's pay wording (`expected_pay_label`) when given, its warnings led by the country's name unless the user lives and applies in one
+  country's set, and a job with no country with the home set (an advisory check, not an answer given); its pay check reads the figure
+  the job's form gets (`autofill_profile.pay_for`; a monthly one counts twelve times), and none where that country has none
+  (docs/entities/job.md, "Knock-out pre-scan"). `get_job_search_brief` serves each
+  apply-in market's set as readers see it in the brief's yes/no keys, with its `expected_pay` (`pay_for`: the home's desired salary) and that market's pay wording (`expected_pay_label`) when there is one, its warnings led by the country's name unless the user lives and applies in one
   country, and the home set for one release (`job_search_brief._work_permits`; SYSTEM.md §13 `brief-work-auth-home`); the job-hunt and
   referral-pages prompts judge a posting by its own country's set and leave one from an unknown or not-applied-in country unfiltered on
   permits, saying so in its proposal. Setup status counts each apply-in

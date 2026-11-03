@@ -126,6 +126,22 @@ test("unstated and not-run scans are lines too", () => {
   assert.match(html, /Checks not run yet/);
 });
 
+// The pay the salary check reads: each country's own in Country answers once countries are chosen, else the
+// one Desired salary in Start and pay (knockout._pay_for_job).
+const market = (chosen) => [["settings", "market"],
+  { key: "market", value: { home: "US", apply_in: ["US"], market: "US", chosen }, home: "US", apply_in: ["US"], currency: "USD" }];
+const payChip = (seed) => renderElement(linked(React.createElement(KnockoutLine, {
+  scan: { status: "unstated", checks: [] }, job: { ...job, salary_max: 90000, salary_period: "year" } })), seed);
+
+test("a pay the scan could not compare links to the country's pay once countries are chosen", () => {
+  for (const html of [payChip([market(true)]), payChip([])]) {
+    assert.match(html, /<a[^>]*href="\/profile#autofill-work_auth"[^>]*>.*Pay: Not run.*Add your expected pay/s);
+  }
+  const unchosen = payChip([market(false)]);
+  assert.match(unchosen, /<a[^>]*href="\/profile#autofill-preferences"[^>]*>.*Pay: Not run.*Add your desired salary/s);
+  assert.doesNotMatch(unchosen, /expected pay/);
+});
+
 // ── A5: the proposal card ───────────────────────────────────────────────────
 
 const proposal = (over) => ({ id: "p1", job_id: "j1", status: "accepted", reason: null, proposed_by: "you",
