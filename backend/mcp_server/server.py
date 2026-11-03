@@ -366,9 +366,14 @@ class EligibilityAnswers(TypedDict, total=False):
 
 @with_config(ConfigDict(extra="forbid"))
 class PreferenceAnswers(TypedDict, total=False):
-    """Start and pay answers, in the words a form gets; a null removes one. notice_days is the
-    notice period in whole days; last_working_day is YYYY-MM-DD, filled while serving_notice is
-    true and the day has not passed; preferred_locations is cities separated by commas."""
+    """Start and pay answers, in the words a form gets; a null removes one. desired_salary is the
+    pay of the country the user lives in once they chose their countries (each other country's is
+    answers_by_country[market].expected_pay; a home entry sent there is saved here), and the one
+    figure for every country while none is chosen. notice_days is the notice period in whole days,
+    the one notice answer; notice_period text such as "2 weeks" is read as days, and kept as text
+    only when it says none ("negotiable"); forms get the days in words. last_working_day is
+    YYYY-MM-DD, filled while serving_notice is true and the day has not passed;
+    preferred_locations is cities separated by commas."""
 
     desired_salary: str | None
     notice_period: str | None
@@ -503,7 +508,11 @@ CountryAnswersArg = Annotated[
     Field(description=(
         "Each country's own answers by market key, merged like the work permits. On that "
         "country's jobs each fills its form slot (expected_pay over preferences.desired_salary), "
-        "so pay in a country's own terms (monthly, CTC) belongs here, not in preferences."
+        "so pay in a country's own terms (monthly, CTC) belongs here, not in preferences. Once "
+        "countries are chosen, a country with no expected_pay gets no pay on its forms (the "
+        "Companion asks), and the home country's expected_pay is saved as "
+        "preferences.desired_salary, so a read never lists it here; an entry left with nothing "
+        "reads as {}."
     )),
 ]
 
@@ -1464,9 +1473,10 @@ _CONTEXT_APPLICATION_FIELD = Field(description=(
     "An application id: the profile is then that job's view, its country's work permits as "
     "work_auth (work_auth_market names the market) and its own answers folded into the slots "
     "they fill (country_answered lists them; pay there is in that country's terms, saved under "
-    "answers_by_country, not preferences). A job whose country is unknown, or one Maestro keeps "
+    "answers_by_country, not preferences; a country with no pay of its own has no "
+    "desired_salary there: that answer is the user's to give on that job). A job whose country is unknown, or one Maestro keeps "
     "no answers for, folds none: its work_auth holds no country's permits and no country's own "
-    "answers reach it. Without an application nothing is folded either, and answers_by_country "
+    "answers reach it, and its pay is the home country's. Without an application nothing is folded either, and answers_by_country "
     "holds each market's own answers."
 ))
 _CONTEXT_BASE_FIELD = Field(description=(
