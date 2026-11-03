@@ -159,7 +159,7 @@
       "triggers": [
         {
           "kind": "absent",
-          "pattern": "\\.market\\b",
+          "pattern": "(?<!country)\\.market\\b",
           "paths": [
             "backend/app"
           ]
@@ -175,7 +175,7 @@
           ]
         }
       ],
-      "hand_check": "Both absent triggers are met: the backend reads no `.market` (offers_eeo reads apply_in), and the frontend reads no `value.market` of the market setting (its other `.market` hits are a permit question's own market key, so the frontend pattern is the setting's value, not a bare `.market`). The release after this one has shipped (a sync peer that has not updated reads the stored `market` key). Then drop the `market` computed field from MarketSetting and from MarketSettingResponse.value in frontend/lib/types.ts. Keep the legacy {\"market\": X} read until no stored market blob lacks `home` (DB check on settings key 'market')."
+      "hand_check": "Both absent triggers are met: the backend reads no `.market` of the setting (offers_eeo reads apply_in; `country.market`, a served country set's own market key, is not the setting), and the frontend reads no `value.market` of the market setting (its other `.market` hits are a permit question's own market key, so the frontend pattern is the setting's value, not a bare `.market`). The release after this one has shipped (a sync peer that has not updated reads the stored `market` key). Then drop the `market` computed field from MarketSetting and from MarketSettingResponse.value in frontend/lib/types.ts. Keep the legacy {\"market\": X} read until no stored market blob lacks `home` (DB check on settings key 'market')."
     },
     {
       "id": "notice-period-text",
