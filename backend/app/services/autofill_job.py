@@ -6,8 +6,9 @@ country's work-permit answers (`autofill_country`: none for a job with no
 country). Every route that hands the profile onward, to the deterministic fill
 (/context) or to a model (/choose), passes it through `profile_for_job`, so the
 scope is decided in one place. The job's country's own answers (`answers_by_country`)
-are folded over the slots they fill, and no other country's reach it
-(`autofill_country.for_market`). The fill loop's catalog (`routers/autofill._facts`)
+are folded over the slots they fill, its pay is its own or none, and no other country's
+reach it (`autofill_country.for_market`, by the chosen home each caller reads once:
+`autofill_profile.chosen_home`). The fill loop's catalog (`routers/autofill._facts`)
 resolves both the same way, and per question."""
 
 from typing import Any
@@ -18,7 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.models.application import Application
 from app.models.job import Job
-from app.services import autofill_catalog, autofill_country, countries
+from app.services import autofill_catalog, autofill_country, autofill_profile, countries
 
 
 def application_job(db: Session, application_id: UUID | None) -> Job | None:
@@ -31,13 +32,14 @@ def job_market(job: Job | None) -> str | None:
     return autofill_country.market_for_job_country(job.country_code) if job is not None else None
 
 
-def view_for(profile: Any, job: Job | None, market: str | None) -> Any:
+def view_for(profile: Any, job: Job | None, market: str | None, *, chosen_home: str | None) -> Any:
     """The profile a form on `job` reads for one market's questions: that market's answers
-    (`autofill_country.for_market`: its permits and own answers, no other country's) and the saved
-    answers that hold for the job (`custom_for_job`; with no job, no scoped one)."""
+    (`autofill_country.for_market`: its permits, own answers and pay by `chosen_home`, no other
+    country's) and the saved answers that hold for the job (`custom_for_job`; with no job, no
+    scoped one)."""
     if not isinstance(profile, dict):
         return profile
-    view = autofill_country.for_market(profile, market)
+    view = autofill_country.for_market(profile, market, chosen_home=chosen_home)
     if "custom" not in view:
         return view
     return {**view, "custom": autofill_catalog.custom_for_job(
@@ -47,8 +49,9 @@ def view_for(profile: Any, job: Job | None, market: str | None) -> Any:
 def profile_for_job(db: Session, profile: Any, application_id: UUID | None,
                     question: str | None = None) -> Any:
     """The profile with the saved answers that hold for the application's job, the job's country's
-    work-permit answers as `work_auth` (`work_auth_market` names it) and its own answers over the
-    slots they fill (`view_for`). With no application (a form not tracked yet) a scoped answer holds
+    work-permit answers as `work_auth` (`work_auth_market` names it) and its own answers and pay over
+    the slots they fill (`view_for`, by the chosen home read here: `autofill_profile.chosen_home`).
+    With no application (a form not tracked yet) a scoped answer holds
     nowhere, and there are no country's answers: a question that names its country is answered on
     the fill loop, where the question is known.
     `question` is that case for one question (the Companion's pause row learning an answer): the
@@ -61,7 +64,7 @@ def profile_for_job(db: Session, profile: Any, application_id: UUID | None,
     market = job_market(job)
     if question is not None:
         market = autofill_country.market_for_question(question, market)
-    view = view_for(profile, job, market)
+    view = view_for(profile, job, market, chosen_home=autofill_profile.chosen_home(db))
     if question is not None:
         code = autofill_country.country_for_question(question, job.country_code if job else None)
         view = {**view, autofill_country.WORK_AUTH_COUNTRY: countries.label(code)}

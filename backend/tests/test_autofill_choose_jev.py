@@ -349,8 +349,8 @@ def _jev_slots(monkeypatch):
 
 
 def test_jev_slots_hold_the_jobs_country_never_the_homes(db_session, monkeypatch, three_countries):
-    """A home-US user's German form is offered Germany's answers (none here), never the US's Yes; a UAE
-    form's pay is the UAE's own answer."""
+    """A home-US user's German form is offered Germany's answers (none here), never the US's Yes nor the
+    US pay; a UAE form's pay is the UAE's own answer."""
     seen = _jev_slots(monkeypatch)
     _fake_llm(monkeypatch)
     field = _field("a", "Are you authorized to work here?", "select", ["Yes", "No"])
@@ -358,7 +358,7 @@ def test_jev_slots_hold_the_jobs_country_never_the_homes(db_session, monkeypatch
     autofill_choose.choose([field], _job_in(db_session, "DE"), db_session)
     de = seen[-1]
     assert "work_auth.authorized_now" not in de and "work_auth.sponsorship_now" not in de
-    assert de["preferences.desired_salary"] == "150000"
+    assert "preferences.desired_salary" not in de
 
     autofill_choose.choose([field], _job_in(db_session, "AE"), db_session)
     ae = seen[-1]
@@ -367,6 +367,7 @@ def test_jev_slots_hold_the_jobs_country_never_the_homes(db_session, monkeypatch
 
     autofill_choose.choose([field], _job_in(db_session, "US"), db_session)
     assert seen[-1]["work_auth.authorized_now"] == "Yes"
+    assert seen[-1]["preferences.desired_salary"] == "150000"
 
 
 def test_jev_with_no_job_has_no_countrys_answers(db_session, monkeypatch, three_countries):

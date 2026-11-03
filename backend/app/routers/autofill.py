@@ -423,7 +423,8 @@ class _Catalog:
 
     `work_auth` is one country's answers (inv-work-permit-per-country): the
     country a question names, else the job's, else none (`autofill_country`),
-    and that country's own answers fill their slots (`for_market`).
+    and that country's own answers fill their slots, its pay its own or none
+    (`for_market`, by the chosen home, read once here).
     `facts()` is the job's; `split` groups a request's fields by the answers
     their questions get, so a question naming another country is decided
     against that country's facts and nothing else changes."""
@@ -451,6 +452,7 @@ class _Catalog:
         self._company = job.company if job else None
         self._location = job.location if job else None
         self.job_market = autofill_job.job_market(job)
+        self._chosen_home = autofill_profile.chosen_home(db)
         self._built: dict[str | None, tuple[str, dict[str, autofill_catalog.Fact]]] = {}
 
     def _keyed(self, market: str | None) -> tuple[str, dict[str, autofill_catalog.Fact]]:
@@ -459,9 +461,11 @@ class _Catalog:
         status, the US-citizen fact), so two markets share one group in `split` only when their
         facts match (a country's own pay included)."""
         if market not in self._built:
+            view = autofill_country.for_market(
+                self._profile, market, today=self._today, chosen_home=self._chosen_home)
             facts = autofill_catalog.build(
-                autofill_country.for_market(self._profile, market, today=self._today), self._employment,
-                self._skills, today=self._today, company=self._company, location=self._location,
+                view, self._employment, self._skills, today=self._today, company=self._company,
+                location=self._location,
             )
             # Served: an agreement given under an older policy reads off (lapsed).
             facts = autofill_catalog.with_agreement(facts, self._agrees)

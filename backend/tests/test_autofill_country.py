@@ -325,7 +325,7 @@ def test_a_uae_job_reads_uae_answers_and_none_of_germanys():
     profile = {"preferences": {"desired_salary": "90000"},
                "answers_by_country": {"AE": {"expected_pay": "25000", "in_country_now": True},
                                       "DE": {"expected_pay": "70000"}}}
-    folded = autofill_country.with_country_answers(profile, "AE")
+    folded = autofill_country.with_country_answers(profile, "AE", chosen_home="US")
     assert folded["preferences"]["desired_salary"] == "25000"
     assert folded["eligibility"]["in_country_now"] is True
     assert "answers_by_country" not in folded
@@ -334,26 +334,39 @@ def test_a_uae_job_reads_uae_answers_and_none_of_germanys():
     assert profile["preferences"]["desired_salary"] == "90000"
 
 
-def test_without_a_country_answer_the_generic_one_stays():
+def test_a_country_without_its_own_pay_gets_none_once_countries_are_chosen():
+    """Owner decision 1 (docs/plans/2026-11-02-start-and-pay-design.md): the home's figure is never another
+    country's answer, so a German form is left its pay question and the Companion asks. Unchosen, the one
+    figure is every country's, as before (Decision 7 of the plan)."""
     profile = {"preferences": {"desired_salary": "90000"}, "answers_by_country": {"DE": {}}}
-    assert autofill_country.with_country_answers(profile, "DE")["preferences"]["desired_salary"] == "90000"
+    chosen = autofill_country.with_country_answers(profile, "DE", chosen_home="US")
+    assert chosen["preferences"] == {} and chosen[autofill_country.COUNTRY_ANSWERED] == []
+    unchosen = autofill_country.with_country_answers(profile, "DE", chosen_home=None)
+    assert unchosen["preferences"] == {"desired_salary": "90000"}
+    assert unchosen[autofill_country.COUNTRY_ANSWERED] == []
 
 
-def test_a_blank_answer_and_a_key_the_country_does_not_ask_fill_nothing():
+@pytest.mark.parametrize("chosen_home, preferences", [("US", {}), (None, {"desired_salary": "90000"})],
+                         ids=["chosen", "unchosen"])
+def test_a_blank_answer_and_a_key_the_country_does_not_ask_fill_nothing(chosen_home, preferences):
     """Only a set value fills its slot, and only a key the market asks now (`form_questions.answer_keys`):
-    India's current CTC stored under Germany, hand-edited or from before a pack moved, is no German answer."""
+    India's current CTC stored under Germany, hand-edited or from before a pack moved, is no German answer.
+    A blank pay is no pay: chosen, Germany then has none; unchosen, the one figure stays."""
     profile = {"preferences": {"desired_salary": "90000"},
                "answers_by_country": {"DE": {"expected_pay": "  ", "current_ctc": "1800000", "made_up": "x"}}}
-    folded = autofill_country.with_country_answers(profile, "DE")
-    assert folded["preferences"] == {"desired_salary": "90000"}
+    folded = autofill_country.with_country_answers(profile, "DE", chosen_home=chosen_home)
+    assert folded["preferences"] == preferences
     assert folded[autofill_country.COUNTRY_ANSWERED] == []   # still a job's view, so never saved
     assert "1800000" not in json.dumps(folded)
 
 
-def test_no_market_folds_nothing_and_drops_every_countrys_answers():
+@pytest.mark.parametrize("chosen_home", ["US", None], ids=["chosen", "unchosen"])
+def test_no_market_folds_nothing_and_drops_every_countrys_answers(chosen_home):
+    """A job whose country can't be told, or one no market covers (France), keeps the home pay, chosen or not
+    (Decision 12 of docs/plans/2026-11-02-start-and-pay.md)."""
     profile = {"preferences": {"desired_salary": "90000"}, "answers_by_country": {"IN": {"expected_pay": "1"}}}
     for market in (None, "FR"):
-        folded = autofill_country.with_country_answers(profile, market)
+        folded = autofill_country.with_country_answers(profile, market, chosen_home=chosen_home)
         assert folded == {"preferences": {"desired_salary": "90000"}, autofill_country.COUNTRY_ANSWERED: []}, market
 
 
@@ -366,7 +379,7 @@ def test_the_fill_view_holds_no_countrys_map_and_takes_answers_as_a_form_does():
                "preferences": {"serving_notice": True, "last_working_day": "2026-01-31"},
                "work_auth_by_country": {"US": {"authorized_now": True}},
                "answers_by_country": {"IN": {"current_ctc": "1800000"}}}
-    view = autofill_country.for_market(profile, "IN", today=date(2026, 2, 1))
+    view = autofill_country.for_market(profile, "IN", today=date(2026, 2, 1), chosen_home="US")
     assert "work_auth_by_country" not in view and "answers_by_country" not in view
     assert view["personal"]["citizenships"] == ["India", "United Kingdom"]
     assert view["preferences"] == {"current_ctc": "1800000"}   # the notice ended yesterday
@@ -379,8 +392,56 @@ def test_a_folded_answer_is_named_beside_the_profile():
     """The slots the job's country's own answers fill ride beside `work_auth_market`, so the catalog can
     describe a figure in its country's own terms only when it is that country's answer."""
     profile = {"answers_by_country": {"NL": {"expected_pay": "4500"}}}
-    assert autofill_country.with_country_answers(profile, "NL")[autofill_country.COUNTRY_ANSWERED] == [
+    for chosen_home in ("US", None):
+        assert autofill_country.with_country_answers(profile, "NL", chosen_home=chosen_home)[
+            autofill_country.COUNTRY_ANSWERED] == ["preferences.desired_salary"]
+
+
+# --- pay: a country's own, the home's on a home job, never another's (start-and-pay plan, Task 4) ------
+
+PAY = {"preferences": {"desired_salary": "$80,000"},
+       "answers_by_country": {"IN": {"expected_pay": "₹40,00,000"}}}
+
+
+def test_a_country_with_no_pay_of_its_own_gets_none():
+    view = autofill_country.for_market(PAY, "IE", chosen_home="US")
+    assert "desired_salary" not in view["preferences"]
+    assert view[autofill_country.COUNTRY_ANSWERED] == []
+    assert "$80,000" not in json.dumps(view)
+
+
+def test_home_and_unknown_country_get_the_home_pay():
+    for market in ("US", None):
+        view = autofill_country.for_market(PAY, market, chosen_home="US")
+        assert view["preferences"]["desired_salary"] == "$80,000", market
+
+
+def test_another_country_gets_its_own():
+    view = autofill_country.for_market(PAY, "IN", chosen_home="US")
+    assert view["preferences"]["desired_salary"] == "₹40,00,000"
+    assert view[autofill_country.COUNTRY_ANSWERED] == ["preferences.desired_salary"]
+
+
+def test_unchosen_the_one_figure_still_reaches_every_country():
+    """No country chosen: the stored home is a default, not a choice, so the one figure is every country's
+    unless a country has its own, and only a country's own is named as its answer (Decision 7)."""
+    ireland = autofill_country.for_market(PAY, "IE", chosen_home=None)
+    assert ireland["preferences"]["desired_salary"] == "$80,000"
+    assert ireland[autofill_country.COUNTRY_ANSWERED] == []
+    india = autofill_country.for_market(PAY, "IN", chosen_home=None)
+    assert india["preferences"]["desired_salary"] == "₹40,00,000"
+    assert india[autofill_country.COUNTRY_ANSWERED] == ["preferences.desired_salary"]
+
+
+def test_a_home_jobs_pay_is_named_as_the_homes_own_answer():
+    """Decision 13: on a home job `desired_salary` is the home's own pay, so it is named under
+    `country_answered` and the catalog words it in the home's terms. With none given there is nothing to
+    name; a job with no country reads the figure in no country's terms."""
+    assert autofill_country.for_market(PAY, "US", chosen_home="US")[autofill_country.COUNTRY_ANSWERED] == [
         "preferences.desired_salary"]
+    assert autofill_country.for_market({"preferences": {}}, "US", chosen_home="US")[
+        autofill_country.COUNTRY_ANSWERED] == []
+    assert autofill_country.for_market(PAY, None, chosen_home="US")[autofill_country.COUNTRY_ANSWERED] == []
 
 
 def test_a_citizenship_answers_the_permit_questions_on_the_job():
@@ -545,14 +606,19 @@ def test_the_trace_redaction_holds_every_countrys_answers(db_session):
     assert facts["preferences.desired_salary"].value == "90000"
 
 
-def _nl_job_view(db_session, client, **params) -> dict:
+def _application_in(db_session, country_code):
     from app.models.application import Application
     from tests.test_proposals_models import _mk_job
 
-    job = _mk_job(db_session, company="Acme", country_code="NL")
+    job = _mk_job(db_session, company="Acme", country_code=country_code)
     application = Application(job_id=job.id, base_resume="hybrid", customized_json={"contact": {"name": "Ada"}})
     db_session.add(application)
     db_session.commit()
+    return application
+
+
+def _job_view(db_session, client, country_code="NL", **params) -> dict:
+    application = _application_in(db_session, country_code)
     return client.get("/api/autofill/context", params={"application_id": str(application.id), **params}).json()["profile"]
 
 
@@ -564,7 +630,7 @@ def test_a_job_view_is_never_saved(db_session, tmp_path, client):
     autofill_profile.set_profile({"personal": {"citizenships": ["FR"]}, "preferences": {"desired_salary": "150000"},
                                   "answers_by_country": {"NL": {"expected_pay": "4500"}}}, db_session)
     before = _stored(tmp_path)
-    view = _nl_job_view(db_session, client, question="Are you authorised to work in the Netherlands?")
+    view = _job_view(db_session, client, question="Are you authorised to work in the Netherlands?")
     assert view[autofill_country.COUNTRY_ANSWERED] == ["preferences.desired_salary"]
     assert view[autofill_country.WORK_AUTH_COUNTRY] == "Netherlands"
     assert view["preferences"]["desired_salary"] == "4500" and view["work_auth"]["authorized_now"] is True
@@ -579,9 +645,9 @@ def test_a_job_view_is_never_saved(db_session, tmp_path, client):
     assert stored["preferences"] == {"desired_salary": "150000"} and "work_auth_by_country" not in stored
 
     # Even a view with nothing folded is a job's view.
-    assert _nl_job_view(db_session, client)[autofill_country.COUNTRY_ANSWERED] == ["preferences.desired_salary"]
+    assert _job_view(db_session, client)[autofill_country.COUNTRY_ANSWERED] == ["preferences.desired_salary"]
     autofill_profile.set_profile({"answers_by_country": {"NL": None}}, db_session)
-    assert _nl_job_view(db_session, client)[autofill_country.COUNTRY_ANSWERED] == []
+    assert _job_view(db_session, client)[autofill_country.COUNTRY_ANSWERED] == []
 
 
 def test_only_a_profile_read_with_no_job_carries_every_countrys_answers(db_session, client):
@@ -603,10 +669,42 @@ def test_only_a_profile_read_with_no_job_carries_every_countrys_answers(db_sessi
     assert "answers_by_country" not in one_question
     assert one_question["preferences"]["desired_salary"] == "4500"
 
-    job = _nl_job_view(db_session, client)
+    job = _job_view(db_session, client)
     assert "answers_by_country" not in job
     for view in (no_job, one_question, job):
         assert view["work_auth_by_country"] == {"US": {"authorized_now": True}}
+
+
+def test_an_irish_jobs_context_has_no_pay(db_session, client):
+    """Ireland has no pay of its own, so its job's view leaves the slot out (the Companion asks on the
+    form) and names no country answer; the US figure is nowhere in it."""
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US", "IN", "IE"]), db_session)
+    autofill_profile.set_profile(PAY, db_session)
+    view = _job_view(db_session, client, "IE")
+    assert "desired_salary" not in view["preferences"]
+    assert view[autofill_country.COUNTRY_ANSWERED] == []
+    assert "$80,000" not in json.dumps(view)
+    # The question the Companion asks before it learns a pay names Ireland, so the answer is kept there.
+    asked = _job_view(db_session, client, "IE", question="Expected salary?")
+    assert asked["work_auth_market"] == "IE" and "desired_salary" not in asked["preferences"]
+
+
+def test_the_fill_loop_and_the_flags_read_the_chosen_home(db_session):
+    """The fill loop's catalog and the answer flags read the chosen home themselves (Decision 4 of
+    docs/plans/2026-11-02-start-and-pay.md: passed, never inferred), so an Irish job has no pay fact,
+    an Indian job India's and a US job the home's."""
+    from app.models.job import Job
+    from app.routers.autofill import _facts
+    from app.services import filled_answers
+
+    market_settings.set_market(MarketSetting(home="US", apply_in=["US", "IN", "IE"]), db_session)
+    autofill_profile.set_profile(PAY, db_session)
+    for code, pay in (("IE", None), ("IN", "₹40,00,000"), ("US", "$80,000")):
+        application = _application_in(db_session, code)
+        job = db_session.get(Job, application.job_id)
+        loop = _facts(db_session, application.id, None)[0].get("preferences.desired_salary")
+        flags = filled_answers.flag_context(db_session, job)[0].get("preferences.desired_salary")
+        assert (loop and loop.value, flags and flags.value) == (pay, pay), code
 
 
 @pytest.mark.parametrize("country_code", [None, "BR"], ids=["no-country", "no-market"])

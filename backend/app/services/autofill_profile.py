@@ -189,6 +189,14 @@ def _market_key(market: Any) -> str:
     return market.strip().upper() if isinstance(market, str) else ""
 
 
+def own_pay(profile: Any, market: str | None) -> str | None:
+    """A market's own figure, `answers_by_country[market].expected_pay`, as written, trimmed (`_figure`);
+    None for none, a blank or no market. On a read view a chosen home has none here: its pay is
+    `desired_salary` (`_with_home_pay`)."""
+    key = _market_key(market)
+    return _figure(answers_entries(profile).get(key, {}).get(EXPECTED_PAY)) if key else None
+
+
 def pay_for(profile: Any, market: str | None, home: str | None) -> str | None:
     """The pay a form in `market` gets: the home's `desired_salary`, another market's own
     `expected_pay`, or None for a market with none. No market (a job whose country can't be told):
@@ -207,7 +215,7 @@ def pay_for(profile: Any, market: str | None, home: str | None) -> str | None:
     Both keys are read as market keys ("us " is "US"). A figure comes back as written, trimmed
     (`_figure`); a blank is none."""
     key, home_key = _market_key(market), _market_key(home)
-    own = _figure(answers_entries(profile).get(key, {}).get(EXPECTED_PAY)) if key else None
+    own = own_pay(profile, key)
     if home_key and key and key != home_key:
         return own  # chosen: another country's own, or none
     if own is not None and not home_key:

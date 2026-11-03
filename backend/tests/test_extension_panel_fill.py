@@ -2101,8 +2101,8 @@ def test_expected_pay_paused_on_a_job_with_a_country_is_that_countrys(tmp_path, 
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path / "settings")
     market_settings.set_market(MarketSetting(home="US", apply_in=["US", "IN"]), db_session)
     saved = autofill_profile.set_profile(body["value"], db_session)
-    assert autofill_country.for_market(saved, "IN")["preferences"]["desired_salary"] == "2500000"
-    assert autofill_country.for_market(saved, "US")["preferences"]["desired_salary"] == "150000"
+    assert autofill_country.for_market(saved, "IN", chosen_home="US")["preferences"]["desired_salary"] == "2500000"
+    assert autofill_country.for_market(saved, "US", chosen_home="US")["preferences"]["desired_salary"] == "150000"
 
 
 def test_expected_pay_with_no_country_is_the_generic_desired_salary(tmp_path):
@@ -2331,6 +2331,68 @@ def test_undoing_a_country_answer_puts_back_that_countrys_entry(tmp_path):
     assert out["after"]["preferences"] == SERVED_INDIA["preferences"]
     assert out["after"]["custom"] == [{"question": "Preferred shift", "answer": "Day"}]
     assert out["undone"] == {**SERVED_INDIA, "custom": []}
+
+
+# One side of a learn and its Undo, against what the real server serves: with no `spec.saved`, a run's
+# Resume learns `spec.items` on `spec.profile` (GET /api/settings/autofill) and emits what it PUT and
+# what Undo needs; with `spec.saved`, Undo runs on `spec.profile` as the server serves it after the learn.
+_LEARN_STEP_DRIVER_JS = _PANEL_FAKES_JS + r"""
+const ns = loadModules();
+main(async () => {
+  const puts = [];
+  const store = {
+    read: () => ({ job: spec.job }),
+    api: async (path, init) => {
+      if (init?.method === "PUT") { puts.push(JSON.parse(init.body).value); return {}; }
+      if (path.startsWith("/api/autofill/context")) {
+        return { profile: { work_auth_market: spec.market, work_auth_country: spec.country, country_answered: [] } };
+      }
+      return { value: spec.profile };
+    },
+  };
+  if (spec.saved) {
+    await ns.panelLearn.unlearnAnswers(store, spec.saved);
+    emit({ puts });
+  } else {
+    emit({ puts, saved: await ns.panelLearn.learnAnswers(store, spec.items, spec.job) });
+  }
+});
+"""
+
+
+def test_undo_of_a_learned_home_pay_cannot_bring_back_the_figure_it_replaced(tmp_path, client, monkeypatch):
+    """A KNOWN GAP, pinned so its fix shows (docs/deferred.md, the Companion's Undo of a learned home pay).
+    On a home job the Companion learns expected pay into the home's entry, and the save folds it into
+    `preferences.desired_salary` over the figure there (`autofill_profile._with_home_pay`). Undo then removes
+    the home entry its learn made (sent as null), which by then holds no pay: the replaced figure is gone
+    and the learned one stays. A fix (the Companion learning a home pay into `desired_salary`, so Undo puts
+    the old value back there) flips the last assertion."""
+    from app.services import text_settings
+
+    monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path / "settings")
+    assert client.put("/api/settings/market", json={"value": {"home": "US", "apply_in": ["US", "IN"]}}).status_code == 200
+    assert client.put("/api/settings/autofill", json={"value": {
+        "preferences": {"desired_salary": "150000"}}}).status_code == 200
+
+    def step(**spec):
+        served = client.get("/api/settings/autofill").json()["value"]
+        out = run_node(_LEARN_STEP_DRIVER_JS, {
+            "profile": served, "market": "US", "country": "United States",
+            "job": {"company": "Globex", "location": "Austin, TX", "applicationId": "app-1"}, **spec},
+            tmp_path, source=PANEL_SOURCE)
+        [put] = out["puts"]
+        assert client.put("/api/settings/autofill", json={"value": put}).status_code == 200
+        return put, out.get("saved")
+
+    put, saved = step(items=[{"label": "Expected salary", "answer": "175000"}])
+    assert put["answers_by_country"] == {"US": {"expected_pay": "175000"}}
+    assert client.get("/api/settings/autofill").json()["value"]["preferences"] == {"desired_salary": "175000"}
+
+    put, _ = step(saved=saved)
+    assert put["answers_by_country"] == {"US": None}
+    after = client.get("/api/settings/autofill").json()["value"]
+    assert "answers_by_country" not in after
+    assert after["preferences"] == {"desired_salary": "175000"}   # the gap: 150000 is not back
 
 
 def _learned(tmp_path, items, profile=SERVED_INDIA, market="IN", country="India"):

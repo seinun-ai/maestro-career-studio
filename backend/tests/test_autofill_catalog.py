@@ -952,12 +952,13 @@ def test_asks_worked_here_is_an_allowlist_of_question_shapes(question, options, 
 
 # ---------- a country's own answers and India's questions (country form questions, Task 3.7)
 
-def _job_facts(profile, market, **kw):
+def _job_facts(profile, market, chosen_home=None, **kw):
     """The catalog a job in `market` builds from the one fill view (`for_market`), as the fill loop and
-    the flags build it."""
+    the flags build it; with no country chosen unless `chosen_home` names the home."""
     from app.services import autofill_country
 
-    return cat.build(autofill_country.for_market(profile, market, today=TODAY), [], [], today=TODAY, **kw)
+    view = autofill_country.for_market(profile, market, today=TODAY, chosen_home=chosen_home)
+    return cat.build(view, [], [], today=TODAY, **kw)
 
 
 def test_catalog_describes_never_override_the_fills_own():
@@ -1045,10 +1046,25 @@ def test_a_dutch_pay_answer_is_described_in_dutch_terms():
 
 
 def test_the_generic_pay_answer_keeps_the_generic_words_on_a_dutch_job():
-    """The generic figure was given in no country's terms, so it is never described as a Dutch monthly one."""
+    """With no country chosen the generic figure was given in no country's terms, so it is never described
+    as a Dutch monthly one. Once a home is chosen it is no Dutch answer at all: a Dutch job gets no pay."""
     facts = _job_facts({"preferences": {"desired_salary": "60000"}}, "NL")
     assert facts["preferences.desired_salary"].describe == cat.describe_of("preferences.desired_salary")
     assert "monthly" not in facts["preferences.desired_salary"].describe
+    assert "preferences.desired_salary" not in _job_facts({"preferences": {"desired_salary": "60000"}}, "NL",
+                                                          chosen_home="US")
+
+
+def test_a_home_jobs_pay_is_described_in_the_homes_terms():
+    """Once countries are chosen `desired_salary` is the home's own pay (Decision 13 of
+    docs/plans/2026-11-02-start-and-pay.md), so a home job words it as the home's forms ask; with none
+    chosen it keeps the generic words."""
+    profile = {"preferences": {"desired_salary": "$80,000"}}
+    home = _job_facts(profile, "US", chosen_home="US")["preferences.desired_salary"]
+    assert home.value == "$80,000"
+    assert home.describe == f"expected salary (USD): {cat.describe_of('preferences.desired_salary')}"
+    assert _job_facts(profile, "US")["preferences.desired_salary"].describe == cat.describe_of(
+        "preferences.desired_salary")
 
 
 def test_a_status_reads_its_own_markets_words_from_the_catalog():

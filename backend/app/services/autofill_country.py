@@ -27,7 +27,9 @@ for that country already names.
 A country's own answers (`answers_by_country`, form_questions.yaml `answers`)
 follow the same rule: `with_country_answers` writes one market's over the flat
 slots they fill (`fills`), and drops every country's map, so no other country's
-answer reaches the form.
+answer reaches the form. Pay included: once countries are chosen the home's
+`desired_salary` reaches only the home's jobs and a job with no market, and a
+country with no pay of its own gets none (`autofill_profile.pay_for`).
 """
 
 from __future__ import annotations
@@ -150,14 +152,39 @@ def _is_set(value: Any) -> bool:
     return value is not None and not (isinstance(value, str) and not value.strip())
 
 
-def with_country_answers(profile: Any, market: str | None) -> Any:
+def _with_slot(view: dict[str, Any], slot: str, value: Any) -> None:
+    """`value` written into `view`'s flat slot ("preferences.current_ctc"), its section copied, not
+    changed in place; None takes the slot out (a section that never held it is left as it is)."""
+    section, leaf = slot.split(".", 1)
+    values = view.get(section)
+    values = values if isinstance(values, dict) else {}
+    if value is not None:
+        view[section] = {**values, leaf: value}
+    elif leaf in values:
+        view[section] = {k: v for k, v in values.items() if k != leaf}
+
+
+def with_country_answers(profile: Any, market: str | None, *, chosen_home: str | None) -> Any:
     """The profile with one market's own answers (`answers_by_country[market]`) written over the
-    flat slots they fill (`form_questions.answer_fills`: "preferences.desired_salary"), and no
+    flat slots they fill (`form_questions.answer_fills`: "preferences.current_ctc"), and no
     country's map: another country's answers never reach this one's form. A blank answer, or a key
-    the market does not ask now, fills nothing, so the generic answer stays. The slots filled are
-    named under `COUNTRY_ANSWERED`, always (`[]`: none), which marks the result as a job's view: a
-    save refuses it (`autofill_profile.set_profile`). No market (`None`, or one Maestro does not
-    keep): nothing is filled, and the map still goes."""
+    the market does not ask now, fills nothing, so the generic answer stays.
+
+    Pay is the one answer whose slot, `preferences.desired_salary`, is also the home's: it holds
+    `autofill_profile.pay_for(profile, market, chosen_home)`, and with none the slot leaves the
+    view, so the form's pay question is left and the Companion asks on that job (owner decision 1
+    of docs/plans/2026-11-02-start-and-pay-design.md: a figure in another country's currency and
+    terms is no answer here). `chosen_home` is `autofill_profile.chosen_home()`, passed by every
+    caller, never inferred: chosen, a home job reads the home's `desired_salary` and any other
+    country its own `expected_pay` or nothing; unchosen (None), the one figure stays for every
+    country that has none of its own, as before any country was chosen.
+
+    The slots filled are named under `COUNTRY_ANSWERED`, always (`[]`: none), which marks the result
+    as a job's view: a save refuses it (`autofill_profile.set_profile`). Pay is named when the figure
+    is that country's own: another market's `expected_pay`, and, once chosen, the home's
+    `desired_salary` on a home job, so the catalog words it in that country's terms
+    (`autofill_catalog._pay_describe`). No market (`None`, or one Maestro does not keep): nothing is
+    filled, the home pay stays, and the map still goes."""
     if not isinstance(profile, dict):
         return profile
     out = {k: v for k, v in profile.items() if k != autofill_profile.ANSWERS_BY_COUNTRY}
@@ -168,25 +195,30 @@ def with_country_answers(profile: Any, market: str | None) -> Any:
     own = autofill_profile.answers_entries(profile).get(key, {})
     filled: list[str] = []
     for answer, slot in form_questions.answer_fills(key).items():
-        value = own.get(answer)
-        if not _is_set(value):
+        if answer == autofill_profile.EXPECTED_PAY:
+            pay = autofill_profile.pay_for(profile, key, chosen_home)
+            _with_slot(out, slot, pay)
+            if pay is not None and (chosen_home or autofill_profile.own_pay(profile, key)):
+                filled.append(slot)
             continue
-        section, leaf = slot.split(".", 1)
-        values = out.get(section)
-        out[section] = {**(values if isinstance(values, dict) else {}), leaf: value}
-        filled.append(slot)
+        value = own.get(answer)
+        if _is_set(value):
+            _with_slot(out, slot, value)
+            filled.append(slot)
     out[COUNTRY_ANSWERED] = filled
     return out
 
 
-def for_market(profile: Any, market: str | None, home: str | None = None, today: date | None = None) -> Any:
+def for_market(profile: Any, market: str | None, home: str | None = None, today: date | None = None, *,
+               chosen_home: str | None) -> Any:
     """The profile as a form in `market` reads it, the one view every fill reads (the catalog, /choose's
     prompt and Jev's slots, /context): that market's work-permit answers as `work_auth`
-    (`with_work_auth`), its own answers over the slots they fill (`with_country_answers`), no
-    per-country map at all (no other country's answer is there), and the answers as a form takes them
-    on `today` (`autofill_catalog.with_fill_rules`: citizenships as country names, no stale notice).
-    /context adds `work_auth_by_country` back for agents."""
-    view = with_country_answers(with_work_auth(profile, market, home), market)
+    (`with_work_auth`), its own answers over the slots they fill and its pay, or none
+    (`with_country_answers`, by `chosen_home`), no per-country map at all (no other country's answer
+    is there), and the answers as a form takes them on `today` (`autofill_catalog.with_fill_rules`:
+    citizenships as country names, no stale notice). /context adds `work_auth_by_country` back for
+    agents."""
+    view = with_country_answers(with_work_auth(profile, market, home), market, chosen_home=chosen_home)
     if not isinstance(view, dict):
         return view
     view.pop(autofill_profile.BY_COUNTRY, None)

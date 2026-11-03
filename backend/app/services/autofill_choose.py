@@ -30,6 +30,7 @@ from app.schemas.autofill_choose import MAX_OPTIONS, Choice, ChooseField
 from app.services import (
     autofill_country,
     autofill_job,
+    autofill_profile,
     autofill_slots,
     career_kb,
     eeo_consent,
@@ -293,17 +294,18 @@ def _by_country(
     """The fields grouped by whose answers their questions get (inv-work-permit-per-country:
     `autofill_country.market_for_question`, the country a label names, else the job's; one group
     when none names another), each with the profile both engines fill it from
-    (`autofill_job.view_for`): that country's answers only, the saved answers that hold for the job,
-    and consent-gated like GET /context, since it goes to a model provider: diversity answers only
-    under standing consent."""
+    (`autofill_job.view_for`, by the chosen home): that country's answers and pay only, the saved
+    answers that hold for the job, and consent-gated like GET /context, since it goes to a model
+    provider: diversity answers only under standing consent."""
     profile = eeo_consent.disclosable_profile(session)
     job = autofill_job.application_job(session, application_id)
     job_market = autofill_job.job_market(job)
+    chosen_home = autofill_profile.chosen_home(session)
     groups: dict[str | None, tuple[Any, list[ChooseField]]] = {}
     for field in fields:
         market = autofill_country.market_for_question(field.label, job_market)
         if market not in groups:
-            groups[market] = (autofill_job.view_for(profile, job, market), [])
+            groups[market] = (autofill_job.view_for(profile, job, market, chosen_home=chosen_home), [])
         groups[market][1].append(field)
     return list(groups.values())
 
