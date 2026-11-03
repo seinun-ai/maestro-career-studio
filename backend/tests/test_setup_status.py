@@ -690,10 +690,12 @@ def test_a_given_answer_that_differs_turns_the_settled_ones_off(client, db_sessi
     assert body["blocking"] == ["work_auth"]
 
 
-def test_a_countrys_optional_answers_never_count(client, db_session, tmp_path, monkeypatch):
-    """India's own optional answer (current CTC) changes nothing, nor do notice given in days over the
-    same notice in words and an Indian home's pay over the desired salary it is: the same readiness
-    without them as with them."""
+def test_answers_that_restate_a_counted_one_change_nothing(
+    client, db_session, tmp_path, monkeypatch
+):
+    """India's optional current CTC, notice in days over the same notice in words, and an Indian
+    home's pay beside the desired salary it is stored as: the same readiness without them as with
+    them."""
     from app.services import autofill_profile
 
     _chose(db_session, tmp_path, monkeypatch, "IN", ["IN"])

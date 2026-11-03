@@ -438,8 +438,8 @@ permits:
 
 # Country answers: asked once per country you apply in (each country's own,
 # never another's), and each fills its `fills` slot (`section.key`) on that
-# country's jobs only. All optional, so no existing count drops (Decision 6 of
-# docs/plans/2026-10-30-country-form-questions.md), but the home's pay.
+# country's jobs only. All optional except the home's pay, so no existing count
+# drops (Decision 6 of docs/plans/2026-10-30-country-form-questions.md).
 answers:
   # Labelled and hinted per market from markets.yaml `pay`. The home country's
   # is `preferences.desired_salary`, the figure readiness already counted, so

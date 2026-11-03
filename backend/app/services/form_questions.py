@@ -7,7 +7,6 @@ server's write schema (`mcp_server/server.py`: `CountryAnswers`, `CefrLevel`) re
 and the app imports that server at startup, so a broken file fails the app's boot.
 """
 
-from collections.abc import Container
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -50,7 +49,7 @@ def _for_home(field: Field, home: str, chosen: bool) -> Field:
     return field
 
 
-def _shown(field: Field, packs: Container[str]) -> bool:
+def _shown(field: Field, packs: set[str] | list[str]) -> bool:
     """A field with no pack is asked everywhere; a pack's, only while `packs` names it."""
     return field.pack is None or field.pack in packs
 
@@ -236,11 +235,12 @@ def resolve(*, home: str, apply_in: list[str], chosen: bool, profile: Any) -> Qu
     state line is optional."""
     apply_in = (apply_in or [home]) if chosen else []
     asked_by = _asked_by(apply_in)
+    packs = set(asked_by)
     return QuestionSet(
         groups=_groups(home, chosen, apply_in, asked_by),
         countries=[_country(m, profile, home=m == home) for m in apply_in],
         language_fields=[
-            _marked(f, asked_by) for f in catalog().language_fields if _shown(f, asked_by)
+            _marked(f, asked_by) for f in catalog().language_fields if _shown(f, packs)
         ],
         offers_eeo=any(markets.offers_eeo(m) for m in apply_in),
         chosen=chosen,
@@ -253,11 +253,12 @@ def _groups(
     """The facts about you, each asked once: a pack's field while a country you apply in names it
     (`asked_by`), saying whose forms ask it, the address lines resolved for `home` (`_for_home`),
     and the desired salary where Start and pay still asks it (`_start_and_pay`)."""
+    packs = set(asked_by)
     out = []
     for g in catalog().groups:
-        shown = [_for_home(f, home, chosen) for f in g.fields if _shown(f, asked_by)]
+        shown = [_for_home(f, home, chosen) for f in g.fields if _shown(f, packs)]
         asked = (_start_and_pay(f, home, chosen, apply_in) for f in shown)
-        fields = [_marked(f, asked_by) for f in asked if f]
+        fields = [_marked(f, asked_by) for f in asked if f is not None]
         out.append(Group(key=g.key, title=g.title, fields=fields))
     return out
 

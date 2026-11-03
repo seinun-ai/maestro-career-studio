@@ -686,9 +686,10 @@ def test_pack_fields_say_who_asks():
     assert all(f.askedBy is None for c in qs.countries for f in (*c.permits, *c.answers))
 
 
-def test_three_countries_are_named_in_a_list():
+def test_names_join_as_a_list_reads_them():
+    """In apply-in order, "A and B", "A, B and C"; three names are checked through `_joined`, since
+    only `cefr` is a pack two markets share today."""
     qs = form_questions.resolve(home="UK", apply_in=["NL", "UK", "DE", "AE"], chosen=True, profile=None)
-    assert _field_of(qs, "personal", "city").askedBy is None
     cefr = next(f for f in qs.language_fields if f.key == "cefr")
     assert cefr.askedBy == "Asked by forms in the Netherlands and Germany."
     assert form_questions._joined(["the Netherlands", "Germany", "the United Arab Emirates"]) == (

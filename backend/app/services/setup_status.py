@@ -5,7 +5,7 @@ Readiness counts the form-question catalog's required questions
 (services/form_questions, resolved for the stored market), never a list of its
 own. Rules:
 - "Complete" means ANSWERABLE, not filled: "decline" answers count.
-- Optional fields never count, so a country's own answers don't, but the home's pay.
+- Optional fields never count, so a country's own answers don't, except the home's pay.
 - A field with a `legacy` key (notice in days, `notice_period`) is answered by its own value or
   the older key's text, until it is given: notice written in words before still counts.
 - The home country's pay is the desired salary (`preferences.desired_salary`) and counts in
@@ -104,13 +104,11 @@ def _home_pay(profile: dict, questions: QuestionSet) -> GroupCompleteness:
     """The home country's pay, when its set asks it (required there: you apply in the country you
     live in), answered by the desired salary it is stored as. Counted in `preferences`: see the
     module's docstring."""
-    required = [
-        f
-        for country in questions.countries
-        if country.home
-        for f in form_questions.required_fields(country.answers)
-        if f.key == "expected_pay"
-    ]
+    country = next((c for c in questions.countries if c.home), None)
+    if country is None:
+        return GroupCompleteness(answered=0, answerable=0)
+    answers = form_questions.required_fields(country.answers)
+    required = [f for f in answers if f.key == "expected_pay"]
     pay = _values(profile, "preferences").get("desired_salary")
     return GroupCompleteness(
         answered=sum(1 for f in required if _answered(f, pay)), answerable=len(required)
