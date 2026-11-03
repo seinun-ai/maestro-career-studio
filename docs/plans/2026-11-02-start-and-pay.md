@@ -94,9 +94,13 @@ FieldDef.askedBy?: string; FieldDef.legacy?: string; CountryQuestions.home?: boo
 
 ```python
 # services/autofill_profile.py
-def pay_for(profile: Any, market: str | None, home: str) -> str | None:
+def pay_for(profile: Any, market: str | None, home: str | None) -> str | None:
     """The pay a form in `market` gets: the home's `desired_salary`, another market's own `expected_pay`, or None for a
-    market with none. No market (a job whose country can't be told): `desired_salary`."""
+    market with none. No market (a job whose country can't be told, or one no market covers): `desired_salary`.
+    `home` is `chosen_home(session)`: None when unchosen, which reads as today (a market's own, else the one figure)."""
+
+def chosen_home(session: Session | None = None) -> str | None:   # the stored home when chosen, else None
+    """Built in Task 3 (89743143). Every pay reader passes this, never the stored home (Decision 7)."""
 ```
 
 ```python
