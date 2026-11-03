@@ -119,16 +119,15 @@ def test_the_country_answers_tile_asks_one_set_per_country_in_its_own_words():
 
 def test_the_home_set_asks_its_pay_as_the_desired_salary():
     """Where you live (the served set's `home`), the country's pay is `preferences.desired_salary`, read and written
-    there, the one place the server keeps it. A country is done once its permits and its own required answers are;
-    Setup's permit step reads the permits alone (Decision 8 of docs/plans/2026-11-02-start-and-pay.md)."""
+    there, the one place the server keeps it. A country is done once its permits and its own required answers are,
+    and counted as one set; Setup's permit step reads the permits alone (Decision 8 of
+    docs/plans/2026-11-02-start-and-pay.md). The behaviour is profile-view.test.mjs's; these pin who does it."""
     tile = _src("components/profile/work-permits.tsx")
-    assert "values={countryAnswerEntry(profile, country)}" in tile
+    for symbol in ("countryAnswerEntry(profile, country)", "countryDone(", "countrySetCount(", "openAnswersWords("):
+        assert symbol in tile, symbol
     options = _src("lib/autofill-options.ts")
-    assert "const pay = country.home ? groupValues(profile, \"preferences\")[HOME_PAY] : undefined;" in options
-    assert "if (country.home && key === EXPECTED_PAY) {" in options
-    assert "const done = countryAnswered(profile, questionSet, market);" in tile
-    assert "const payOpen = !done && permitAnswered(profile, questionSet, market);" in tile
-    assert '? "expected pay not given"' in tile
+    for symbol in ("export function countryAnswerEntry(", "export function withCountryAnswer(", "HOME_PAY"):
+        assert symbol in options, symbol
 
 
 def test_country_answers_asks_citizenship_first_and_shows_what_it_settles():
@@ -313,14 +312,11 @@ def test_next_up_asks_the_home_pay_after_its_permits_and_counts_older_answers():
     """After each country's open permits, its own required answers (the home's pay, which Setup never asks), read
     and written where its list keeps it, through the Country answers helpers. An older answer under a field's
     `legacy` key (notice in words) counts wherever the readers count, as setup readiness counts it."""
-    options = _src("lib/autofill-options.ts")
-    assert 'for (const field of countryAnswersOpen(profile, questionSet, market)) out.push({ kind: "answer", market, field });' in options
-    assert "if (item.kind === \"answer\") return withCountryAnswer(profile, countryKey(questionSet, item.market), key, value);" in options
+    missing = _between(_src("lib/autofill-options.ts"), "export function missingAnswers(", "\n}\n")
+    assert 'kind: "own"' in missing and "countryAnswersOpen(" in missing and "answeredIn(" in missing
     nxt = _src("components/profile/next-up.tsx")
-    assert "const raw = missingValue(profile, questionSet, current);" in nxt
-    assert "update(SURFACE, (profileNow) => withMissingAnswer(profileNow, questionSet, current, value));" in nxt
-    assert "required.filter((field) => answeredIn(field, values))" in options
-    assert "!answeredIn(field, values))" in _src("components/profile/start-and-pay.tsx")
+    assert "missingValue(" in nxt and "withMissingAnswer(" in nxt
+    assert "answeredIn(" in _src("components/profile/start-and-pay.tsx")
 
 
 def test_next_up_opens_where_you_apply_first_while_no_country_is_chosen():

@@ -14,6 +14,11 @@ import type {
 
 export type SetupStepId = "model" | "resume" | "where" | "answers";
 
+/** The setup-status group whose Profile section asks the pay of where you live (`autofill.home_pay`, counted
+ *  beside the groups): Country answers, `work_auth`. Profile's ring holds that section open on it, and the setup
+ *  card opens it to ask the pay. */
+export const HOME_PAY_GROUP = "work_auth";
+
 export const SETUP_STEPS: readonly { id: SetupStepId; title: string; time: string }[] = [
   { id: "model", title: "AI model", time: "1 minute" },
   { id: "resume", title: "Your resume", time: "2 minutes" },

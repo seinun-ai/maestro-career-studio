@@ -107,21 +107,26 @@ def _group(profile: dict, key: str, fields: list[FormField]) -> GroupCompletenes
 
 
 def _home_pay(profile: dict, questions: QuestionSet) -> GroupCompleteness:
-    """The home country's pay, when its set asks it (required there: you apply in the country you
-    live in), answered by the figure a form there gets (`autofill_profile.pay_for`: the desired
-    salary it is stored as). The home is the country the served set marks: `questions` was resolved
-    from the same market setting, and marks one only once countries are chosen and you apply in it,
-    so it is the chosen home and nothing else is read for it. 0 of 0 with no such set. Counted on
-    its own: see the module's docstring."""
+    """The home country's required answers of its own, when its set asks them (you apply in the
+    country you live in): today its pay alone (`test_form_questions.py` pins it), as Profile's
+    Country answers counts them. The pay is answered by the figure a form there gets
+    (`autofill_profile.pay_for`: the desired salary it is stored as), any other by the home's own
+    entry. The home is the country the served set marks: `questions` was resolved from the same
+    market setting, and marks one only once countries are chosen and you apply in it, so it is the
+    chosen home and nothing else is read for it. 0 of 0 with no such set. Counted on its own: see
+    the module's docstring."""
     country = next((c for c in questions.countries if c.home), None)
     if country is None:
         return GroupCompleteness(answered=0, answerable=0)
-    answers = form_questions.required_fields(country.answers)
-    required = [f for f in answers if f.key == autofill_profile.EXPECTED_PAY]
+    required = form_questions.required_fields(country.answers)
+    own = _values(_values(profile, autofill_profile.ANSWERS_BY_COUNTRY), country.market)
     pay = autofill_profile.pay_for(profile, country.market, country.market)
-    return GroupCompleteness(
-        answered=sum(1 for f in required if _answered(f, pay)), answerable=len(required)
-    )
+
+    def given(field: FormField):
+        return pay if field.key == autofill_profile.EXPECTED_PAY else own.get(field.key)
+
+    answered = sum(1 for f in required if _answered(f, given(f)))
+    return GroupCompleteness(answered=answered, answerable=len(required))
 
 
 def _work_permits(profile: dict, questions: QuestionSet) -> dict[str, GroupCompleteness]:

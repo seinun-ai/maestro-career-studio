@@ -560,4 +560,8 @@ test("only the home's pay missing: the setup card names it and opens Country ans
   assert.deepEqual(card.action, { kind: "navigate", href: "/profile#autofill-work_auth" });
   // Setup never asks pay (Decision 8): its answers step reads the work-permit counts alone.
   assert.equal(stepsDone(status, servedQuestions("DE", ["DE"])).answers, true);
+  // Asked right after the work permits, as Next up asks it: before a Start and pay answer still open.
+  const later = { ...autofill, groups: { ...autofill.groups, preferences: count(3, 4) } };
+  const first = buildSetupSteps({ ...STATUS, autofill: later }, "/applications").find((s) => s.id === "autofill");
+  assert.equal(first.detail, "96% done. Expected pay is missing.");
 });

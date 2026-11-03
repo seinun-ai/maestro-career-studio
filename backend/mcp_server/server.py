@@ -902,8 +902,8 @@ def get_setup_status() -> Any:
     done and detail, form-answer readiness with autofill.chosen, false while the user has
     not chosen where they apply, so no country's questions count, and autofill.home_pay,
     the pay of the country they live in, counted beside the groups and saved as
-    preferences.desired_salary; suggested bases, PDF engines). The AI key, the writer and the default resume design are set by the user
-    in the app and are never a next step."""
+    preferences.desired_salary; suggested bases, PDF engines). The AI key, the writer and
+    the default resume design are set by the user in the app and are never a next step."""
     status = _client.get_setup_status()
     return {
         "ai_key": bool((status.get("model_key") or {}).get("done")),

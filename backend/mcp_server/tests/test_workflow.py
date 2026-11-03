@@ -1194,6 +1194,8 @@ def test_the_form_answers_step_names_citizenship():
     step = workflow.setup_next_step(_setup(import_resumes=True, bases=1))
     assert step["step"] == "form_answers"
     assert "citizenship" in step["says"] and "each country the user applies in" in step["says"]
+    # The home pay counts too (`autofill.home_pay`), and an agent saves it.
+    assert "the expected pay where they live" in step["says"]
 
 
 def test_form_answers_are_not_done_while_no_country_is_chosen():

@@ -780,8 +780,9 @@ _SETUP_STEPS: tuple[tuple[str, str], ...] = (
                     "user targets; the shipped demo resume does not count. Imported bullets start "
                     "as drafts, and a base resume takes only the ones the user approved."),
     ("form_answers", "Save the answers application forms ask for: contact, address, "
-                     "citizenship, and work permits for each country the user applies in. The "
-                     "diversity answers are the user's, in the app."),
+                     "citizenship, work permits for each country the user applies in, and the "
+                     "expected pay where they live. The diversity answers are the user's, in the "
+                     "app."),
     ("job_preferences", "Save the jobs the user wants: roles, places, work mode and minimum pay."),
     ("persona", "Save the user's persona: a few sentences in their own words that every "
                 "writing prompt reads for tone."),

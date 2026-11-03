@@ -652,6 +652,17 @@ def test_home_pay_is_the_home_sets_and_required():
     assert "desired_salary" not in [f.key for f in _group_of(qs, "preferences").fields]
 
 
+@pytest.mark.parametrize("home", markets.keys())
+def test_the_one_required_own_answer_is_the_homes_pay(home):
+    """Wherever you live and apply, the only required answer of a country's own is the home's pay:
+    every other country's own answers are optional. Setup readiness counts the home set's required
+    answers (`home_pay`) and Profile every country's (`countryAnswersOpen`), and they agree because
+    of this; a catalog change that makes another own answer required decides both again."""
+    qs = form_questions.resolve(home=home, apply_in=markets.keys(), chosen=True, profile=None)
+    required = {c.market: form_questions.required_keys(c.answers) for c in qs.countries}
+    assert required == {m: (["expected_pay"] if m == home else []) for m in markets.keys()}
+
+
 def test_desired_salary_stays_in_start_and_pay_while_unchosen_or_home_not_applied():
     """Unchosen it is the one figure, as today; a home you do not apply in has no set, and the figure
     is read only for a job whose country can't be told, so it stays, optional, saying so."""

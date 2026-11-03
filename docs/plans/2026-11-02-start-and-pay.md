@@ -59,6 +59,9 @@ Added after the plan review (2026-11-02):
    (`frontend/lib/setup-flow.ts` `stepsDone`) needs the `work_auth` group complete and Setup never asks pay, so counting
    it there would make that step unfinishable. Only the Country answers tile's own done mark reads it as that country's.
    The design's "counts under Country answers" is amended to this.
+   Amended 2026-11-03 (Task 9 review): the home pay counts on its own (`autofill.home_pay`, beside the groups in
+   readiness and `done`), not inside `preferences`, so Profile's ring and its tiles agree: Country answers holds it
+   open. Setup's answers step still reads `groups.work_auth` and never asks it.
 9. **`notice_days` is coerced to an int.** Profile's, Next up's and Setup's number boxes send text (`field-control.tsx`
    `onChange`), so a whole-number string under `notice_days` is stored as an int, on save and on read.
 10. **The save fold compares with the stored text** (`_parse_stored(raw)`), never with `before`, the read view: the read

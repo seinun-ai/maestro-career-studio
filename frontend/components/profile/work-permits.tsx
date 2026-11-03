@@ -20,12 +20,14 @@ import {
   citizenshipEntries,
   citizenshipField,
   countryAnswerEntry,
-  countryAnswered,
+  countryAnswersOpen,
+  countryDone,
+  countrySetCount,
   derivedPermits,
   differsFromSettled,
+  openAnswersWords,
   permitAnswered,
   permitAnswers,
-  permitCount,
   permitEntry,
   shownPermitFields,
   withCitizenships,
@@ -49,7 +51,8 @@ function useCountryName(market: MarketSettingResponse): (code: string) => string
   return (code) => names.get(code.toUpperCase()) ?? code;
 }
 
-/** One country's permit answers in words, given or settled by your citizenship, never a guess. */
+/** One country's answers in words, given or settled by your citizenship, never a guess: how many of its set
+ *  (`countrySetCount`, as Next up counts them) until all are, then whether you can work there now. */
 function permitWords(answers: Record<string, unknown>, count: Count): string {
   if (count.answered === 0) return "not answered";
   if (count.answered < count.answerable) return `${count.answered} of ${count.answerable} answered`;
@@ -58,15 +61,14 @@ function permitWords(answers: Record<string, unknown>, count: Count): string {
 }
 
 /** One country's line, on the tile and at its heading: done once its permits and its own required answers are
- *  (`countryAnswered`), and worded by its permits, or by its pay once that is all that is open (where you live:
- *  the one required answer of its own a country's set serves). */
+ *  (`countryDone`), and worded by its whole set, or by its own open answers once those are all that is open
+ *  (where you live, its pay: `openAnswersWords`). */
 function countryLine(profile: Profile, questionSet: QuestionSet, market: string): { done: boolean; words: string } {
-  const done = countryAnswered(profile, questionSet, market);
-  const payOpen = !done && permitAnswered(profile, questionSet, market);
-  const words = payOpen
-    ? "expected pay not given"
-    : permitWords(permitAnswers(profile, questionSet, market), permitCount(profile, questionSet, market));
-  return { done, words };
+  const open = permitAnswered(profile, questionSet, market) ? countryAnswersOpen(profile, questionSet, market) : [];
+  const words = open.length
+    ? openAnswersWords(open)
+    : permitWords(permitAnswers(profile, questionSet, market), countrySetCount(profile, questionSet, market));
+  return { done: countryDone(profile, questionSet, market), words };
 }
 
 /** Done or still open: a check, or an empty ring. */

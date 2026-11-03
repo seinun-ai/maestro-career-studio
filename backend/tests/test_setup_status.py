@@ -800,6 +800,32 @@ def test_an_owner_shaped_profile_moves_only_the_home_pay_count(
     assert no_pay["readiness"] < paid["readiness"] < 1.0
 
 
+def test_home_pay_counts_every_required_answer_of_the_home_set(client, db_session, tmp_path, monkeypatch):
+    """`home_pay` counts the home set's required answers of its own, as Profile's Country answers
+    counts them (`countryAnswersOpen`): today the pay alone (test_form_questions.py pins it), and any
+    other the set requires besides, read from the home's own entry."""
+    from app.schemas.form_questions import Field
+    from app.services import autofill_profile, form_questions, setup_status
+
+    resolve = form_questions.resolve
+
+    def with_a_required_answer(**kwargs):
+        qs = resolve(**kwargs)
+        for country in qs.countries:
+            if country.home:
+                country.answers.append(Field(key="current_ctc", label="Current pay"))
+        return qs
+
+    monkeypatch.setattr(setup_status.form_questions, "resolve", with_a_required_answer)
+    _chose(db_session, tmp_path, monkeypatch, "US", ["US", "IN"])
+    autofill_profile.set_profile({"preferences": {"desired_salary": "$80,000"}}, db_session)
+    assert _status(client)["autofill"]["home_pay"] == {"answered": 1, "answerable": 2}
+    autofill_profile.set_profile({
+        "preferences": {"desired_salary": "$80,000"}, "answers_by_country": {"US": {"current_ctc": "$70,000"}},
+    }, db_session)
+    assert _status(client)["autofill"]["home_pay"] == {"answered": 2, "answerable": 2}
+
+
 def test_with_no_country_chosen_the_desired_salary_counts_once_in_preferences(
     client, db_session, tmp_path, monkeypatch
 ):

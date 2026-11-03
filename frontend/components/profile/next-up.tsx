@@ -16,8 +16,8 @@ import {
   answered,
   booleanAnswer,
   citizenshipEntries,
-  countryCount,
   countryQuestions,
+  countrySetCount,
   diversityCountries,
   fieldValue,
   groupCount,
@@ -236,13 +236,13 @@ export function NextUp({
 
   const field = current.field;
   // A country's question, a work permit or one of its own answers, is asked under its name and counted with
-  // that country's others; a contact or start-and-pay field with its group's.
-  const country = current.kind === "field" ? undefined : countryQuestions(questionSet, current.market);
-  const section = current.kind === "field" ? SECTION[current.group] : SECTION.country;
-  const count =
-    current.kind !== "field"
-      ? countryCount(profile, questionSet, current.market)
-      : groupCount(profile, questionSet, current.group);
+  // that country's set; a contact or start-and-pay field with its group's.
+  const inCountry = current.kind !== "field";
+  const country = inCountry ? countryQuestions(questionSet, current.market) : undefined;
+  const section = inCountry ? SECTION.country : SECTION[current.group];
+  const count = inCountry
+    ? countrySetCount(profile, questionSet, current.market)
+    : groupCount(profile, questionSet, current.group);
   const raw = missingValue(profile, questionSet, current);
   const answer = (value: string | boolean | undefined) =>
     update(SURFACE, (profileNow) => withMissingAnswer(profileNow, questionSet, current, value));
@@ -289,7 +289,7 @@ export function NextUp({
         <div className="max-w-sm">
           <FieldControl
             id={controlId}
-            group={current.kind === "field" ? current.group : `${current.kind}-${current.market}`}
+            group={inCountry ? `${current.kind}-${current.market}` : current.group}
             field={field}
             value={fieldValue(field, raw)}
             onChange={(value) => {

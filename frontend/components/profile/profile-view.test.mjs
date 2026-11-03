@@ -494,3 +494,12 @@ test("the ring holds Country answers open while only the home's pay is missing, 
   const paid = render({ ...US_HOME, status: { ...status, autofill: { ...autofill, home_pay: group(1, 1) } } });
   assert.match(paid, /aria-label="6 of 6 sections ready"/);
 });
+
+test("a country's line counts its permits and its own required answers, as Next up counts them", () => {
+  const given = { work_auth_by_country: { US: { status: "citizen", authorized_now: true } } };
+  const html = render({ ...US_HOME, profile: { personal: PERSONAL, ...given } });
+  assert.equal(tileLine(html, "United States")[1], "2 of 5 answered");
+  assert.match(countrySets(html)["United States"].legend, /2 of 5 answered<\/span><\/legend>$/);
+  assert.match(html, /Next up · Country answers · United States/);
+  assert.match(html, /aria-label="2 of 5 answered"/);
+});

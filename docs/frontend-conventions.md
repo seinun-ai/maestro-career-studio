@@ -1246,9 +1246,10 @@
   citizenship stops what it settled at once (`derivedPermits` only narrows the served `derived`), and a save
   that changes citizenship or a permit reads the questions again before it counts as saved. One rule says
   what is still open (`openPermitFields`: the count, Next up, Setup's done card); a country's line and heading
-  are done only once its own required answers are too (`countryAnswered`), worded "expected pay not given"
-  when that is all that is open, while Setup's permit step reads the permits alone. With no country chosen it
-  shows Citizen of and a link to Where you apply. Contact's state line follows where you live
+  are done only once its own required answers are too (`countryDone`), count its permits and those answers as
+  one set, as Next up does (`countrySetCount`), and word its open answers once they are all that is open
+  ("expected pay not given", `openAnswersWords`), while Setup's permit step reads the permits alone. With no
+  country chosen it shows Citizen of and a link to Where you apply. Contact's state line follows where you live
   (served named and counted for that home); Contact never shows citizenship. Every question, its words and
   whether it counts come from the served set (`GET /api/settings/autofill/questions`, read with
   `useFormQuestions` by Profile and Setup alike, the `lib/autofill-options.ts` helpers taking it as

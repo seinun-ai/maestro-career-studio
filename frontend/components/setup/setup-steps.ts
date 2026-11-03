@@ -1,4 +1,5 @@
 import { pdfOutputDetail } from "@/lib/pdf-output";
+import { HOME_PAY_GROUP } from "@/lib/setup-flow";
 import { anchorHref } from "@/lib/settings-tabs";
 import type { SetupStatus } from "@/lib/types";
 
@@ -54,10 +55,6 @@ const GROUP_MISSING: Record<string, string> = {
   home_pay: "Expected pay is missing.",
 };
 
-/** Where a count is answered on Profile when not under its own name: the pay of where you live, in Country
- *  answers (the `work_auth` anchor). */
-const ANSWERED_UNDER: Record<string, string> = { home_pay: "work_auth" };
-
 /** "1 base resume", "3 items": a count agrees with its noun. */
 function count(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
@@ -71,15 +68,17 @@ function count(n: number, one: string, many: string): string {
  * But a profile can sit below 100% with work auth complete and, say, one
  * preference unanswered; `blocking` is empty there, and aiming at the section
  * as a whole would make the user hunt for the gap. Fall back to the first group
- * that is actually short, then the pay of where you live (`home_pay`, counted
- * beside the groups).
+ * that is actually short, with the pay of where you live (`home_pay`, counted
+ * beside the groups) right after the work permits, as Next up asks it.
  */
 function autofillTarget(autofill: SetupStatus["autofill"]): string | null {
   if (autofill.blocking.length) return autofill.blocking[0];
-  const counts = autofill.home_pay ? { ...autofill.groups, home_pay: autofill.home_pay } : autofill.groups;
-  const short = Object.entries(counts).find(
-    ([, g]) => g.answered < g.answerable,
-  );
+  const counts: [string, { answered: number; answerable: number }][] = [];
+  for (const [key, group] of Object.entries(autofill.groups)) {
+    counts.push([key, group]);
+    if (key === HOME_PAY_GROUP && autofill.home_pay) counts.push(["home_pay", autofill.home_pay]);
+  }
+  const short = counts.find(([, g]) => g.answered < g.answerable);
   return short ? short[0] : null;
 }
 
@@ -142,7 +141,8 @@ export function buildSetupSteps(
       home: "/profile",
       // Aim at the group with the gap, not the section, so the user lands on
       // the actual unanswered question.
-      anchor: target ? `autofill-${ANSWERED_UNDER[target] ?? target}` : "autofill",
+      // The home's pay is asked in its group's section (Country answers).
+      anchor: target ? `autofill-${target === "home_pay" ? HOME_PAY_GROUP : target}` : "autofill",
     },
     {
       id: "job_preferences",

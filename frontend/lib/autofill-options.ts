@@ -314,7 +314,7 @@ export function withPermit(
 /** The country answer that is a country's pay, and the key the pay of the country you live in is kept under
  *  instead (`preferences.desired_salary`: backend autofill_profile `_with_home_pay` folds a home entry's pay
  *  into it on every save and read). */
-const EXPECTED_PAY = "expected_pay";
+export const EXPECTED_PAY = "expected_pay";
 const HOME_PAY = "desired_salary";
 
 /** A country as its own answers are read and written: its market key, and whether it is where you live. */
@@ -596,16 +596,23 @@ export function countryAnswersOpen(profile: Profile, questionSet: QuestionSet, m
   return country.answers.filter((field) => !field.optional && !answeredIn(field, entry));
 }
 
-/** Whether one country is done in Country answers: its work permits (`permitAnswered`) and its own required
- *  answers. Setup's permit step reads the permits alone: Setup never asks pay, and setup readiness counts the
- *  home's pay in `preferences` (Decision 8 of docs/plans/2026-11-02-start-and-pay.md). */
-export function countryAnswered(profile: Profile, questionSet: QuestionSet, market: string): boolean {
+/** Whether one country's set is done in Country answers: its work permits (`permitAnswered`) and its own
+ *  required answers. Setup status counts the home's pay on its own (`home_pay`, beside the groups), and
+ *  Profile's ring holds Country answers open on it; Setup's permit step reads the permits alone, since Setup
+ *  never asks pay (Decision 8 of docs/plans/2026-11-02-start-and-pay.md). */
+export function countryDone(profile: Profile, questionSet: QuestionSet, market: string): boolean {
   return permitAnswered(profile, questionSet, market) && countryAnswersOpen(profile, questionSet, market).length === 0;
 }
 
-/** How many of one country's required questions are answered: its work permits, then its own required answers.
- *  What Next up counts while it asks that country. */
-export function countryCount(profile: Profile, questionSet: QuestionSet, market: string): Count {
+/** Open answers of a country's own in words: its pay by name, else how many. */
+export function openAnswersWords(open: readonly FieldDef[]): string {
+  if (open.length === 1 && open[0].key === EXPECTED_PAY) return "expected pay not given";
+  return `${open.length} ${open.length === 1 ? "answer" : "answers"} not given`;
+}
+
+/** How many of one country's set of required questions are answered: its work permits, then its own required
+ *  answers. What its line in Country answers and Next up count while they show that country. */
+export function countrySetCount(profile: Profile, questionSet: QuestionSet, market: string): Count {
   const permits = permitCount(profile, questionSet, market);
   const country = countryQuestions(questionSet, market);
   const own = country ? countOf(countryAnswerEntry(profile, country), country.answers) : { answered: 0, answerable: 0 };
@@ -685,22 +692,22 @@ export type MissingAnswer =
   | { kind: "where" }
   | { kind: "citizenship"; field: FieldDef }
   | { kind: "permit"; market: string; field: FieldDef }
-  | { kind: "answer"; market: string; field: FieldDef }
+  | { kind: "own"; market: string; field: FieldDef }
   | { kind: "field"; group: "personal" | "preferences"; field: FieldDef }
   | { kind: "diversity" };
 
 export function missingKey(item: MissingAnswer): string {
   if (item.kind === "where" || item.kind === "citizenship") return item.kind;
-  if (item.kind === "permit" || item.kind === "answer") return `${item.kind}:${item.market}:${item.field.key}`;
+  if (item.kind === "permit" || item.kind === "own") return `${item.kind}:${item.market}:${item.field.key}`;
   if (item.kind === "field") return `${item.group}:${item.field.key}`;
   return "diversity";
 }
 
 /** A missing answer Next up asks in a control of its own, in the list that stores it. */
-export type AnswerInPlace = Extract<MissingAnswer, { kind: "permit" | "answer" | "field" }>;
+export type AnswerInPlace = Extract<MissingAnswer, { kind: "permit" | "own" | "field" }>;
 
 /** A country by its market key, as its own answers are read: the served one, else the key alone. */
-function countryKey(questionSet: QuestionSet, market: string): CountryKey {
+function countryRef(questionSet: QuestionSet, market: string): CountryKey {
   return countryQuestions(questionSet, market) ?? { market };
 }
 
@@ -709,7 +716,7 @@ function countryKey(questionSet: QuestionSet, market: string): CountryKey {
 export function missingValue(profile: Profile, questionSet: QuestionSet, item: AnswerInPlace): unknown {
   const key = item.field.key;
   if (item.kind === "permit") return permitEntry(profile, item.market)[key];
-  if (item.kind === "answer") return countryAnswerEntry(profile, countryKey(questionSet, item.market))[key];
+  if (item.kind === "own") return countryAnswerEntry(profile, countryRef(questionSet, item.market))[key];
   return groupValues(profile, item.group)[key];
 }
 
@@ -723,7 +730,7 @@ export function withMissingAnswer(
 ): Profile {
   const key = item.field.key;
   if (item.kind === "permit") return withPermit(profile, questionSet, item.market, key, value);
-  if (item.kind === "answer") return withCountryAnswer(profile, countryKey(questionSet, item.market), key, value);
+  if (item.kind === "own") return withCountryAnswer(profile, countryRef(questionSet, item.market), key, value);
   return withField(profile, questionSet, item.group, key, value);
 }
 
@@ -751,7 +758,7 @@ export function missingAnswers(
   }
   for (const market of permitMarkets(questionSet)) {
     for (const field of openPermitFields(profile, questionSet, market)) out.push({ kind: "permit", market, field });
-    for (const field of countryAnswersOpen(profile, questionSet, market)) out.push({ kind: "answer", market, field });
+    for (const field of countryAnswersOpen(profile, questionSet, market)) out.push({ kind: "own", market, field });
   }
   for (const group of ["personal", "preferences"] as const) {
     const values = groupValues(profile, group);
