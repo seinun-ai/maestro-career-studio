@@ -341,7 +341,9 @@ def test_non_eeo_market_can_reach_full_autofill_readiness():
     give. Switching market must change the DENOMINATOR, not just hide the form.
 
     Every answer but the diversity set is given, for both countries: work-permit answers are per
-    country, so this profile is its own and not whatever an earlier test left in the settings.
+    country, so this profile is its own and not whatever an earlier test left in the settings. So is
+    pay: the move to India pins the US figure to the US (`autofill_profile.pin_home_pay`), and India's
+    own becomes the home pay.
     """
     from app.services import form_questions
 
@@ -354,6 +356,7 @@ def test_non_eeo_market_can_reach_full_autofill_readiness():
         "personal": {**{key: "x" for key in required["personal"]}, "citizenships": ["FR"]},
         "preferences": {key: "x" for key in required["preferences"]},
         "work_auth_by_country": {"US": work_auth, "IN": work_auth},
+        "answers_by_country": {"IN": {"expected_pay": "x"}},
     }})
     try:
         client.put("/api/settings/market", json={"value": {"market": "US"}})
@@ -375,6 +378,8 @@ def test_non_eeo_market_can_reach_full_autofill_readiness():
         had = before.get("work_auth_by_country") or {}
         restore = {k: v for k, v in before.items() if k not in ("work_auth", "work_auth_market")}
         restore["work_auth_by_country"] = {**had, "US": had.get("US"), "IN": had.get("IN")}
+        pay = before.get("answers_by_country") or {}
+        restore["answers_by_country"] = {**pay, "US": pay.get("US"), "IN": pay.get("IN")}
         client.put("/api/settings/autofill", json={"value": restore})
 
 

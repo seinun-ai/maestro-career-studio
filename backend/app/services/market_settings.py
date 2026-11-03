@@ -87,18 +87,22 @@ def mark_answered_installs_chosen(session: Session) -> bool:
 def set_market(setting: MarketSetting, session: Session | None = None) -> MarketSetting:
     """Store where you live and apply, marked `chosen`: every caller is the user's save (the PUT) or an
     agent's (`patch_place`). A move of `home` first pins a legacy one-set work-permit answer to the
-    home it has been read as (`autofill_profile.pin_legacy_work_auth`), in the same session. The pin
-    first, because on its own it changes no read: a refusal or a failure before the move lands leaves
-    both settings meaning what they meant."""
+    home it has been read as (`autofill_profile.pin_legacy_work_auth`), and, when the stored home
+    was chosen, its pay to it (`autofill_profile.pin_home_pay`; unchosen, the one figure is the
+    first home's to adopt), in the same session. The pins first, because on their own they change
+    no read: a refusal or a failure before the move lands leaves both settings meaning what they
+    meant."""
     from app.db import SessionLocal
     from app.services import autofill_profile
 
     owns_session = session is None
     session = session or SessionLocal()
     try:
-        before = peek_market(session).home
-        if setting.home != before:
-            autofill_profile.pin_legacy_work_auth(before, session)
+        before = peek_market(session)
+        if setting.home != before.home:
+            autofill_profile.pin_legacy_work_auth(before.home, session)
+            if before.chosen:
+                autofill_profile.pin_home_pay(before.home, session)
         return MARKET.set(setting.model_copy(update={"chosen": True}), session)
     finally:
         if owns_session:

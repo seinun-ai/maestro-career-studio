@@ -604,21 +604,22 @@ def _dutch_application(db_session) -> str:
 
 
 def test_without_a_job_an_agent_reads_every_countrys_answers_and_no_current_pay(client, mcp_tools, db_session):
-    """No job, no country to fold: the generic answers stay in their slots and every market's own answers
-    come under answers_by_country, through the same gate as the rest, so current pay (flat and India's) stays
-    behind the agreement permission. Citizenships read as country names."""
+    """No job, no country to fold: the generic answers stay in their slots and every other market's own
+    answers come under answers_by_country, through the same gate as the rest, so current pay (flat and
+    India's) stays behind the agreement permission. India is home, so its own pay is the home pay,
+    `desired_salary` (`autofill_profile._with_home_pay`). Citizenships read as country names."""
     _apply_in(db_session, "IN", "NL")
     client.put("/api/settings/autofill", json={"value": _COUNTRIES})
 
     profile = mcp_tools.get_autofill_profile()["profile"]
-    assert profile["answers_by_country"] == {"IN": {"expected_pay": "2400000"}, "NL": {"expected_pay": "4500"}}
-    assert profile["preferences"] == {"desired_salary": "90000"}
+    assert profile["answers_by_country"] == {"IN": {}, "NL": {"expected_pay": "4500"}}
+    assert profile["preferences"] == {"desired_salary": "2400000"}
     assert profile["personal"]["citizenships"] == ["France"]
     assert "1800000" not in json.dumps(profile) and "1500000" not in json.dumps(profile)
 
     _lets_the_companion_fill_agreements(db_session)
     profile = mcp_tools.get_autofill_profile()["profile"]
-    assert profile["answers_by_country"]["IN"] == {"current_ctc": "1800000", "expected_pay": "2400000"}
+    assert profile["answers_by_country"]["IN"] == {"current_ctc": "1800000"}
     assert profile["preferences"]["current_ctc"] == "1500000"
 
 

@@ -514,8 +514,10 @@ def test_the_knockout_scan_reads_a_citizenship(db_session):
 
 
 def test_the_knockout_salary_check_reads_the_generic_desired_salary(db_session):
-    """Pay stays out of the country fold there: `_salary_check` compares a yearly figure, and the Dutch
-    answer is a monthly one."""
+    """The check reads `desired_salary`, and for a Dutch home that is the Netherlands' own figure: with
+    both stored, the home's own wins (`autofill_profile._with_home_pay`). It is a monthly one, read as
+    written until the check learns each market's pay period (Task 7 of
+    docs/plans/2026-11-02-start-and-pay.md annualises it)."""
     from decimal import Decimal
 
     from app.services import knockout
@@ -527,7 +529,7 @@ def test_the_knockout_salary_check_reads_the_generic_desired_salary(db_session):
     job = _mk_job(db_session, country_code="NL", salary_max=Decimal(70000), salary_period="year",
                   salary_currency="EUR")
     salary = next(c for c in knockout.scan_for(db_session, job)["checks"] if c["kind"] == "salary")
-    assert "60" in salary["profile_value"] and "5,000" not in salary["profile_value"]
+    assert "5000" in salary["profile_value"] and "60" not in salary["profile_value"]
     assert salary["result"] == "pass"
 
 
