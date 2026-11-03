@@ -187,7 +187,7 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("How you come across", "Draft from my career history",
      ("Draft from my career history", "onClick={() => draftOnce(editRevision.current)}")),
     ("Start and pay", "Desired salary", (asked("preferences", "desired_salary", label="Desired salary"), _PREFERENCES)),
-    ("Start and pay", "Notice period", (asked("preferences", "notice_period", label="Notice period"), _PREFERENCES)),
+    ("Start and pay", "Notice period", (asked("preferences", "notice_days", label="Notice period"), _PREFERENCES)),
     ("Start and pay", "Earliest start date", (asked("preferences", "earliest_start_date", label="Earliest start date"), _PREFERENCES)),
     ("Start and pay", "Willing to relocate?", (asked("preferences", "willing_to_relocate", label="Willing to relocate?"), _PREFERENCES)),
     ("Start and pay", "How did you hear about the job?",

@@ -195,7 +195,8 @@
               "value": "no",
               "label": "No"
             }
-          ]
+          ],
+          "askedBy": "Asked by forms in the United States."
         },
         {
           "key": "previously_employed_here",
@@ -230,7 +231,8 @@
               "label": "No"
             }
           ],
-          "hint": "Such as a non-compete or non-solicit agreement."
+          "hint": "Such as a non-compete or non-solicit agreement.",
+          "askedBy": "Asked by forms in the United States."
         }
       ]
     },
@@ -240,12 +242,16 @@
       "fields": [
         {
           "key": "desired_salary",
-          "label": "Desired salary"
+          "label": "Desired salary",
+          "optional": true,
+          "hint": "For jobs whose country Maestro can't tell."
         },
         {
-          "key": "notice_period",
+          "key": "notice_days",
           "label": "Notice period",
-          "hint": "How long before you can start."
+          "type": "number",
+          "hint": "0 if you can start now. Forms that offer fixed choices get the next one up.",
+          "legacy": "notice_period"
         },
         {
           "key": "earliest_start_date",

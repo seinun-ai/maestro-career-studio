@@ -225,7 +225,7 @@ test("diversity names none of India, the UAE, Germany and the Netherlands, which
 test("next up's diversity card names the served countries with a checked set", () => {
   const permits = { status: "citizen", authorized_now: true, sponsorship_now: false, sponsorship_future: false };
   const preferences = {
-    desired_salary: "x", notice_period: "x", earliest_start_date: "2026-11-01", willing_to_relocate: false, how_heard: "x",
+    desired_salary: "x", notice_days: 14, earliest_start_date: "2026-11-01", willing_to_relocate: false, how_heard: "x",
   };
   const html = render({
     applyIn: ["US"],

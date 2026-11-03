@@ -5,7 +5,13 @@ Readiness counts the form-question catalog's required questions
 (services/form_questions, resolved for the stored market), never a list of its
 own. Rules:
 - "Complete" means ANSWERABLE, not filled: "decline" answers count.
-- Optional fields never count, so a country's own answers (all optional) don't.
+- Optional fields never count, so a country's own answers don't, but the home's pay.
+- A field with a `legacy` key (notice in days, `notice_period`) is answered by its own value or
+  the older key's text, until it is given: notice written in words before still counts.
+- The home country's pay is the desired salary (`preferences.desired_salary`) and counts in
+  `preferences`, as it always did, though Country answers asks it once you apply in the country you
+  live in. Setup's answers step needs the `work_auth` group complete and never asks pay, so
+  counting it there would leave that step unfinishable.
 - Work-permit answers count once per country you apply in (`work_auth_by_country`,
   keyed by market); no country chosen asks none.
 - They are the knockout answers the extension reports missing_source on, so they
@@ -69,15 +75,46 @@ def _answered(field: FormField, value) -> bool:
     return True  # booleans (False is an answer), numbers
 
 
+def _given(field: FormField, values: dict) -> bool:
+    """Whether the stored group `values` answers `field`: its own value does, or, until that is
+    given, the text under its `legacy` key (a notice period written in words, from before notice
+    was days)."""
+    if _answered(field, values.get(field.key)):
+        return True
+    legacy = values.get(field.legacy) if field.legacy else None
+    return isinstance(legacy, str) and bool(legacy.strip())
+
+
+def _values(profile: dict, key: str) -> dict:
+    """The stored group `key`, or {} when it is missing or malformed."""
+    values = profile.get(key)
+    return values if isinstance(values, dict) else {}
+
+
 def _group(profile: dict, key: str, fields: list[FormField]) -> GroupCompleteness:
     """How many of `fields`' required ones (`form_questions.required_fields`) the stored group `key`
     answers."""
-    values = profile.get(key) or {}
-    if not isinstance(values, dict):
-        values = {}
+    values = _values(profile, key)
     required = form_questions.required_fields(fields)
-    answered = sum(1 for f in required if _answered(f, values.get(f.key)))
+    answered = sum(1 for f in required if _given(f, values))
     return GroupCompleteness(answered=answered, answerable=len(required))
+
+
+def _home_pay(profile: dict, questions: QuestionSet) -> GroupCompleteness:
+    """The home country's pay, when its set asks it (required there: you apply in the country you
+    live in), answered by the desired salary it is stored as. Counted in `preferences`: see the
+    module's docstring."""
+    required = [
+        f
+        for country in questions.countries
+        if country.home
+        for f in form_questions.required_fields(country.answers)
+        if f.key == "expected_pay"
+    ]
+    pay = _values(profile, "preferences").get("desired_salary")
+    return GroupCompleteness(
+        answered=sum(1 for f in required if _answered(f, pay)), answerable=len(required)
+    )
 
 
 def _work_permits(profile: dict, questions: QuestionSet) -> dict[str, GroupCompleteness]:
@@ -118,7 +155,9 @@ def _autofill_step(db: Session) -> AutofillStep:
     groups = {
         "personal": _group(profile, "personal", contact),
         "work_auth": _total([citizenship, *by_country.values()]),
-        "preferences": _group(profile, "preferences", fields["preferences"]),
+        "preferences": _total(
+            [_group(profile, "preferences", fields["preferences"]), _home_pay(profile, questions)]
+        ),
     }
     # The diversity group is the US question set — veteran status, CC-305
     # disability, and the EEO-1's two-part hispanic_latino ethnicity split.

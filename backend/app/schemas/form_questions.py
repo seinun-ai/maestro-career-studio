@@ -44,6 +44,13 @@ class Field(BaseModel):
     # The address line named and counted by where you live (markets.yaml): the state line
     # (`state_label`, `asks_state`) or the postal code (`asks_postcode`).
     byHome: Literal["state", "postcode"] | None = None
+    # An older stored key whose text still answers this field until it is given (`notice_days`'s
+    # `notice_period`, from when notice was free text): readiness counts it answered either way.
+    legacy: str | None = None
+    # Set by `resolve` on a pack's field, never in the catalog: the countries you apply in whose
+    # forms ask it, as a sentence ("Asked by forms in India."), so Profile and agents read the same
+    # words.
+    askedBy: str | None = None
     # Catalog only, never served:
     # - shown only while a country you apply in names this pack (markets.yaml `packs`);
     pack: str | None = PydanticField(default=None, exclude=True)
@@ -125,10 +132,12 @@ class CountryQuestions(BaseModel):
     """One apply-in country's questions: its work permits (stored in
     `work_auth_by_country[market]`), its own answers (`answers_by_country[market]`), and the permit
     answers a citizenship settles there (`services/autofill_derive.derived_in_effect`), keyed like
-    the permits."""
+    the permits. The country you live in is `home`: its pay is `preferences.desired_salary`, and
+    it is required there."""
 
     market: str  # "DE"
     label: str  # "Germany"
+    home: bool = False
     permits: list[Field]
     answers: list[Field]
     derived: dict[str, DerivedAnswer] = {}

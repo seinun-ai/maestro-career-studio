@@ -265,12 +265,29 @@ def test_catalog_only_attributes_are_never_served():
 
 
 # The fields the country questions show only where a pack is named, on purpose: the US screening
-# pair, which today's set asked everyone, and India's basics, which are new.
+# pair, which today's set asked everyone, and India's basics, which are new. Each says who asks it.
 _US_SCREENING = {"over_18", "non_compete"}
+_US_ASKS = "Asked by forms in the United States."
 _INDIA = {
     "eligibility": ["experience_years", "experience_months"],
-    "preferences": ["notice_days", "serving_notice", "last_working_day", "preferred_locations"],
+    "preferences": ["serving_notice", "last_working_day", "preferred_locations"],
 }
+
+# Start and pay (docs/plans/2026-11-02-start-and-pay.md): notice is one answer in days for everyone,
+# read from today's text until given, in today's place; and the desired salary is the home country's
+# pay, asked in its set wherever the home is applied in, as it is in every golden here.
+_NOTICE_DAYS = {
+    "key": "notice_days", "label": "Notice period",
+    "hint": "0 if you can start now. Forms that offer fixed choices get the next one up.",
+    "type": "number", "legacy": "notice_period",
+}
+
+
+def _start_and_pay(field: dict) -> dict | None:
+    """Today's field as Start and pay asks it now, for a home that is applied in."""
+    if field["key"] == "notice_period":
+        return _NOTICE_DAYS
+    return None if field["key"] == "desired_salary" else field
 
 
 # The one question the country questions add to everyone's set (Task 3.6), counted (Decision 6):
@@ -283,11 +300,15 @@ def _keys(fields) -> list[str]:
 
 
 def _today_fields(group: dict) -> list[dict]:
-    """A fixture group's fields through today's schema (`_field`), citizenship added after the
-    country."""
+    """A fixture group's fields through today's schema (`_field`) for a US home applying there:
+    citizenship added after the country, the US screening pair saying who asks it, and Start and
+    pay's changes."""
     fields = []
     for raw in group["fields"]:
-        fields.append(_field(raw))
+        field = _start_and_pay(_field(raw))
+        if field is None:
+            continue
+        fields.append({**field, "askedBy": _US_ASKS} if field["key"] in _US_SCREENING else field)
         if raw["key"] == "country":
             fields.append(_CITIZENSHIP)
     return fields
@@ -306,9 +327,10 @@ def _served_field(field: Field, *leave_out: str) -> dict:
 
 
 def _today_groups(home: str) -> list[dict]:
-    """groupFields(key, home) for every group, as autofill-options.ts did it, with this phase's
-    changes: the US screening pair only for a US home (each home applies in itself here), the
-    address lines' `byHome` named, no postal code counted for a UAE home, and citizenship."""
+    """groupFields(key, home) for every group, as autofill-options.ts did it, with the changes made
+    since: the US screening pair only for a US home (each home applies in itself here), saying who
+    asks it, the address lines' `byHome` named, no postal code counted for a UAE home, citizenship,
+    and Start and pay's."""
     m = markets.get(home)
     out = []
     for group in _TODAY["groups"]:
@@ -316,7 +338,11 @@ def _today_groups(home: str) -> list[dict]:
         for field in group["fields"]:
             if field["key"] in _US_SCREENING and home != "US":
                 continue
-            field = _field(field)
+            field = _start_and_pay(_field(field))
+            if field is None:
+                continue
+            if field["key"] in _US_SCREENING:
+                field = {**field, "askedBy": _US_ASKS}
             if field["key"] == "state":
                 field = {**field, "byHome": "state", "label": m["state_label"] or field["label"]}
                 field.update({"optional": True} if m["asks_state"] is False else {})
@@ -342,7 +368,8 @@ def _without_india(group, apply_in: list[str]) -> dict:
 
 def test_a_chosen_us_user_sees_todays_set():
     """Labels, options, hints and counted keys as the Phase 1 fixture; only the new attributes
-    differ (byHome's value, the expiry's `unless`), and citizenship is asked."""
+    differ (byHome's value, the expiry's `unless`, who asks the US screening pair), citizenship is
+    asked, and Start and pay's changes: notice in days, the desired salary asked in the US's set."""
     qs = form_questions.resolve(home="US", apply_in=["US"], chosen=True, profile=None)
     assert [(g.key, g.title) for g in qs.groups] == [(g["key"], g["title"]) for g in _TODAY["groups"]]
     got = [[_served_field(f, "byHome") for f in g.fields] for g in qs.groups]
@@ -353,6 +380,7 @@ def test_a_chosen_us_user_sees_todays_set():
         _field(f) for f in _TODAY["permits"]["us_visa"]
     ]
     assert _keys(us.answers) == ["expected_pay"] and us.derived == {}
+    assert us.home is True and us.answers[0].optional is False
     assert qs.language_fields == []
 
 
@@ -366,8 +394,9 @@ def test_every_home_gets_todays_groups(home):
 
 
 def test_india_asks_its_basics_beside_the_questions_they_go_with():
-    """Sources 20-22: experience in years and months, notice in days, serving notice, the last
-    working day and preferred locations, all optional; only while India is applied in."""
+    """Sources 20-22: experience in years and months, serving notice, the last working day and
+    preferred locations, all optional and saying India asks them; only while India is applied in.
+    Notice in days is everyone's now."""
     def groups(apply_in):
         resolved = form_questions.resolve(home="DE", apply_in=apply_in, chosen=True, profile=None).groups
         return {g.key: g.fields for g in resolved}
@@ -375,12 +404,12 @@ def test_india_asks_its_basics_beside_the_questions_they_go_with():
     india = groups(["DE", "IN"])
     assert _keys(india["eligibility"]) == ["previously_employed_here", *_INDIA["eligibility"]]
     assert _keys(india["preferences"]) == [
-        "desired_salary", "notice_period", "notice_days", "serving_notice", "last_working_day",
+        "notice_days", "serving_notice", "last_working_day",
         "earliest_start_date", "willing_to_relocate", "how_heard", "preferred_locations",
     ]
     added = {f.key: f for key, keys in _INDIA.items() for f in india[key] if f.key in keys}
-    assert all(f.optional for f in added.values())
-    assert [added[k].type for k in ("experience_years", "experience_months", "notice_days")] == ["number"] * 3
+    assert all(f.optional and f.askedBy == "Asked by forms in India." for f in added.values())
+    assert [added[k].type for k in ("experience_years", "experience_months")] == ["number"] * 2
     assert added["serving_notice"].boolean is True
     # A yes/no is stored as `true` and `when` compares the raw value, so the date has no `when`.
     assert (added["last_working_day"].type, added["last_working_day"].when) == ("date", None)
@@ -597,3 +626,80 @@ def test_unchosen_is_the_same_set_wherever_you_live():
         for home in markets.keys()
     }
     assert all(s == sets["US"] for s in sets.values())
+
+
+# ----------------------------------------- Start and pay: home pay, notice in days, who asks a pack's
+
+
+def _group_of(qs, key: str):
+    """The served group `key`."""
+    return next(g for g in qs.groups if g.key == key)
+
+
+def _field_of(qs, group: str, key: str) -> Field:
+    """The served field `key` of the group `group`."""
+    return next(f for f in _group_of(qs, group).fields if f.key == key)
+
+
+def test_home_pay_is_the_home_sets_and_required():
+    """The home country's pay is the desired salary, asked in its set and counted; every other
+    country's is optional, and Start and pay no longer asks it (docs/plans/2026-11-02-start-and-pay.md)."""
+    qs = form_questions.resolve(home="US", apply_in=["US", "IN", "IE"], chosen=True, profile=None)
+    us, india, ireland = qs.countries
+    assert (us.home, india.home, ireland.home) == (True, False, False)
+    pay = {c.market: next(f for f in c.answers if f.key == "expected_pay") for c in qs.countries}
+    assert pay["US"].optional is False and pay["IN"].optional and pay["IE"].optional
+    assert "desired_salary" not in [f.key for f in _group_of(qs, "preferences").fields]
+
+
+def test_desired_salary_stays_in_start_and_pay_while_unchosen_or_home_not_applied():
+    """Unchosen it is the one figure, as today; a home you do not apply in has no set, and the figure
+    is read only for a job whose country can't be told, so it stays, optional, saying so."""
+    unchosen = form_questions.resolve(home="US", apply_in=[], chosen=False, profile=None)
+    assert _field_of(unchosen, "preferences", "desired_salary").optional is False
+    abroad = form_questions.resolve(home="US", apply_in=["IN"], chosen=True, profile=None)
+    field = _field_of(abroad, "preferences", "desired_salary")
+    assert field.optional and field.hint == "For jobs whose country Maestro can't tell."
+    assert abroad.countries[0].home is False
+
+
+def test_notice_is_one_answer_in_days_for_everyone():
+    """Counted, read from the old text until days are given (`legacy`), and no pack's."""
+    for qs in (form_questions.resolve(home="US", apply_in=[], chosen=False, profile=None),
+               form_questions.resolve(home="IN", apply_in=["IN"], chosen=True, profile=None)):
+        keys = [f.key for f in _group_of(qs, "preferences").fields]
+        assert "notice_period" not in keys and keys.count("notice_days") == 1
+        days = _field_of(qs, "preferences", "notice_days")
+        assert days.optional is False and days.legacy == "notice_period" and days.askedBy is None
+        assert (days.label, days.type) == ("Notice period", "number")
+
+
+def test_pack_fields_say_who_asks():
+    """A pack's question names the countries you apply in whose forms ask it, in apply-in order;
+    a question everyone is asked, or one in a country's own set, names none."""
+    qs = form_questions.resolve(home="US", apply_in=["US", "IN", "DE", "NL"], chosen=True, profile=None)
+    assert _field_of(qs, "preferences", "serving_notice").askedBy == "Asked by forms in India."
+    assert _field_of(qs, "eligibility", "over_18").askedBy == "Asked by forms in the United States."
+    cefr = next(f for f in qs.language_fields if f.key == "cefr")
+    assert cefr.askedBy == "Asked by forms in Germany and the Netherlands."
+    assert _field_of(qs, "preferences", "willing_to_relocate").askedBy is None
+    assert all(f.askedBy is None for c in qs.countries for f in (*c.permits, *c.answers))
+
+
+def test_three_countries_are_named_in_a_list():
+    qs = form_questions.resolve(home="UK", apply_in=["NL", "UK", "DE", "AE"], chosen=True, profile=None)
+    assert _field_of(qs, "personal", "city").askedBy is None
+    cefr = next(f for f in qs.language_fields if f.key == "cefr")
+    assert cefr.askedBy == "Asked by forms in the Netherlands and Germany."
+    assert form_questions._joined(["the Netherlands", "Germany", "the United Arab Emirates"]) == (
+        "the Netherlands, Germany and the United Arab Emirates")
+
+
+def test_the_catalog_writes_no_asked_by_of_its_own():
+    """`askedBy` is the served sentence, composed for where you apply; the catalog never sets it."""
+    cat = form_questions.catalog()
+    fields = [f for g in cat.groups for f in g.fields] + [*cat.answers, *cat.language_fields] + [
+        f for wording in cat.permits.values() for f in wording
+    ]
+    assert all(f.askedBy is None for f in fields)
+    assert [f.key for f in fields if f.legacy] == ["notice_days"]

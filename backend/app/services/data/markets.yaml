@@ -40,10 +40,17 @@
 #   counted postal code);
 # - `pay`: how its forms word expected pay. Where its pay terms were checked the
 #   label says the basis and period; elsewhere it names only the currency.
+#   `period` (`year` or `month`) is what a figure there is per; the label may
+#   not say it, and a monthly figure must never be read as a yearly one.
+#
+# `in_text` is the name as a sentence uses it ("Asked by forms in the
+# Netherlands.", form_questions.resolve), declared only by the names that take
+# "the"; every other market's sentence reads its `label`.
 
 markets:
   - key: US
     label: United States
+    in_text: the United States
     currency: USD
     date_format: MDY
     # Verified: EEOC Standard Form 100 (OMB 3046-0007) — 7 categories, with
@@ -59,9 +66,11 @@ markets:
     asks_postcode: true
     pay:
       label: Expected salary (USD)
+      period: year
 
   - key: UK
     label: United Kingdom
+    in_text: the United Kingdom
     currency: GBP
     date_format: DMY
     # Verified: GSS/ONS harmonised standard (2021 Census, England & Wales) —
@@ -77,6 +86,7 @@ markets:
     asks_postcode: true
     pay:
       label: Expected salary (GBP)
+      period: year
 
   - key: CA
     label: Canada
@@ -91,6 +101,7 @@ markets:
     asks_postcode: true
     pay:
       label: Expected salary (CAD)
+      period: year
 
   - key: AU
     label: Australia
@@ -109,6 +120,7 @@ markets:
       # should I select for my SEEK profile"); ads use both "+ super" and
       # "package including super" (A15, A16, A18).
       label: Expected base salary, excluding super (AUD per year)
+      period: year
 
   - key: IE
     label: Ireland
@@ -123,6 +135,7 @@ markets:
     asks_postcode: true
     pay:
       label: Expected salary (EUR)
+      period: year
 
   - key: IN
     label: India
@@ -143,6 +156,7 @@ markets:
       # rows India 1a, 1b, 1e: Naukri's job-posting guide and form, PyjamaHR's
       # CTC fields), stored in rupees and converted to lakhs where a form asks.
       label: Expected CTC (₹ per year)
+      period: year
 
   - key: DE
     label: Germany
@@ -159,9 +173,11 @@ markets:
       # Sources 16: the Gehaltsvorstellung is gross annual (sources doc row
       # Europe 23: StepStone, JobTeaser and ingenieur.de agree).
       label: Expected gross annual salary (EUR)
+      period: year
 
   - key: NL
     label: Netherlands
+    in_text: the Netherlands
     currency: EUR
     date_format: DMY
     eeo_module: null          # not verified
@@ -176,9 +192,11 @@ markets:
       # IND (ind.nl "Required amounts income requirements") and Dutch job
       # boards both use monthly gross (sources doc rows Europe 25, 26).
       label: Expected gross monthly salary, excluding holiday allowance (EUR)
+      period: month
 
   - key: AE
     label: United Arab Emirates
+    in_text: the United Arab Emirates
     currency: AED
     date_format: DMY
     eeo_module: null          # not verified
@@ -199,3 +217,4 @@ markets:
       # 25-30; Decree-Law 33/2021 Art. 1 calls the total the "Wage").
       label: Expected total monthly salary (AED)
       hint: Basic pay plus allowances, per month.
+      period: month

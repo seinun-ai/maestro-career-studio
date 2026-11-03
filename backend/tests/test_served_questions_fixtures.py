@@ -33,9 +33,11 @@ class Scenario(NamedTuple):
 
 
 # The countries components/profile/profile-view.test.mjs and components/setup/setup-flow.test.mjs
-# render, and the country questions' cases (Task 3.5 of
-# docs/plans/2026-10-30-country-form-questions.md).
+# render, the country questions' cases (Task 3.5 of
+# docs/plans/2026-10-30-country-form-questions.md), and a US home applying in India and Ireland,
+# whose pay is asked in its own set (docs/plans/2026-11-02-start-and-pay.md).
 SCENARIOS: list[Scenario] = [
+    Scenario("US", ["US", "IN", "IE"]),
     Scenario("DE", ["DE"]),
     Scenario("DE", ["DE", "UK"]),
     Scenario("DE", ["DE", "UK", "US"]),

@@ -208,9 +208,11 @@
           "label": "Desired salary"
         },
         {
-          "key": "notice_period",
+          "key": "notice_days",
           "label": "Notice period",
-          "hint": "How long before you can start."
+          "type": "number",
+          "hint": "0 if you can start now. Forms that offer fixed choices get the next one up.",
+          "legacy": "notice_period"
         },
         {
           "key": "earliest_start_date",

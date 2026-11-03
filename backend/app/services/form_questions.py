@@ -7,6 +7,7 @@ server's write schema (`mcp_server/server.py`: `CountryAnswers`, `CefrLevel`) re
 and the app imports that server at startup, so a broken file fails the app's boot.
 """
 
+from collections.abc import Container
 from functools import cache
 from pathlib import Path
 from typing import Any
@@ -49,7 +50,7 @@ def _for_home(field: Field, home: str, chosen: bool) -> Field:
     return field
 
 
-def _shown(field: Field, packs: set[str] | list[str]) -> bool:
+def _shown(field: Field, packs: Container[str]) -> bool:
     """A field with no pack is asked everywhere; a pack's, only while `packs` names it."""
     return field.pack is None or field.pack in packs
 
@@ -177,11 +178,19 @@ def _permits(m: dict[str, Any]) -> list[Field]:
     ]
 
 
-def _answers(m: dict[str, Any]) -> list[Field]:
-    """A market's own answers (those of its packs), expected pay in its own words (`pay`)."""
+def _answers(m: dict[str, Any], home: bool) -> list[Field]:
+    """A market's own answers (those of its packs), expected pay in its own words (`pay`). The
+    home's pay is `preferences.desired_salary`, the figure readiness has always counted, so it is
+    required; every other country's stays optional."""
     pay = m["pay"]
     return [
-        f.model_copy(update={"label": pay["label"], "hint": pay["hint"] or f.hint})
+        f.model_copy(
+            update={
+                "label": pay["label"],
+                "hint": pay["hint"] or f.hint,
+                "optional": f.optional and not home,
+            }
+        )
         if f.key == "expected_pay"
         else f
         for f in catalog().answers
@@ -189,15 +198,16 @@ def _answers(m: dict[str, Any]) -> list[Field]:
     ]
 
 
-def _country(market: str, profile: Any) -> CountryQuestions:
+def _country(market: str, profile: Any, *, home: bool) -> CountryQuestions:
     from app.services import autofill_derive  # it reads this module: imported here, not above
 
     m = markets.get(market)
     return CountryQuestions(
         market=market,
         label=m["label"],
+        home=home,
         permits=_permits(m),
-        answers=_answers(m),
+        answers=_answers(m, home),
         derived=autofill_derive.derived_in_effect(profile, market),
     )
 
@@ -209,11 +219,15 @@ def resolve(*, home: str, apply_in: list[str], chosen: bool, profile: Any) -> Qu
     `apply_in` reads as `[home]`, the setting's own rule.
 
     - Facts about you (`groups`) are asked once: a pack's field while any apply-in country names
-      the pack, the address lines resolved for `home`.
+      the pack, saying whose forms ask it (`askedBy`), the address lines resolved for `home`.
     - Each apply-in country (`countries`, in order) gets its permits, its own answers, and the
       permit answers a citizenship in `profile` (the user's form answers, a read view; None for
       none) settles there, unless a given answer differs (`autofill_derive.derived_in_effect`).
-    - `language_fields` are the fields on each language that a country's pack asks (CEFR).
+      None of a country's own fields says who asks it: its set is under its name.
+    - The country you live in, when you apply in it, is marked `home`, and its pay is asked there,
+      required: it is the desired salary, so Start and pay no longer asks it (`_start_and_pay`).
+    - `language_fields` are the fields on each language that a country's pack asks (CEFR), saying
+      whose forms ask them.
 
     `chosen` and `profile` have no default, so a caller that forgets one fails rather than getting
     a country's set, or every country's with nothing derived.
@@ -221,24 +235,66 @@ def resolve(*, home: str, apply_in: list[str], chosen: bool, profile: Any) -> Qu
     pack, no country questions (a permit answer belongs to a country), no diversity set, and the
     state line is optional."""
     apply_in = (apply_in or [home]) if chosen else []
-    packs = {p for m in apply_in for p in markets.get(m)["packs"]}
+    asked_by = _asked_by(apply_in)
     return QuestionSet(
-        groups=_groups(home, chosen, packs),
-        countries=[_country(m, profile) for m in apply_in],
-        language_fields=[f for f in catalog().language_fields if _shown(f, packs)],
+        groups=_groups(home, chosen, apply_in, asked_by),
+        countries=[_country(m, profile, home=m == home) for m in apply_in],
+        language_fields=[
+            _marked(f, asked_by) for f in catalog().language_fields if _shown(f, asked_by)
+        ],
         offers_eeo=any(markets.offers_eeo(m) for m in apply_in),
         chosen=chosen,
     )
 
 
-def _groups(home: str, chosen: bool, packs: set[str]) -> list[Group]:
-    """The facts about you, each asked once: a pack's field while `packs` names it, the address
-    lines resolved for `home` (`_for_home`)."""
-    return [
-        Group(
-            key=g.key,
-            title=g.title,
-            fields=[_for_home(f, home, chosen) for f in g.fields if _shown(f, packs)],
-        )
-        for g in catalog().groups
-    ]
+def _groups(
+    home: str, chosen: bool, apply_in: list[str], asked_by: dict[str, str]
+) -> list[Group]:
+    """The facts about you, each asked once: a pack's field while a country you apply in names it
+    (`asked_by`), saying whose forms ask it, the address lines resolved for `home` (`_for_home`),
+    and the desired salary where Start and pay still asks it (`_start_and_pay`)."""
+    out = []
+    for g in catalog().groups:
+        shown = [_for_home(f, home, chosen) for f in g.fields if _shown(f, asked_by)]
+        asked = (_start_and_pay(f, home, chosen, apply_in) for f in shown)
+        fields = [_marked(f, asked_by) for f in asked if f]
+        out.append(Group(key=g.key, title=g.title, fields=fields))
+    return out
+
+
+_HOME_PAY = "desired_salary"
+_HOME_PAY_ABROAD_HINT = "For jobs whose country Maestro can't tell."
+
+
+def _start_and_pay(field: Field, home: str, chosen: bool, apply_in: list[str]) -> Field | None:
+    """The desired salary is the home country's pay. With no country chosen it is the one figure,
+    asked as always. Once the home is a country you apply in, that country's set asks it
+    (`_answers`), so Start and pay does not. A home you don't apply in has no set, and the figure is
+    read only for a job whose country can't be told: still asked here, optional, saying so."""
+    if field.key != _HOME_PAY or not chosen:
+        return field
+    if home in apply_in:
+        return None
+    return field.model_copy(update={"optional": True, "hint": _HOME_PAY_ABROAD_HINT})
+
+
+def _asked_by(apply_in: list[str]) -> dict[str, str]:
+    """Each pack a country you apply in names, with the sentence that says whose forms ask its
+    questions: those countries, in apply-in order, as a sentence names them (markets.yaml
+    `in_text`), so "the Netherlands" needs no article rule here or in the frontend."""
+    names: dict[str, list[str]] = {}
+    for market in apply_in:
+        m = markets.get(market)
+        for pack in m["packs"]:
+            names.setdefault(pack, []).append(m["in_text"])
+    return {pack: f"Asked by forms in {_joined(countries)}." for pack, countries in names.items()}
+
+
+def _joined(names: list[str]) -> str:
+    """Names as a list reads them: "A", "A and B", "A, B and C"."""
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _marked(field: Field, asked_by: dict[str, str]) -> Field:
+    """A pack's field with the sentence naming whose forms ask it; any other field as it is."""
+    return field.model_copy(update={"askedBy": asked_by[field.pack]}) if field.pack else field

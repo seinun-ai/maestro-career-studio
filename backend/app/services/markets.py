@@ -45,9 +45,13 @@ def _load() -> dict[str, dict[str, Any]]:
         key = str(entry.get("key") or "").strip().upper()
         if not key:
             continue
+        label = str(entry.get("label") or key)
         entries[key] = {
             "key": key,
-            "label": str(entry.get("label") or key),
+            "label": label,
+            # The name as a sentence uses it ("Asked by forms in the Netherlands."): declared by the
+            # names that take "the", the label for the rest.
+            "in_text": str(entry.get("in_text") or label),
             "currency": str(entry.get("currency") or "USD").strip().upper(),
             "date_format": str(entry.get("date_format") or "DMY").strip().upper(),
             "eeo_module": entry.get("eeo_module") or None,
@@ -60,7 +64,7 @@ def _load() -> dict[str, dict[str, Any]]:
             "packs": _packs(key, entry.get("packs")),
             "work_status": _text(entry.get("work_status")),
             "asks_postcode": entry.get("asks_postcode") is not False,
-            "pay": _pay(entry.get("pay")),
+            "pay": _pay(key, entry.get("pay")),
         }
     return entries
 
@@ -79,10 +83,22 @@ def _packs(key: str, raw: Any) -> list[str]:
     return [str(p) for p in raw]
 
 
-def _pay(raw: Any) -> dict[str, str | None]:
-    """How a market words expected pay: a label, and a hint where its basis needs one."""
+_PAY_PERIODS = ("year", "month")
+
+
+def _pay(key: str, raw: Any) -> dict[str, str | None]:
+    """How a market words expected pay: a label, a hint where its basis needs one, and what a figure
+    there is per (`period`, a year when undeclared). Any other period fails, naming the market: a
+    misspelt "monthly" read as a year would take a monthly figure for a yearly one."""
     pay = raw if isinstance(raw, dict) else {}
-    return {"label": str(pay.get("label") or "Expected salary"), "hint": _text(pay.get("hint"))}
+    period = str(pay.get("period") or "year")
+    if period not in _PAY_PERIODS:
+        raise ValueError(f"markets.yaml: {key}'s pay period must be year or month, got {period!r}")
+    return {
+        "label": str(pay.get("label") or "Expected salary"),
+        "hint": _text(pay.get("hint")),
+        "period": period,
+    }
 
 
 def keys() -> list[str]:

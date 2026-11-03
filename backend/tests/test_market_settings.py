@@ -80,6 +80,7 @@ def test_every_market_declares_its_form_questions_rather_than_taking_a_default()
     raw = markets._DATA_FILE.read_text(encoding="utf-8")
     for name in ("packs:", "work_status:", "asks_postcode:", "pay:"):
         assert raw.count(f"\n    {name}") == len(SUPPORTED), name
+    assert raw.count("\n      period:") == len(SUPPORTED)
 
 
 @pytest.fixture
@@ -99,7 +100,15 @@ def test_an_entry_missing_the_form_question_keys_reads_as_todays_rule(market_dat
     market_data("markets:\n  - {key: US, label: United States, currency: USD}\n")
     us = markets.get("US")
     assert (us["packs"], us["work_status"], us["asks_postcode"]) == ([], None, True)
-    assert us["pay"] == {"label": "Expected salary", "hint": None}
+    assert us["pay"] == {"label": "Expected salary", "hint": None, "period": "year"}
+    assert us["in_text"] == "United States"
+
+
+def test_a_pay_period_other_than_a_year_or_a_month_fails_naming_the_market(market_data):
+    """The salary check multiplies a monthly figure by 12, so an unknown period is never read as one."""
+    market_data("markets:\n  - {key: NL, label: Netherlands, pay: {label: Pay, period: week}}\n")
+    with pytest.raises(ValueError, match="NL's pay period must be year or month"):
+        markets.keys()
 
 
 def test_a_pack_written_without_its_list_fails_naming_the_market(market_data):
@@ -136,6 +145,24 @@ def test_each_market_words_expected_pay_its_own_way(market, label):
     """Where a country's pay terms were checked (AU, IN, DE, NL, AE: Sources 14-18) the label says
     the basis and period; elsewhere it names only the currency."""
     assert markets.get(market)["pay"]["label"] == label
+
+
+@pytest.mark.parametrize("market", SUPPORTED)
+def test_dutch_and_emirati_pay_is_monthly_and_every_other_yearly(market):
+    """`pay.period` says what a figure there is per (Sources 15, 17): the Netherlands and the UAE ask
+    gross per month; every other market a year."""
+    assert markets.get(market)["pay"]["period"] == ("month" if market in ("NL", "AE") else "year")
+
+
+@pytest.mark.parametrize(
+    "market,name",
+    [("US", "the United States"), ("UK", "the United Kingdom"), ("NL", "the Netherlands"),
+     ("AE", "the United Arab Emirates"), ("IN", "India"), ("DE", "Germany"), ("IE", "Ireland")],
+)
+def test_each_market_is_named_as_a_sentence_names_it(market, name):
+    """`in_text`: "Asked by forms in the Netherlands." The four names that take "the" say so; any
+    other reads its label."""
+    assert markets.get(market)["in_text"] == name
 
 
 def test_only_the_uae_has_no_postcode_line():

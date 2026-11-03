@@ -691,8 +691,9 @@ def test_a_given_answer_that_differs_turns_the_settled_ones_off(client, db_sessi
 
 
 def test_a_countrys_optional_answers_never_count(client, db_session, tmp_path, monkeypatch):
-    """India's own answers (current CTC, expected pay) and its notice in days are optional: the same
-    readiness without them as with them."""
+    """India's own optional answer (current CTC) changes nothing, nor do notice given in days over the
+    same notice in words and an Indian home's pay over the desired salary it is: the same readiness
+    without them as with them."""
     from app.services import autofill_profile
 
     _chose(db_session, tmp_path, monkeypatch, "IN", ["IN"])
@@ -716,6 +717,30 @@ def test_a_countrys_optional_answers_never_count(client, db_session, tmp_path, m
 
     assert with_them["groups"] == without["groups"]
     assert with_them["readiness"] == without["readiness"] < 1.0
+
+
+def test_the_home_pay_counts_in_preferences_and_notice_in_words_still_counts(
+    client, db_session, tmp_path, monkeypatch
+):
+    """Once you apply in the country you live in, its set asks the pay, but it is the desired salary
+    and counts in `preferences`, as it always did, never in `work_auth`: Setup's answers step needs
+    that group complete and never asks pay (docs/plans/2026-11-02-start-and-pay.md, Decision 8).
+    Notice written in words, from before notice was days, still answers it."""
+    from app.services import autofill_profile
+
+    _chose(db_session, tmp_path, monkeypatch, "US", ["US", "IN", "IE"])
+    preferences = {
+        "notice_period": "negotiable", "earliest_start_date": "2026-12-01",
+        "willing_to_relocate": False, "how_heard": "A friend",
+    }
+    autofill_profile.set_profile({"preferences": preferences}, db_session)
+    no_pay = _status(client)["autofill"]["groups"]
+    autofill_profile.set_profile({"preferences": {**preferences, "desired_salary": "80000"}}, db_session)
+    paid = _status(client)["autofill"]["groups"]
+
+    assert no_pay["preferences"] == {"answered": 4, "answerable": 5}
+    assert paid["preferences"] == {"answered": 5, "answerable": 5}
+    assert paid["work_auth"] == no_pay["work_auth"]
 
 
 def test_with_no_country_chosen_only_citizenship_is_asked_beside_the_permits(
