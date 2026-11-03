@@ -174,3 +174,13 @@
     learns into `preferences.desired_salary` and `notice_days` directly, so Undo puts the old value back where it was (the Companion
     half of what SYSTEM.md §13 `home-expected-pay-fold` and `notice-period-text` wait on). Do when the Companion's learn or Undo is
     next changed, or a lost pay or notice after an Undo is reported.
+67. A monthly home pay on a job whose country is unknown, or in a country no market covers, reaches the form without its terms.
+    Living in the Netherlands or the UAE, the home figure is monthly ("Expected gross monthly salary …"); on such a job the fill
+    gives `desired_salary` (Decision 12 of docs/plans/2026-11-02-start-and-pay.md) but `autofill_country.with_country_answers`
+    returns before naming the slot in `country_answered`, so `autofill_catalog._pay_describe` words it as the generic desired
+    salary, and an AI fill could put a monthly "5000" into a yearly salary box. The salary check reads the same figure ×12, so the
+    two disagree only in words. Fix: when there is no market and a chosen home, word the slot in the home market's `pay.label`
+    (a view key naming the pay's market, refused on save like the other view keys). Two smaller follow-ups from the same review:
+    the knockout card's "Add your expected pay" chip could say "Give your expected pay as one amount" when a figure exists but is
+    not a plain amount ("₹40 lakh"); and MCP's compact `questions` (`mcp_server/client.py` `_agent_questions`) could carry
+    `home: true`, so an agent sees which country's pay is the one saved as `desired_salary`. Do with the next pay or fill change.

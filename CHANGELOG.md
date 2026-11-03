@@ -121,7 +121,7 @@ once, and each country hears only its own.
 - Indian jobs were flagged as paying below your desired salary converted into rupees at today's rate. A job
   is now compared only with the pay you gave for its own country.
 - A pay figure written with a bare "$" was read as the currency of a country that doesn't pay in dollars (a
-  British home's "$100,000" as pounds). A "$" now names that country's currency only where it pays in dollars,
+  British home's "$100,000" as pounds). Once you choose your countries, a "$" names that country's currency only where it pays in dollars,
   else yours where you live in a dollar country, and otherwise the salary check says it can't compare.
 - Leaving a job page by Back to Jobs or the browser's Back now morphs the job back into its row, and the Jobs list keeps its scroll position and filters.
 

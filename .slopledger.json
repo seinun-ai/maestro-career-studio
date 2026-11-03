@@ -159,7 +159,7 @@
       "triggers": [
         {
           "kind": "absent",
-          "pattern": "(?<!country)\\.market\\b",
+          "pattern": "(^|[^y])\\.market\\b",
           "paths": [
             "backend/app"
           ]

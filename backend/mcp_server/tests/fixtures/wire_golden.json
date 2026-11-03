@@ -2167,7 +2167,7 @@
        },
        "PreferenceAnswers": {
         "additionalProperties": false,
-        "description": "Start and pay answers, in the words a form gets; a null removes one. desired_salary is the\npay of the country the user lives in once they chose their countries (each other country's is\nanswers_by_country[market].expected_pay; a home entry sent there is saved here), and the one\nfigure for every country while none is chosen. notice_days is the notice period in whole days,\nthe one notice answer; notice_period text such as \"2 weeks\" is read as days, and kept as text\nonly when it says none (\"negotiable\"); forms get the days in words. last_working_day is\nYYYY-MM-DD, filled while serving_notice is true and the day has not passed;\npreferred_locations is cities separated by commas.",
+        "description": "Start and pay answers, in the words a form gets; a null removes one. desired_salary is the\npay of the country the user lives in once they chose their countries (each other country's is\nanswers_by_country[market].expected_pay; a home entry sent there is saved here), and the one\nfigure for every country while none is chosen. notice_days is the notice period in whole days,\nthe one notice answer; notice_period text such as \"2 weeks\" is read as days; text that says\nnone (\"negotiable\") is kept only while no days are stored (send notice_days: null with it);\nforms get the days in words. last_working_day is\nYYYY-MM-DD, filled while serving_notice is true and the day has not passed;\npreferred_locations is cities separated by commas.",
         "properties": {
          "desired_salary": {
           "anyOf": [

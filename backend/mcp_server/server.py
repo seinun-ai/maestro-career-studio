@@ -370,8 +370,9 @@ class PreferenceAnswers(TypedDict, total=False):
     pay of the country the user lives in once they chose their countries (each other country's is
     answers_by_country[market].expected_pay; a home entry sent there is saved here), and the one
     figure for every country while none is chosen. notice_days is the notice period in whole days,
-    the one notice answer; notice_period text such as "2 weeks" is read as days, and kept as text
-    only when it says none ("negotiable"); forms get the days in words. last_working_day is
+    the one notice answer; notice_period text such as "2 weeks" is read as days; text that says
+    none ("negotiable") is kept only while no days are stored (send notice_days: null with it);
+    forms get the days in words. last_working_day is
     YYYY-MM-DD, filled while serving_notice is true and the day has not passed;
     preferred_locations is cities separated by commas."""
 

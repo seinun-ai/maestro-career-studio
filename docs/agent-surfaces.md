@@ -211,7 +211,7 @@ The four surfaces — the MCP server (**connected agents**), the in-app chat (th
   keyed from `markets.keys()`, a status outside the market's list or an answer it does not ask refused with what it takes; once
   countries are chosen `preferences.desired_salary` is the home country's pay, and a home `expected_pay` sent is saved there, so a read
   never lists it per country; `notice_days` is the one notice answer in whole days, and `notice_period` text ("2 weeks") is read as
-  days, kept as text only when it says none (docs/entities/others.md, "Pay per country and notice in days");
+  days; text that says none is kept only while no days are stored (docs/entities/others.md, "Pay per country and notice in days");
   citizenships stored as ISO codes; education and languages replace the stored list whole; `custom`,
   the Companion's learn store, upserts by question (case and spacing ignored, same `only_for` and `only_for_kind`) and never removes a
   saved answer, which stays the user's, in Profile; each preference named replaces the stored one (`role_categories` follows
