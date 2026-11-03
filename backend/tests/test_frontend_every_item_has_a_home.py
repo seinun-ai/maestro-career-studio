@@ -186,7 +186,13 @@ _PROFILE: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("How you come across", "Persona", ('aria-label="Persona"',)),
     ("How you come across", "Draft from my career history",
      ("Draft from my career history", "onClick={() => draftOnce(editRevision.current)}")),
-    ("Start and pay", "Desired salary", (asked("preferences", "desired_salary", label="Desired salary"), _PREFERENCES)),
+    # Start and pay asks it while no country's set does; once you apply where you live, that country's set in
+    # Country answers asks it as its pay, read and written as this same answer.
+    ("Start and pay", "Desired salary", (
+        asked("preferences", "desired_salary", label="Desired salary"), _PREFERENCES,
+        "if (country.home && key === EXPECTED_PAY) {",
+        ("frontend/components/profile/work-permits.tsx", "values={countryAnswerEntry(profile, country)}"),
+    )),
     ("Start and pay", "Notice period", (asked("preferences", "notice_days", label="Notice period"), _PREFERENCES)),
     ("Start and pay", "Earliest start date", (asked("preferences", "earliest_start_date", label="Earliest start date"), _PREFERENCES)),
     ("Start and pay", "Willing to relocate?", (asked("preferences", "willing_to_relocate", label="Willing to relocate?"), _PREFERENCES)),

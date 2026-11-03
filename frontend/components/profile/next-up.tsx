@@ -16,19 +16,17 @@ import {
   answered,
   booleanAnswer,
   citizenshipEntries,
+  countryCount,
   countryQuestions,
   diversityCountries,
   fieldValue,
   groupCount,
-  groupValues,
   missingAnswers,
   missingKey,
-  permitCount,
-  permitEntry,
+  missingValue,
   withCitizenshipList,
   withCitizenships,
-  withField,
-  withPermit,
+  withMissingAnswer,
   type MissingAnswer,
 } from "@/lib/autofill-options";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
@@ -37,12 +35,12 @@ import type { MarketSettingResponse, QuestionSet } from "@/lib/types";
 
 const SURFACE = "next-up";
 
-/** The tile each missing answer belongs to, named as the tile is: citizenship and the work permits are
- *  Country answers'. */
+/** The tile each missing answer belongs to, named as the tile is: citizenship, the work permits and a country's
+ *  own answers (the home's pay) are Country answers'. */
 const SECTION = {
   where: tileTitle("where"),
   citizenship: tileTitle("permits"),
-  permit: tileTitle("permits"),
+  country: tileTitle("permits"),
   personal: tileTitle("contact"),
   preferences: tileTitle("start"),
 } as const;
@@ -54,8 +52,8 @@ const YES_NO = [
 
 /**
  * Next up, the Lead: the first required answer still missing (lib/autofill-options.ts `missingAnswers`:
- * where you apply while no country is chosen, then citizenship, then each country's work permit), answered in
- * place and saved as you go, beside the promise
+ * where you apply while no country is chosen, then citizenship, then each country's work permits and its pay
+ * where you live), answered in place and saved as you go, beside the promise
  * that none is guessed: a work permit comes only from you or your citizenship (derived when read, never stored),
  * and a diversity answer only from you. A Yes or No moves on by itself; a typed answer, or a country
  * picked, stays until Next, so it never jumps away mid-word. Skip leaves one for later in this visit. Diversity
@@ -237,20 +235,17 @@ export function NextUp({
   }
 
   const field = current.field;
-  const country = current.kind === "permit" ? countryQuestions(questionSet, current.market) : undefined;
-  const section = current.kind === "permit" ? SECTION.permit : SECTION[current.group];
+  // A country's question, a work permit or one of its own answers, is asked under its name and counted with
+  // that country's others; a contact or start-and-pay field with its group's.
+  const country = current.kind === "field" ? undefined : countryQuestions(questionSet, current.market);
+  const section = current.kind === "field" ? SECTION[current.group] : SECTION.country;
   const count =
-    current.kind === "permit"
-      ? permitCount(profile, questionSet, current.market)
+    current.kind !== "field"
+      ? countryCount(profile, questionSet, current.market)
       : groupCount(profile, questionSet, current.group);
-  const raw =
-    current.kind === "permit" ? permitEntry(profile, current.market)[field.key] : groupValues(profile, current.group)[field.key];
+  const raw = missingValue(profile, questionSet, current);
   const answer = (value: string | boolean | undefined) =>
-    update(SURFACE, (profileNow) =>
-      current.kind === "permit"
-        ? withPermit(profileNow, questionSet, current.market, field.key, value)
-        : withField(profileNow, questionSet, current.group, field.key, value),
-    );
+    update(SURFACE, (profileNow) => withMissingAnswer(profileNow, questionSet, current, value));
 
   return (
     <LeadCard
@@ -294,7 +289,7 @@ export function NextUp({
         <div className="max-w-sm">
           <FieldControl
             id={controlId}
-            group={current.kind === "permit" ? `permit-${current.market}` : current.group}
+            group={current.kind === "field" ? current.group : `${current.kind}-${current.market}`}
             field={field}
             value={fieldValue(field, raw)}
             onChange={(value) => {

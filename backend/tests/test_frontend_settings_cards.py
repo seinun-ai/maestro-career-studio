@@ -300,7 +300,9 @@ def test_country_sets_are_titled_over_a_rule():
     assert f'const COUNTRY_HEADING = "flex w-full items-center gap-3 {_COUNTRY_RULE}' in src
     assert "<legend className={COUNTRY_HEADING}>" in src
     assert "GROUP_HEADING" not in src
-    assert "<DoneMark done={permitAnswered(profile, questionSet, market)} />" in src
+    # The tile's line for that country: done once its permits and its own required answers are (the home's pay).
+    assert "const line = countryLine(profile, questionSet, market);" in src
+    assert "<DoneMark done={line.done} />" in src
     # A fieldset stays block flow: a legend is not a grid item, so gap never reaches it.
     assert re.search(r"<fieldset[^>]*className=\"[^\"]*\bgrid\b", src) is None
     assert '<div className="grid gap-8">' in src

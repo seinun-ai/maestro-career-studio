@@ -2490,6 +2490,12 @@ export type FieldDef = {
   /** The address line named and counted by where you live: the state line or the postal code. Served already
    *  resolved, so nothing here reads it. */
   byHome?: "state" | "postcode";
+  /** Which countries' forms ask a question only some do, as a sentence ("Asked by forms in India."), on a pack's
+   *  question only, never on a country set's own. */
+  askedBy?: string;
+  /** An older key of the same group whose text still answers this field until it is given (`notice_days`:
+   *  notice written in words, `notice_period`). Read by `answeredIn`, as setup readiness reads it. */
+  legacy?: string;
 };
 
 export type GroupDef = { key: string; title: string; fields: FieldDef[] };
@@ -2499,13 +2505,16 @@ export type GroupDef = { key: string; title: string; fields: FieldDef[] };
 export type DerivedAnswer = { value: string | boolean; via: string };
 
 /** One country you apply in: its work permits (stored in `work_auth_by_country[market]`), its own answers
- *  (`answers_by_country[market]`, all optional) and the permit answers a citizenship settles there, keyed like
- *  the permits. Served without defaults, so `derived` is absent when nothing is settled. */
+ *  (`answers_by_country[market]`, optional but the home's pay) and the permit answers a citizenship settles
+ *  there, keyed like the permits. Served without defaults, so `derived` is absent when nothing is settled and
+ *  `home` when this is not where you live. */
 export type CountryQuestions = {
   /** The market key ("UK", never "GB"). */
   market: string;
   /** The country's name ("United Kingdom"). */
   label: string;
+  /** Where you live (chosen, and applied in): its pay is required and is `preferences.desired_salary`. */
+  home?: boolean;
   permits: FieldDef[];
   answers: FieldDef[];
   derived?: Record<string, DerivedAnswer>;

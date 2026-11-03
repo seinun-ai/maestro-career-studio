@@ -1213,7 +1213,8 @@
   sections setup status reports ready (never a count of its own). **Next up** is the Lead: the first required
   answer still missing (`lib/autofill-options.ts` `missingAnswers`: while no country is chosen, where you
   apply first, as in Setup; citizenship, with its country picker, then each apply-in country's work permits
-  your citizenship does not settle, then contact, then start and pay), answered in place beside "Never
+  your citizenship does not settle and its pay where you live, then contact, then start and pay; an older
+  answer under a field's `legacy` key counts as readiness counts it, `answeredIn`), answered in place beside "Never
   guessed for you"; a Yes or No moves on, a typed answer or a picked country stays until Next, Skip leaves
   one for this visit, and diversity only opens its fold, as where you apply opens its tile. Nine
   tiles (`lib/profile-tiles.ts`: Contact, Where you apply, Country answers, Jobs you want, How you come across,
@@ -1234,14 +1235,18 @@
   up asks it and its Next stores codes), which it counts beside the permits it settles, as readiness does. Then one
   fieldset per served country under its name: its work permits, worded by the market's `work_auth_vocab`
   (the visa status only for `us_visa`), each answer that country's own entry in `work_auth_by_country`,
-  then its own answers (`answers_by_country`, all optional). A permit answer the served `derived` settles,
+  then its own answers (`answers_by_country`, optional but for where you live: the served `home` set's pay is
+  required and reads and writes `preferences.desired_salary`, the one place the server keeps it, so Start and pay
+  drops Desired salary once you apply there). A permit answer the served `derived` settles,
   where you gave none, shows as words with "From your citizenship (India)" and **Answer differently**, which
   brings the control back (a control you have changed stays one, and left unset says what your citizenship
   answers), and that country asks no expiry (a right from citizenship does not run out; a stored one shows).
   An answer that differs settles nothing else there, and a note says why the rest are asked; removing a
   citizenship stops what it settled at once (`derivedPermits` only narrows the served `derived`), and a save
   that changes citizenship or a permit reads the questions again before it counts as saved. One rule says
-  what is still open (`openPermitFields`: the count, Next up, Setup's done card). With no country chosen it
+  what is still open (`openPermitFields`: the count, Next up, Setup's done card); a country's line and heading
+  are done only once its own required answers are too (`countryAnswered`), worded "expected pay not given"
+  when that is all that is open, while Setup's permit step reads the permits alone. With no country chosen it
   shows Citizen of and a link to Where you apply. Contact's state line follows where you live
   (served named and counted for that home); Contact never shows citizenship. Every question, its words and
   whether it counts come from the served set (`GET /api/settings/autofill/questions`, read with

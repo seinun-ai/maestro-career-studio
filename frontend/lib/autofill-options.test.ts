@@ -3,13 +3,17 @@ import { test } from "node:test";
 
 import {
   answered,
+  answeredIn,
   citizenshipAnswered,
   citizenshipEntries,
   citizenshipIsLoose,
   contactFields,
   countryAnswerEntry,
+  countryAnswered,
+  countryAnswersOpen,
   countryCode,
   countryCodes,
+  countryCount,
   declinedEeo,
   derivedPermits,
   differsFromSettled,
@@ -21,6 +25,7 @@ import {
   languageFields,
   missingAnswers,
   missingKey,
+  missingValue,
   openPermitFields,
   permitAnswers,
   permitCount,
@@ -35,6 +40,7 @@ import {
   withCitizenships,
   withCountryAnswer,
   withField,
+  withMissingAnswer,
   withPermit,
 } from "./autofill-options.ts";
 import type { DerivedAnswer, FieldDef, MarketOption, QuestionSet } from "./types.ts";
@@ -215,11 +221,12 @@ test("a permit answer that hides another field removes it: a citizen keeps no ex
 
 test("a country's own answer lands on its own entry in answers_by_country, and the others stay", () => {
   const before = { answers_by_country: { IN: { current_ctc: "1800000" } }, preferences: { desired_salary: "150000" } };
-  const after = withCountryAnswer(before, "DE", "expected_pay", "70000");
+  const germany = { market: "DE" };
+  const after = withCountryAnswer(before, germany, "expected_pay", "70000");
   assert.deepEqual(after.answers_by_country, { IN: { current_ctc: "1800000" }, DE: { expected_pay: "70000" } });
-  assert.deepEqual(after.preferences, { desired_salary: "150000" }, "the generic pay is left as it was");
-  assert.deepEqual(countryAnswerEntry(withCountryAnswer(after, "DE", "expected_pay", ""), "DE"), {});
-  assert.deepEqual(countryAnswerEntry(after, "IN"), { current_ctc: "1800000" });
+  assert.deepEqual(after.preferences, { desired_salary: "150000" }, "the home's pay is left as it was");
+  assert.deepEqual(countryAnswerEntry(withCountryAnswer(after, germany, "expected_pay", ""), germany), {});
+  assert.deepEqual(countryAnswerEntry(after, { market: "IN" }), { current_ctc: "1800000" });
 });
 
 test("citizenships are saved as codes, each once, and none removes the answer", () => {
@@ -400,6 +407,8 @@ test("a number is answered by a number or by what was typed", () => {
   assert.equal(answered(years, 6), true);
   assert.equal(answered(years, 0), true);
   assert.equal(answered(years, "6"), true);
+  // A number box sends text: "0" is an answer, as the server reads it (0 days, never a blank).
+  assert.equal(answered(years, "0"), true);
   assert.equal(answered(years, ""), false);
   assert.equal(answered(years, Number.NaN), false);
 });
@@ -604,4 +613,111 @@ test("next up asks the state where it is required, never where it is served opti
   assert.equal(missing(STATE).includes("personal:state"), true);
   const province = missingAnswers({}, servedFor(["DE"], { state: PROVINCE })).find((m) => missingKey(m) === "personal:state");
   assert.equal(province?.kind === "field" && province.field.label, "Province");
+});
+
+// Someone who lives in the United States and applies there and in Germany, as served: the home's set asks its pay
+// (`home`, required, read from the desired salary, so Start and pay no longer lists it), Germany's own pay is
+// optional, and notice is one answer in days whose older words (`notice_period`) still answer it.
+const NOTICE: FieldDef = { key: "notice_days", label: "Notice period", type: "number", legacy: "notice_period" };
+const RELOCATE = yesNo("willing_to_relocate", "Willing to relocate?");
+const HOME_SET: QuestionSet = (() => {
+  const set = withCitizenship(servedFor(["US", "DE"], { offersEeo: false }));
+  return {
+    ...set,
+    groups: set.groups.map((g) => (g.key === "preferences" ? { ...g, fields: [NOTICE, RELOCATE] } : g)),
+    countries: set.countries.map((country) =>
+      country.market === "US"
+        ? { ...country, home: true, answers: [{ key: "expected_pay", label: "Expected salary (USD)" }] }
+        : { ...country, answers: [{ key: "expected_pay", label: "Expected salary (EUR)", optional: true }] },
+    ),
+  };
+})();
+const [US_HOME, GERMANY] = HOME_SET.countries;
+const US_PERMITS = { status: "citizen", authorized_now: true, sponsorship_now: false, sponsorship_future: false };
+
+test("the home's pay is read and written as the desired salary; another country's as its own entry", () => {
+  const profile = {
+    preferences: { desired_salary: "$80,000", notice_days: 14 },
+    answers_by_country: { DE: { expected_pay: "€60,000" } },
+  };
+  assert.deepEqual(countryAnswerEntry(profile, US_HOME), { expected_pay: "$80,000" });
+  assert.deepEqual(countryAnswerEntry(profile, GERMANY), { expected_pay: "€60,000" });
+  const raised = withCountryAnswer(profile, US_HOME, "expected_pay", "$90,000");
+  assert.deepEqual(raised.preferences, { desired_salary: "$90,000", notice_days: 14 });
+  assert.deepEqual(raised.answers_by_country, { DE: { expected_pay: "€60,000" } }, "no home entry is written");
+  const german = withCountryAnswer(profile, GERMANY, "expected_pay", "€65,000");
+  assert.deepEqual(german.answers_by_country, { DE: { expected_pay: "€65,000" } });
+  assert.deepEqual(german.preferences, profile.preferences, "the home's pay is left as it was");
+  // Cleared, the home's pay goes, as any country's own answer does; the other preferences stay.
+  assert.deepEqual(withCountryAnswer(profile, US_HOME, "expected_pay", "").preferences, { notice_days: 14 });
+  assert.deepEqual(countryAnswerEntry({}, US_HOME), {});
+});
+
+test("a country is done once its permits and its required answers are: the home's pay is in its set", () => {
+  const noPay = { personal: { citizenships: ["IN"] }, work_auth_by_country: { US: US_PERMITS } };
+  // Setup's work-permit step asks no pay (Decision 8): the permits alone are still answered.
+  assert.equal(permitAnswered(noPay, HOME_SET, "US"), true);
+  assert.deepEqual(countryAnswersOpen(noPay, HOME_SET, "US").map((f) => f.key), ["expected_pay"]);
+  assert.equal(countryAnswered(noPay, HOME_SET, "US"), false);
+  assert.deepEqual(countryCount(noPay, HOME_SET, "US"), { answered: 4, answerable: 5 });
+  const paid = { ...noPay, preferences: { desired_salary: "$80,000" } };
+  assert.deepEqual(countryAnswersOpen(paid, HOME_SET, "US"), []);
+  assert.equal(countryAnswered(paid, HOME_SET, "US"), true);
+  assert.deepEqual(countryCount(paid, HOME_SET, "US"), { answered: 5, answerable: 5 });
+  // Another country's pay is optional, so it is never open; a country the set lacks has nothing of its own.
+  assert.deepEqual(countryAnswersOpen({}, HOME_SET, "DE"), []);
+  assert.deepEqual(countryCount({}, HOME_SET, "DE"), permitCount({}, HOME_SET, "DE"));
+  assert.deepEqual(countryAnswersOpen({}, HOME_SET, "FR"), []);
+  assert.equal(countryAnswered({}, HOME_SET, "FR"), false);
+});
+
+test("next up asks the home's pay after its permits and before the next country's", () => {
+  const missing = missingAnswers({}, HOME_SET);
+  assert.deepEqual(missing.map(missingKey).slice(0, 7), [
+    "citizenship",
+    "permit:US:status", "permit:US:authorized_now", "permit:US:sponsorship_now", "permit:US:sponsorship_future",
+    "answer:US:expected_pay",
+    "permit:DE:authorized_now",
+  ]);
+  const pay = missing.find((item) => missingKey(item) === "answer:US:expected_pay");
+  assert.deepEqual(pay?.kind === "answer" && [pay.market, pay.field.label], ["US", "Expected salary (USD)"]);
+  // Germany's own pay is optional: never next up.
+  assert.equal(missing.map(missingKey).some((key) => key.startsWith("answer:DE:")), false);
+  // Given, as the desired salary, it is not asked.
+  const paid = missingAnswers({ preferences: { desired_salary: "$80,000" } }, HOME_SET).map(missingKey);
+  assert.equal(paid.includes("answer:US:expected_pay"), false);
+});
+
+test("notice written in words before still answers it in days: counted as set, and never asked", () => {
+  const legacy = { preferences: { notice_period: "negotiable", willing_to_relocate: false } };
+  assert.equal(answeredIn(NOTICE, legacy.preferences), true);
+  assert.deepEqual(groupCount(legacy, HOME_SET, "preferences"), { answered: 2, answerable: 2 });
+  assert.equal(missingAnswers(legacy, HOME_SET).map(missingKey).includes("preferences:notice_days"), false);
+  // Days answer it, 0 included, stored as a number or typed into the box as text.
+  for (const days of [0, 14, "0", "14"]) assert.equal(answeredIn(NOTICE, { notice_days: days }), true, String(days));
+  // Blank words are no answer, and a field with no older key is answered by its own value only.
+  assert.equal(answeredIn(NOTICE, { notice_period: "  " }), false);
+  assert.equal(answeredIn(RELOCATE, { notice_period: "negotiable" }), false);
+  assert.deepEqual(groupCount({ preferences: {} }, HOME_SET, "preferences"), { answered: 0, answerable: 2 });
+  assert.equal(missingAnswers({}, HOME_SET).map(missingKey).includes("preferences:notice_days"), true);
+});
+
+test("next up reads and writes each answer where its list keeps it: the home's pay as the desired salary", () => {
+  const profile = { personal: { citizenships: ["IN"] }, preferences: { notice_days: 14 } };
+  const asked = (key: string) => {
+    const item = missingAnswers(profile, HOME_SET).find((m) => missingKey(m) === key);
+    assert.ok(item && item.kind !== "where" && item.kind !== "citizenship" && item.kind !== "diversity", key);
+    return item;
+  };
+  const pay = asked("answer:US:expected_pay");
+  assert.equal(missingValue(profile, HOME_SET, pay), undefined);
+  const paid = withMissingAnswer(profile, HOME_SET, pay, "$80,000");
+  assert.deepEqual(paid.preferences, { notice_days: 14, desired_salary: "$80,000" });
+  assert.equal("answers_by_country" in paid, false, "no home entry is written");
+  assert.equal(missingValue(paid, HOME_SET, pay), "$80,000");
+  const permit = asked("permit:DE:authorized_now");
+  assert.deepEqual(permitEntry(withMissingAnswer(profile, HOME_SET, permit, true), "DE"), { authorized_now: true });
+  const relocate = asked("preferences:willing_to_relocate");
+  const moved = withMissingAnswer(profile, HOME_SET, relocate, false);
+  assert.equal(missingValue(moved, HOME_SET, relocate), false);
 });

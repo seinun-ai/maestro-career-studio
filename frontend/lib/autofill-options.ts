@@ -311,22 +311,38 @@ export function withPermit(
   return { ...profile, [BY_COUNTRY]: { ...byCountry, [market]: entry } };
 }
 
-/** One country's own answers (`answers_by_country`), by market key. */
-export function countryAnswerEntry(profile: Profile, market: string): Record<string, unknown> {
-  return groupValues(groupValues(profile, ANSWERS_BY_COUNTRY), market);
+/** The country answer that is a country's pay, and the key the pay of the country you live in is kept under
+ *  instead (`preferences.desired_salary`: backend autofill_profile `_with_home_pay` folds a home entry's pay
+ *  into it on every save and read). */
+const EXPECTED_PAY = "expected_pay";
+const HOME_PAY = "desired_salary";
+
+/** A country as its own answers are read and written: its market key, and whether it is where you live. */
+export type CountryKey = Pick<CountryQuestions, "market" | "home">;
+
+/** One country's own answers (`answers_by_country`), by market key. Where you live (`home`), its pay is the
+ *  desired salary, the one place the server keeps the home's figure. */
+export function countryAnswerEntry(profile: Profile, country: CountryKey): Record<string, unknown> {
+  const entry = groupValues(groupValues(profile, ANSWERS_BY_COUNTRY), country.market);
+  const pay = country.home ? groupValues(profile, "preferences")[HOME_PAY] : undefined;
+  return pay === undefined ? entry : { ...entry, [EXPECTED_PAY]: pay };
 }
 
 /** The profile with one of a country's own answers set (undefined or "" removes it); every other country's
- *  answers stay as they are. */
+ *  answers stay as they are. The home's pay is written as the desired salary, so a save never sends the home's
+ *  figure in two places. */
 export function withCountryAnswer(
   profile: Profile,
-  market: string,
+  country: CountryKey,
   key: string,
   value: string | boolean | undefined,
 ): Profile {
+  if (country.home && key === EXPECTED_PAY) {
+    return { ...profile, preferences: withAnswerIn(groupValues(profile, "preferences"), [], HOME_PAY, value) };
+  }
   const byCountry = groupValues(profile, ANSWERS_BY_COUNTRY);
-  const entry = withAnswerIn(groupValues(byCountry, market), [], key, value);
-  return { ...profile, [ANSWERS_BY_COUNTRY]: { ...byCountry, [market]: entry } };
+  const entry = withAnswerIn(groupValues(byCountry, country.market), [], key, value);
+  return { ...profile, [ANSWERS_BY_COUNTRY]: { ...byCountry, [country.market]: entry } };
 }
 
 /** The citizenships stored, as entries: a list as written, or the parts of a plain string (an older save or a
@@ -524,6 +540,14 @@ export function answered(field: FieldDef, value: unknown): boolean {
   return !isBlank(value);
 }
 
+/** Whether a list's stored `values` answer a field: its own value does (`answered`), or, until that is given,
+ *  the text under its older key (`legacy`: notice in words, from before it was days), as setup readiness reads
+ *  it (backend setup_status `_given`). So an older answer is never counted set and listed missing at once, nor
+ *  asked again by Next up. */
+export function answeredIn(field: FieldDef, values: Record<string, unknown>): boolean {
+  return answered(field, values[field.key]) || (field.legacy !== undefined && !isBlank(values[field.legacy]));
+}
+
 export type Count = { answered: number; answerable: number };
 
 /** How many of a group's required answers are given: the fields setup readiness counts there, as served for
@@ -536,7 +560,7 @@ export function groupCount(profile: Profile, questionSet: QuestionSet, group: st
 function countOf(values: Record<string, unknown>, fields: readonly FieldDef[]): Count {
   const required = fields.filter((field) => !field.optional);
   return {
-    answered: required.filter((field) => answered(field, values[field.key])).length,
+    answered: required.filter((field) => answeredIn(field, values)).length,
     answerable: required.length,
   };
 }
@@ -561,6 +585,31 @@ export function citizenshipAnswered(profile: Profile, questionSet: QuestionSet, 
 export function permitAnswered(profile: Profile, questionSet: QuestionSet, market: string): boolean {
   const count = permitCount(profile, questionSet, market);
   return count.answerable > 0 && count.answered === count.answerable;
+}
+
+/** One country's required answers of its own still not given: its pay where you live (the served set requires
+ *  it there, `home`), and none elsewhere, where they are optional. A country the set lacks has none. */
+export function countryAnswersOpen(profile: Profile, questionSet: QuestionSet, market: string): FieldDef[] {
+  const country = countryQuestions(questionSet, market);
+  if (!country) return [];
+  const entry = countryAnswerEntry(profile, country);
+  return country.answers.filter((field) => !field.optional && !answeredIn(field, entry));
+}
+
+/** Whether one country is done in Country answers: its work permits (`permitAnswered`) and its own required
+ *  answers. Setup's permit step reads the permits alone: Setup never asks pay, and setup readiness counts the
+ *  home's pay in `preferences` (Decision 8 of docs/plans/2026-11-02-start-and-pay.md). */
+export function countryAnswered(profile: Profile, questionSet: QuestionSet, market: string): boolean {
+  return permitAnswered(profile, questionSet, market) && countryAnswersOpen(profile, questionSet, market).length === 0;
+}
+
+/** How many of one country's required questions are answered: its work permits, then its own required answers.
+ *  What Next up counts while it asks that country. */
+export function countryCount(profile: Profile, questionSet: QuestionSet, market: string): Count {
+  const permits = permitCount(profile, questionSet, market);
+  const country = countryQuestions(questionSet, market);
+  const own = country ? countOf(countryAnswerEntry(profile, country), country.answers) : { answered: 0, answerable: 0 };
+  return { answered: permits.answered + own.answered, answerable: permits.answerable + own.answerable };
 }
 
 /** The profile with one answer set in a group (undefined removes it). A field shown only for one answer
@@ -629,31 +678,66 @@ export function languageValue(field: FieldDef, stored: unknown): string {
 // ------------------------------------------------------------------------------------- Next up
 
 /** A required answer still missing: where you apply while no country is chosen (answered in the Where you
- *  apply tile), citizenship (asked with its country picker), one country's work-permit question, a contact or
- *  start-and-pay field, or the diversity questions as a whole (answered in their fold, beside their consent). */
+ *  apply tile), citizenship (asked with its country picker), one country's work-permit question or required
+ *  answer of its own (the home's pay), a contact or start-and-pay field, or the diversity questions as a whole
+ *  (answered in their fold, beside their consent). */
 export type MissingAnswer =
   | { kind: "where" }
   | { kind: "citizenship"; field: FieldDef }
   | { kind: "permit"; market: string; field: FieldDef }
+  | { kind: "answer"; market: string; field: FieldDef }
   | { kind: "field"; group: "personal" | "preferences"; field: FieldDef }
   | { kind: "diversity" };
 
 export function missingKey(item: MissingAnswer): string {
   if (item.kind === "where" || item.kind === "citizenship") return item.kind;
-  if (item.kind === "permit") return `permit:${item.market}:${item.field.key}`;
+  if (item.kind === "permit" || item.kind === "answer") return `${item.kind}:${item.market}:${item.field.key}`;
   if (item.kind === "field") return `${item.group}:${item.field.key}`;
   return "diversity";
+}
+
+/** A missing answer Next up asks in a control of its own, in the list that stores it. */
+export type AnswerInPlace = Extract<MissingAnswer, { kind: "permit" | "answer" | "field" }>;
+
+/** A country by its market key, as its own answers are read: the served one, else the key alone. */
+function countryKey(questionSet: QuestionSet, market: string): CountryKey {
+  return countryQuestions(questionSet, market) ?? { market };
+}
+
+/** What a missing answer holds now: a permit in its country's entry, a country's own answer as
+ *  `countryAnswerEntry` reads it (the home's pay is the desired salary), any other in its group. */
+export function missingValue(profile: Profile, questionSet: QuestionSet, item: AnswerInPlace): unknown {
+  const key = item.field.key;
+  if (item.kind === "permit") return permitEntry(profile, item.market)[key];
+  if (item.kind === "answer") return countryAnswerEntry(profile, countryKey(questionSet, item.market))[key];
+  return groupValues(profile, item.group)[key];
+}
+
+/** The profile with a missing answer set (undefined removes it) where its list stores it, through that list's
+ *  own writer (`withPermit`, `withCountryAnswer`, `withField`). */
+export function withMissingAnswer(
+  profile: Profile,
+  questionSet: QuestionSet,
+  item: AnswerInPlace,
+  value: string | boolean | undefined,
+): Profile {
+  const key = item.field.key;
+  if (item.kind === "permit") return withPermit(profile, questionSet, item.market, key, value);
+  if (item.kind === "answer") return withCountryAnswer(profile, countryKey(questionSet, item.market), key, value);
+  return withField(profile, questionSet, item.group, key, value);
 }
 
 /**
  * Every required answer still missing, in the order Next up asks: where you apply while no country is chosen
  * (`questionSet.chosen`), first as in Setup, since the countries decide every country's question that follows
  * (unchosen, none is asked, so every form pauses on them); then citizenship, since it settles some work permits
- * (Country answers asks it, with a country picker, never Contact), then each served country's work permit, in
+ * (Country answers asks it, with a country picker, never Contact), then each served country's work permits, in
  * the order you apply in (`permitMarkets`; the knockout answers, never guessed, and none your citizenship
- * settles), then contact, then start and pay, then the diversity questions where a country you apply in has a
- * checked set (`offers_eeo`). The fields are the ones setup readiness counts, as served for where you live. A
- * citizenship held by name is missing once the country list is read (`codes`): Next stores it as codes.
+ * settles), each followed by that country's required answers of its own (the home's pay), then contact, then
+ * start and pay, then the diversity questions where a country you apply in has a checked set (`offers_eeo`).
+ * The fields are the ones setup readiness counts, as served for where you live, and an answer under a field's
+ * older key counts (`answeredIn`). A citizenship held by name is missing once the country list is read
+ * (`codes`): Next stores it as codes.
  */
 export function missingAnswers(
   profile: Profile,
@@ -667,11 +751,12 @@ export function missingAnswers(
   }
   for (const market of permitMarkets(questionSet)) {
     for (const field of openPermitFields(profile, questionSet, market)) out.push({ kind: "permit", market, field });
+    for (const field of countryAnswersOpen(profile, questionSet, market)) out.push({ kind: "answer", market, field });
   }
   for (const group of ["personal", "preferences"] as const) {
     const values = groupValues(profile, group);
     for (const field of group === "personal" ? contactFields(questionSet) : groupFields(questionSet, group)) {
-      if (!field.optional && !answered(field, values[field.key])) out.push({ kind: "field", group, field });
+      if (!field.optional && !answeredIn(field, values)) out.push({ kind: "field", group, field });
     }
   }
   const eeo = groupCount(profile, questionSet, "eeo");

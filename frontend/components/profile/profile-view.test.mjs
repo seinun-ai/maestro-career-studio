@@ -113,9 +113,12 @@ test("next up asks the first country's work permit in place, in that country's w
 
 test("a typed answer next up has Next, the view's one filled button", () => {
   const permits = { authorized_now: true, sponsorship_now: false, sponsorship_future: false };
+  // Germany is where this person lives: its pay is asked with its permits, so it is given here.
   const html = render({
     applyIn: ["DE"],
-    profile: { personal: { ...PERSONAL, phone: "" }, work_auth_by_country: { DE: permits } },
+    profile: {
+      personal: { ...PERSONAL, phone: "" }, work_auth_by_country: { DE: permits }, preferences: { desired_salary: "€60,000" },
+    },
   });
   assert.match(html, /Next up · Contact/);
   assert.match(html, /<label for="[^"]+">Phone<\/label>/);
@@ -265,9 +268,10 @@ test("the tile is Country answers: citizenship first, then one line per country 
   const tile = tileButton(html, "permits");
   assert.match(tile, />Country answers</);
   const lines = [...tile.matchAll(/<span class="min-w-0 flex-1 truncate">([^<]+)<\/span><span class="min-w-0 truncate text-muted-foreground">([^<]+)</g)];
+  // India's permits are settled by the citizenship; India is where Asha lives, and her pay there is not given.
   assert.deepEqual(lines.map((m) => [m[1], m[2]]), [
     ["Citizen of", "India"],
-    ["India", "can work now"],
+    ["India", "expected pay not given"],
     ["United Arab Emirates", "not answered"],
     ["Germany", "not answered"],
     ["Netherlands", "not answered"],
@@ -298,7 +302,7 @@ test("country answers: Citizen of at the top, then each country's permits and it
 });
 
 test("India's three permit answers come from the citizenship, each with a way to answer differently", () => {
-  const html = renderIndia();
+  const html = renderIndia({ ...ASHA, preferences: { desired_salary: "₹30,00,000" } });
   const sets = [...html.matchAll(/<fieldset class="space-y-4"><legend[^>]*><span class="min-w-0 flex-1 truncate">([^<]+)<\/span>.*?<\/legend>(.*?)<\/fieldset>/g)];
   const [india, ...others] = sets.map((m) => m[2]);
   assert.equal((india.match(/From your citizenship \(India\)/g) ?? []).length, 3);
@@ -312,7 +316,7 @@ test("India's three permit answers come from the citizenship, each with a way to
   // A right to work from citizenship does not run out: India asks no expiry; the UAE, settled by nothing, does.
   assert.doesNotMatch(india, /Authorization expires on/);
   assert.match(others[0], /id="af-permit-AE-authorization_expires_on"/);
-  // Its heading carries the tile's line: settled is answered.
+  // Its heading carries the tile's line: settled is answered, and India's pay is given.
   assert.match(html, /<span class="min-w-0 flex-1 truncate">India<\/span><span[^>]*><span class="sr-only">, <\/span><svg[^>]*text-success[^>]*>.*?<\/svg>can work now<\/span><\/legend>/);
   for (const set of others) assert.doesNotMatch(set, /From your citizenship/);
   assert.doesNotMatch(india, /Your answer differs/);
@@ -349,10 +353,14 @@ test("an answer you gave the same way shows as yours, not as from your citizensh
   assert.equal((india.match(/From your citizenship \(India\)/g) ?? []).length, 2);
 });
 
-test("next up skips what the citizenship settled and asks the UAE next", () => {
+test("next up skips what the citizenship settled: India's own pay next, then the UAE", () => {
+  // India is where Asha lives, so its pay is required in its set and asked once its permits are settled.
   const html = renderIndia();
-  assert.match(html, /Next up · Country answers · United Arab Emirates/);
-  assert.match(html, /<h2[^>]*>Can you work in the UAE without an employer sponsoring your residence visa\?<\/h2>/);
+  assert.match(html, /Next up · Country answers · India/);
+  assert.match(html, /<h2[^>]*><label for="[^"]+">Expected CTC \(₹ per year\)<\/label><\/h2>/);
+  const paid = renderIndia({ ...ASHA, preferences: { desired_salary: "₹30,00,000" } });
+  assert.match(paid, /Next up · Country answers · United Arab Emirates/);
+  assert.match(paid, /<h2[^>]*>Can you work in the UAE without an employer sponsoring your residence visa\?<\/h2>/);
 });
 
 test("the screening questions fold, and a CEFR level on each language", () => {
@@ -395,4 +403,78 @@ test("with no country chosen: nothing picked, no country's questions, and a way 
   assert.match(html, /The countries you apply in/);
   assert.match(html, /<button[^>]*bg-primary text-primary-foreground[^>]*>Choose countries<\/button>/);
   assert.ok(html.indexOf("Next up · Where you apply") < html.indexOf(">Citizen of</label>"));
+});
+
+// Someone who lives in the United States and applies there, in India and in Ireland: the home's pay is the
+// United States set's, required and read from the desired salary; India's and Ireland's are their own, optional.
+const US_HOME = { home: "US", applyIn: ["US", "IN", "IE"] };
+const US_PERMITS = { status: "citizen", authorized_now: true, sponsorship_now: false, sponsorship_future: false };
+const countrySets = (html) =>
+  Object.fromEntries(
+    [...html.matchAll(/<fieldset class="space-y-4">(<legend[^>]*><span class="min-w-0 flex-1 truncate">([^<]+)<\/span>.*?<\/legend>)(.*?)<\/fieldset>/g)]
+      .map((m) => [m[2], { legend: m[1], body: m[3] }]),
+  );
+// A tile's line for one country: its done mark and its words.
+const tileLine = (html, label) => {
+  const rows = tileButton(html, "permits").split('<span class="flex items-center gap-1.5 text-foreground">');
+  const row = rows.find((r) => r.includes(`<span class="min-w-0 flex-1 truncate">${label}</span>`)) ?? "";
+  return [row.slice(0, row.indexOf('<span class="min-w-0 flex-1 truncate">')), row.match(/text-muted-foreground">([^<]+)</)?.[1]];
+};
+
+test("the home's set asks its pay in its own terms, required, holding the desired salary", () => {
+  const html = render({ ...US_HOME, profile: { personal: PERSONAL, preferences: { desired_salary: "$80,000" } } });
+  const sets = countrySets(html);
+  assert.deepEqual(Object.keys(sets), ["United States", "India", "Ireland"]);
+  const us = sets["United States"].body;
+  assert.ok(us.indexOf("Expected salary (USD)") > us.indexOf("Will you need visa sponsorship later?"), "after its permits");
+  assert.match(us, /<label data-slot="label"[^>]*for="af-answer-US-expected_pay">Expected salary \(USD\)<\/label>/);
+  assert.match(us, /<input[^>]*id="af-answer-US-expected_pay"[^>]*value="\$80,000"/);
+  // Every other country's pay is its own, and optional.
+  assert.match(sets.India.body, /Expected CTC \(₹ per year\) <span[^>]*>\(optional\)<\/span>/);
+  assert.match(sets.Ireland.body, /Expected salary \(EUR\) <span[^>]*>\(optional\)<\/span>/);
+  for (const other of [sets.India.body, sets.Ireland.body]) assert.doesNotMatch(other, /value="\$80,000"/);
+});
+
+test("start and pay asks no desired salary once you apply in the country you live in, and does while unchosen", () => {
+  const html = render({ ...US_HOME, profile: { personal: PERSONAL, preferences: { desired_salary: "$80,000" } } });
+  assert.doesNotMatch(html, /id="af-preferences-desired_salary"/);
+  assert.doesNotMatch(tileButton(html, "start"), /desired salary/i);
+  const unchosen = render({ home: "US", applyIn: ["US"], served: [], chosen: false });
+  assert.match(unchosen, /id="af-preferences-desired_salary"/);
+});
+
+test("next up asks the home's pay once its permits are given, before the next country's", () => {
+  const html = render({ ...US_HOME, profile: { personal: PERSONAL, work_auth_by_country: { US: US_PERMITS } } });
+  assert.match(html, /Next up · Country answers · United States/);
+  assert.match(html, /<h2[^>]*><label for="[^"]+">Expected salary \(USD\)<\/label><\/h2>/);
+  // Counted with the country's permits; Next, the view's one filled button, waits for a figure.
+  assert.match(html, /aria-label="4 of 5 answered"/);
+  assert.equal((html.match(FILLED) ?? []).length, 1);
+  const lead = html.slice(html.indexOf("Next up · Country answers"));
+  assert.match(lead.match(/<button[^>]*>Next<\/button>/)?.[0] ?? "", /aria-disabled="true"/);
+});
+
+test("a country whose permits are given but whose pay is not reads as open, and says so", () => {
+  const open = render({ ...US_HOME, profile: { personal: PERSONAL, work_auth_by_country: { US: US_PERMITS } } });
+  const [mark, words] = tileLine(open, "United States") ?? [];
+  assert.match(mark ?? "", /border-attention/);
+  assert.equal(words, "expected pay not given");
+  assert.match(countrySets(open)["United States"].legend, /border-attention[^>]*><\/span>expected pay not given<\/span><\/legend>$/);
+  const paid = render({
+    ...US_HOME,
+    profile: { personal: PERSONAL, work_auth_by_country: { US: US_PERMITS }, preferences: { desired_salary: "$80,000" } },
+  });
+  const [paidMark, paidWords] = tileLine(paid, "United States") ?? [];
+  assert.match(paidMark ?? "", /text-success/);
+  assert.equal(paidWords, "can work now");
+  assert.match(countrySets(paid)["United States"].legend, /text-success.*can work now<\/span><\/legend>$/);
+  // Permits still open keep their own words.
+  assert.equal(tileLine(paid, "India")?.[1], "not answered");
+});
+
+test("notice written in words before is counted set on Start and pay, and never listed missing", () => {
+  const html = render({ ...US_HOME, profile: { personal: PERSONAL, preferences: { notice_period: "negotiable" } } });
+  const tile = tileButton(html, "start");
+  assert.match(tile, /1 of 4 set · earliest start date, willing to relocate, how did you hear about the job missing/);
+  assert.doesNotMatch(tile, /notice period/i);
 });

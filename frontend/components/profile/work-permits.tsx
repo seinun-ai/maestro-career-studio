@@ -20,6 +20,7 @@ import {
   citizenshipEntries,
   citizenshipField,
   countryAnswerEntry,
+  countryAnswered,
   derivedPermits,
   differsFromSettled,
   permitAnswered,
@@ -33,6 +34,7 @@ import {
   type Count,
   type CountryQuestions,
   type DerivedAnswer,
+  type Profile,
 } from "@/lib/autofill-options";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import type { MarketSettingResponse, QuestionSet } from "@/lib/types";
@@ -47,12 +49,24 @@ function useCountryName(market: MarketSettingResponse): (code: string) => string
   return (code) => names.get(code.toUpperCase()) ?? code;
 }
 
-/** One country's line on the tile: its answers in words, given or settled by your citizenship, never a guess. */
+/** One country's permit answers in words, given or settled by your citizenship, never a guess. */
 function permitWords(answers: Record<string, unknown>, count: Count): string {
   if (count.answered === 0) return "not answered";
   if (count.answered < count.answerable) return `${count.answered} of ${count.answerable} answered`;
   const now = answers.authorized_now;
   return now === true ? "can work now" : now === false ? "can't work there now" : "answered";
+}
+
+/** One country's line, on the tile and at its heading: done once its permits and its own required answers are
+ *  (`countryAnswered`), and worded by its permits, or by its pay once that is all that is open (where you live:
+ *  the one required answer of its own a country's set serves). */
+function countryLine(profile: Profile, questionSet: QuestionSet, market: string): { done: boolean; words: string } {
+  const done = countryAnswered(profile, questionSet, market);
+  const payOpen = !done && permitAnswered(profile, questionSet, market);
+  const words = payOpen
+    ? "expected pay not given"
+    : permitWords(permitAnswers(profile, questionSet, market), permitCount(profile, questionSet, market));
+  return { done, words };
 }
 
 /** Done or still open: a check, or an empty ring. */
@@ -99,11 +113,7 @@ export function useWorkPermitsTile(
   const rows = questionSet.countries.map((country) => ({
     key: country.market,
     label: country.label,
-    done: permitAnswered(profile, questionSet, country.market),
-    words: permitWords(
-      permitAnswers(profile, questionSet, country.market),
-      permitCount(profile, questionSet, country.market),
-    ),
+    ...countryLine(profile, questionSet, country.market),
   }));
   const open = !citizenDone || rows.some((row) => !row.done);
   return {
@@ -236,6 +246,7 @@ function CountrySet({
   const idPrefix = `af-permit-${market}`;
 
   const entry = permitEntry(profile, market);
+  const line = countryLine(profile, questionSet, market);
   const derived = derivedPermits(profile, questionSet, market);
   const answers = permitAnswers(profile, questionSet, market);
   const fields = shownPermitFields(profile, questionSet, market, answering);
@@ -283,8 +294,8 @@ function CountrySet({
         <span className="flex shrink-0 items-center gap-1.5 text-body-small text-muted-foreground">
           {/* The group's name reads "India, can work now", never the two run together. */}
           <span className="sr-only">, </span>
-          <DoneMark done={permitAnswered(profile, questionSet, market)} />
-          {permitWords(answers, permitCount(profile, questionSet, market))}
+          <DoneMark done={line.done} />
+          {line.words}
         </span>
       </legend>
       {differs ? (
@@ -310,8 +321,8 @@ function CountrySet({
           idPrefix={`af-answer-${market}`}
           group={`answer-${market}`}
           fields={country.answers}
-          values={countryAnswerEntry(profile, market)}
-          onChange={(key, next) => update(SURFACE, (current) => withCountryAnswer(current, market, key, next))}
+          values={countryAnswerEntry(profile, country)}
+          onChange={(key, next) => update(SURFACE, (current) => withCountryAnswer(current, country, key, next))}
         />
       ) : null}
     </fieldset>
