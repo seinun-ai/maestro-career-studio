@@ -20,7 +20,14 @@ from app.models.base_resume import BaseResume
 from app.models.filled_answer import FilledAnswer
 from app.models.job import Job
 from app.models.types import utcnow
-from app.services import base_eligibility, countries, eeo_consent, filled_answers, knockout
+from app.services import (
+    autofill_profile,
+    base_eligibility,
+    countries,
+    eeo_consent,
+    filled_answers,
+    knockout,
+)
 from app.services.proposals import APPLIED_MANUALLY, OPEN_STATUSES
 
 logger = logging.getLogger(__name__)
@@ -87,6 +94,7 @@ class _Batch:
         self.fallback: dict[str, bool] = {}
         self.answered = _answered(session, pairs)
         self.profile = eeo_consent.disclosable_profile(session) if self.answered else None
+        self.chosen_home = autofill_profile.chosen_home(session)
 
     def _in_fallback(self, code: str) -> bool:
         if code not in self.fallback:
@@ -105,8 +113,10 @@ class _Batch:
         return None if base_eligibility.eligible_given(base, code, self._in_fallback(code)) else code
 
     def row(self, prop: ApplicationProposal, job: Job) -> dict[str, Any]:
-        to_check = (filled_answers.flag_count(self.session, job, self.profile)
-                    if job.id in self.answered else 0)
+        to_check = (
+            filled_answers.flag_count(self.session, job, self.profile, chosen_home=self.chosen_home)
+            if job.id in self.answered else 0
+        )
         return {"tailored": self.pdfs.get(prop.application_id) if prop.application_id else None,
                 "knockout": _knockout(job, self.scan), "to_check": to_check,
                 "base_country": self._base_country(prop, job)}

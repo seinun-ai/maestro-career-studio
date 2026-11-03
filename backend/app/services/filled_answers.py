@@ -13,6 +13,7 @@ and no agent read returns one. Nothing here imports telemetry, tracing or an LLM
 
 import logging
 from datetime import datetime
+from enum import Enum
 from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID
@@ -36,6 +37,13 @@ from app.services import (
 from app.services.autofill_catalog import Fact
 
 logger = logging.getLogger(__name__)
+
+
+class _Unread(Enum):
+    """`chosen_home` a caller did not pass: `flag_context` reads it. Not None, which is a value
+    (no country chosen)."""
+
+    UNREAD = "unread"
 
 
 class ApplicationMismatch(ValueError):
@@ -103,15 +111,20 @@ def _host_of(url: str | None) -> str | None:
     return urlsplit(url or "").hostname or None
 
 
-def flag_context(session: Session, job: Job,
-                 profile: dict[str, Any] | None = None) -> tuple[dict[str, Fact], set[str]]:
+def flag_context(
+    session: Session, job: Job, profile: dict[str, Any] | None = None, *,
+    chosen_home: str | None | _Unread = _Unread.UNREAD,
+) -> tuple[dict[str, Fact], set[str]]:
     """What the flags compare against: the profile as the fill would serve it, with the job's
     country's work-permit and own answers and its pay or none (`autofill_job.profile_for_job`'s
-    rule, by the chosen home). A batch passes `profile` (`eeo_consent.disclosable_profile`) so it
-    is read once."""
+    rule, by the chosen home). A batch passes `profile` (`eeo_consent.disclosable_profile`) and
+    `chosen_home` (`autofill_profile.chosen_home`, None when unchosen) so each is read once;
+    either one a caller leaves out is read here."""
     profile = eeo_consent.disclosable_profile(session) if profile is None else profile
-    profile = autofill_country.for_market(profile, autofill_job.job_market(job),
-                                          chosen_home=autofill_profile.chosen_home(session))
+    if chosen_home is _Unread.UNREAD:
+        chosen_home = autofill_profile.chosen_home(session)
+    profile = autofill_country.for_market(
+        profile, autofill_job.job_market(job), chosen_home=chosen_home)
     facts = autofill_catalog.build(profile, [], [], company=job.company, location=job.location)
     return facts, answer_flags.saved_eeo(profile)
 
@@ -263,12 +276,16 @@ def has_any(session: Session, job_id: UUID) -> bool:
     return bool(session.scalar(select(exists().where(FilledAnswer.job_id == job_id))))
 
 
-def flag_count(session: Session, job: Job, profile: dict[str, Any] | None = None) -> int:
-    """How many of the job's latest answers carry a flag: the receipt's `flag_count`."""
+def flag_count(
+    session: Session, job: Job, profile: dict[str, Any] | None = None, *,
+    chosen_home: str | None | _Unread = _Unread.UNREAD,
+) -> int:
+    """How many of the job's latest answers carry a flag: the receipt's `flag_count`. A batch passes
+    what `flag_context` reads once for every row."""
     rows = _rows(session, job.id)
     if not rows:
         return 0
-    context = flag_context(session, job, profile)
+    context = flag_context(session, job, profile, chosen_home=chosen_home)
     return sum(bool(answer_flags.flags_for(field, *context)) for _row, field in latest_fields(rows))
 
 

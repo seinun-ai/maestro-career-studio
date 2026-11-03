@@ -186,6 +186,26 @@ def test_answered_jobs_share_one_disclosable_profile(db_session, monkeypatch):
     assert calls == [1]
 
 
+def test_answered_jobs_share_one_chosen_home_read(db_session, monkeypatch):
+    """The batch reads the chosen home once and hands it to every row's flags, as it does the profile:
+    the reads do not grow with the rows that have answers."""
+    calls = []
+    real = autofill_profile.chosen_home
+    monkeypatch.setattr(autofill_profile, "chosen_home", lambda s=None: calls.append(1) or real(s))
+
+    def reads(answered: int) -> int:
+        rows = [_proposal(db_session) for _ in range(answered)]
+        for _, job in rows:
+            db_session.add(FilledAnswer(job_id=job.id, channel="agent", fields=[TICKED_ALL]))
+        db_session.commit()
+        calls.clear()
+        got = inbox_readiness.for_proposals(db_session, rows)
+        assert [got[p.id]["to_check"] for p, _ in rows] == [1] * answered
+        return len(calls)
+
+    assert reads(1) == reads(3)
+
+
 def test_a_batch_read_failure_returns_null_for_each_open_proposal(db_session, monkeypatch, caplog):
     rows = [_proposal(db_session), _proposal(db_session, status="approved"),
             _proposal(db_session, status="submitted")]

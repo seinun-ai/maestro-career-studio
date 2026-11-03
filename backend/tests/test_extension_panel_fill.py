@@ -2366,7 +2366,7 @@ def test_undo_of_a_learned_home_pay_cannot_bring_back_the_figure_it_replaced(tmp
     `preferences.desired_salary` over the figure there (`autofill_profile._with_home_pay`). Undo then removes
     the home entry its learn made (sent as null), which by then holds no pay: the replaced figure is gone
     and the learned one stays. A fix (the Companion learning a home pay into `desired_salary`, so Undo puts
-    the old value back there) flips the last assertion."""
+    the old value back there) changes the first PUT and flips the last assertion."""
     from app.services import text_settings
 
     monkeypatch.setattr(text_settings.settings, "settings_dir", tmp_path / "settings")
