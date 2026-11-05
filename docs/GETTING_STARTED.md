@@ -24,7 +24,7 @@ Three steps: [install it](#1-what-you-need) → [add your resumes](#3-your-first
 - **Match score** — Maestro's comparison of your resume with a saved job description. It is not an employer's score or a prediction of an interview.
 - **AI service** — OpenAI, Gemini or Claude (Anthropic), whichever you choose; you add its key in Settings › Basics.
 - **Companion** — the Maestro CS browser extension, a side panel in Chrome.
-- **Assistant** — the chat inside the app. **Connected agents** are AI assistants outside it (Claude, Codex, ChatGPT desktop) that use the app over MCP.
+- **Assistant** — the chat inside the app. **Connected agents** are AI assistants outside it (Claude, Codex, and ChatGPT desktop through its Codex settings) that use the app over MCP.
 
 The app is the only required part. Two add-ons are optional, and you can add
 them at any time: the **Companion**, a browser extension for saving and filling job pages

@@ -34,13 +34,13 @@ Maestro tailors it from your whole career history in under a minute, and every b
 
 ![Many resume versions become one career history, then a specialist resume per role, company and country, matched to a job and ready to apply. You press Submit.](docs/assets/hero.gif)
 
-**[Install in two commands](#quickstart)** · Free and open source · No account · macOS, Linux and Windows. New to the terminal? The [Getting Started guide](docs/GETTING_STARTED.md) walks through every step.
+**[Install in two commands](#quickstart)** · Free and open source · No account · macOS, Linux and Windows. Already pay for Claude or ChatGPT? [Run it from that app](#give-your-ai-your-career) with no API key. New to the terminal? The [Getting Started guide](docs/GETTING_STARTED.md) walks through every step.
 
 - **Same score, every time.** The match score runs on fixed rules and a small model on your own computer, with no AI service involved. Same resume, same job, same number.
-- **Every AI edit is a diff.** Suggested changes arrive as a before and after. You accept or undo them one by one.
+- **It asks instead of inventing.** Approved bullets go in word for word. When a job wants something your resume doesn't show, Maestro asks you about it, and every change arrives as a diff you accept or undo.
 - **It fills the form and stops there.** The Companion fills job applications from your saved answers and attaches your resume. It never presses Submit. That click is yours.
 
-**Bring an AI.** Maestro needs one to read a resume or a job post. Add an OpenAI, Gemini or Claude key (about $0.01 per application on the OpenAI default), or skip the key and connect Claude or Codex, which then does the reading and writing itself.
+**Bring an AI.** Maestro needs one to read a resume or a job post. Add an OpenAI, Gemini or Claude key (about $0.01 per application on the OpenAI default), or skip the key and connect Claude, or ChatGPT through Codex, which then does the reading and writing itself.
 
 ## Quickstart
 
@@ -77,7 +77,7 @@ Then:
 
 1. Setup opens first and asks for your AI key. One key from OpenAI, Gemini or Claude is enough, and you can change it later in **Settings › Basics** ([what a key costs and does](docs/SETUP_REFERENCE.md#do-you-need-an-api-key)). No key? Skip it and do step 3 first.
 2. Import your resumes, save a job, and tailor ([step by step](docs/GETTING_STARTED.md#3-your-first-tailored-resume)).
-3. `maestro connect` adds Maestro to Claude Desktop, Claude Code, Codex, Cursor or VS Code. Without a key, this is the route: your assistant reads your resume and the job and writes the edits, and Maestro checks and saves them.
+3. `maestro connect` adds Maestro to Claude Desktop, Claude Code, Codex (which the ChatGPT desktop app shares), Cursor or VS Code. Without a key, this is the route: your assistant reads your resume and the job and writes the edits, and Maestro checks and saves them.
 4. Optional: add the [Companion from the Chrome Web Store](https://chromewebstore.google.com/detail/maestro-cs-companion/bppkeipififkepldkogmfpkkhoakgndl), a Chrome side panel that saves the job you're on and fills its application ([setup](docs/GETTING_STARTED.md#4-the-companion-browser-extension-optional)). Saving a job from it needs an API key.
 
 > **Made for one person on one computer.** There is no login, so anything that
@@ -111,7 +111,7 @@ Then:
 
 ## Give your AI your career
 
-Connect Claude, Codex or the ChatGPT desktop app and your assistant gets your career history, your resumes and your jobs. Then just ask.
+Connect Claude, Codex or the ChatGPT desktop app (through its Codex settings) and your assistant gets your career history, your resumes and your jobs. Then just ask.
 
 | | You ask | What happens |
 |---|---|---|
@@ -124,7 +124,7 @@ Ask in your own words. An apply run waits for your yes before each submit unless
 
 ## Why it works this way
 
-If your resume folder has a `v2finalcopy(3)` in it, this is for you. Maestro keeps one record of what you have actually done, and every resume is a view of that record. Approved bullets go into a resume word for word, and rewording one is a separate step that asks you first. When a job asks for something your resume does not show, Maestro asks you about it. If it is true, it is saved for every future application. If it is not, it stays a gap.
+If your resume folder has a `v2finalcopy(3)` in it, this is for you. Pasting your resume into a chat works once, then the next chat starts from scratch and rewords a little more of you out of it. Maestro keeps one record of what you have actually done, and every resume is a view of that record. Approved bullets go into a resume word for word, and rewording one is a separate step that asks you first. When a job asks for something your resume does not show, Maestro asks you about it. If it is true, it is saved for every future application. If it is not, it stays a gap.
 
 The score is fixed rules, so the same resume and job always get the same number. It is not an employer's score or a prediction of an interview, so use it to compare your own drafts. Saving a job and tailoring for it took about 10 seconds on Gemini and about 40 on the OpenAI default in our tests, at about $0.01 (OpenAI) or under $0.03 (Gemini) per application ([the numbers](docs/USING_MAESTRO.md#5-choose-your-models-deliberately)).
 
@@ -208,6 +208,7 @@ report is one of the most valuable contributions right now.
 - **Known issues:** [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md) — what works well, what's rough, and what's a deliberate limitation.
 - **Skills for your AI assistant:** [`docs/skills/`](docs/skills/) — job hunt, apply run, mail status, referral pages, tailor run, and a skill that builds your own; the app's **Automations** page copies each as a prompt.
 - **Contributing:** [`CONTRIBUTING.md`](CONTRIBUTING.md) — development setup, tests, development mode and LLM tracing, and where help is wanted. [`SYSTEM.md`](SYSTEM.md) is the architecture reference for contributors and coding agents; read the relevant part before changing behaviour. [`UBIQUITOUS_LANGUAGE.md`](UBIQUITOUS_LANGUAGE.md) is the project's vocabulary, worth ten minutes before your first contribution.
+- **Roadmap:** [what's shipped, what's next](https://github.com/seinun-ai/maestro-career-studio/discussions/53), and where to say what you'd like to see.
 - **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) — what changed in each release; read any **Breaking changes** heading before [updating](#updating). Maintainers: [`docs/RELEASING.md`](docs/RELEASING.md).
 - **Security & privacy:** [`SECURITY.md`](SECURITY.md) — the local-only rule and how to report a vulnerability. [`PRIVACY.md`](PRIVACY.md) — what is stored, and what leaves your computer.
 - **License:** [`LICENSE`](LICENSE) — Apache License 2.0, plus [`NOTICE`](NOTICE).

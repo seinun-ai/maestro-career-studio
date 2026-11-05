@@ -1,7 +1,7 @@
 # Maestro CS MCP Server
 
-A connector that lets your AI assistant (Claude, the ChatGPT desktop app,
-Codex) use Maestro Career Studio. Your assistant does the thinking: it reads
+A connector that lets your AI assistant (Claude, Codex, or the ChatGPT desktop
+app through its Codex settings) use Maestro Career Studio. Your assistant does the thinking: it reads
 job postings, compares them with your resumes and suggests edits. The app keeps
 your data, renders the PDFs (LaTeX or Typst) and tracks your applications. Each
 tool below is one action your assistant can take in the app.

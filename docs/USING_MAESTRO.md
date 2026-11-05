@@ -67,7 +67,7 @@ gone stale):
 | See what the AI changed | No history | No | **Every change shown, undoable** |
 | PDF output | House web templates | HTML → PDF | **LaTeX and Typst, bring your own template** |
 | Career record | None (per document) | Plain markdown/YAML files | **Organized, versioned — exports to one `career.md`** |
-| Works with AI assistants | No | Command-line skill files | **94 tools for Claude, Codex, ChatGPT desktop — on your own computer** |
+| Works with AI assistants | No | Command-line skill files | **94 tools for Claude, Codex and ChatGPT desktop (via Codex), on your own computer** |
 | Submits applications for you | N/A | Never (stated) | **Only with your yes per application, or with Full automation you turn on** |
 | Cost | $15–75/month | Free + AI usage | **Free (Apache 2.0) + your own AI usage — [about $0.01 per application](SETUP_REFERENCE.md#do-you-need-an-api-key)** |
 
@@ -278,7 +278,8 @@ what your key can use.
 ### Driving it from Claude, Codex, or ChatGPT (MCP)
 
 **MCP** is the connector that lets an AI assistant use the app for you. With it,
-Claude (Desktop or Code), the ChatGPT desktop app or the Codex CLI can run the
+Claude (Desktop or Code), the Codex CLI or the ChatGPT desktop app (through its
+Codex settings, the same `~/.codex/config.toml`) can run the
 whole process in conversation — read a posting, score it, work the gaps, make
 the PDF. It runs on **your computer** against **your** data.
 
