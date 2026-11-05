@@ -79,8 +79,9 @@ These are for the Docker route below.
   it is the PDF tools and the small scoring model.
 - **An AI key — OpenAI, Gemini or Claude; any one is enough.** It powers tailoring,
   cover letters and screening answers, building your career history, the
-  Companion's form filling, and the Assistant. Without a key, scoring, PDFs and tracking
-  still work — see [Do you need an API key?](#do-you-need-an-api-key)
+  Companion's form filling, and the Assistant. Without a key, connect Claude or Codex
+  and it does the reading and writing (the Companion's AI fill and the Assistant still
+  need a key). See [Do you need an API key?](#do-you-need-an-api-key)
 
 ---
 
@@ -153,9 +154,12 @@ edits, and the app applies them with the same honesty checks — no AI key
 needed. That is the default even with a key: Settings › Agent apps › **Who
 writes for connected agents** switches the writing to Maestro's AI.
 
-**No key at all?** Scoring, gap diagnostics, health reports, manual editing, PDF
-creation, application tracking and analytics all work without one. Features that
-need AI ask you to add a key instead of failing.
+**No key at all?** Reading a resume file and saving a job from its text both take
+an AI, so on its own the web app can't start you off. Once resumes and jobs are in
+(jobs through an assistant, resumes through an assistant or a Maestro CS JSON
+file), scoring, gap diagnostics, health reports, manual editing, PDF creation,
+application tracking and analytics all work without one. Features that need AI say
+so and ask for a key instead of failing.
 
 ### Local model servers (untested)
 

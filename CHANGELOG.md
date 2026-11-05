@@ -69,6 +69,13 @@ once, and each country hears only its own.
 
 ### Changed
 
+- **`maestro start` says how to keep Maestro running after a restart.** While autostart is off it adds one
+  line: `maestro autostart on` starts it each time you log in.
+- **The Companion names the command when Maestro isn't running:** "Couldn't reach Maestro CS. Start it with
+  maestro start, then try again."
+- **The README and Getting Started lead with the uv install.** The README's first screen is shorter, says
+  plainly that reading a resume or a job post needs an AI key or a connected assistant, and links the
+  Companion on the Chrome Web Store. Getting Started puts uv first and Docker under it for self-hosters.
 - **Profile › Work permits is now Country answers:** Citizen of at the top, then each country you apply in
   with its work permits and its own answers. **Eligibility is now Screening questions.** Messages that send
   you there use the new names.
@@ -123,6 +130,9 @@ once, and each country hears only its own.
 - A pay figure written with a bare "$" was read as the currency of a country that doesn't pay in dollars (a
   British home's "$100,000" as pounds). Once you choose your countries, a "$" names that country's currency only where it pays in dollars,
   else yours where you live in a dollar country, and otherwise the salary check says it can't compare.
+- Importing a resume with no AI key said "Couldn't read this file.", as if the file were broken. It now says
+  no API key is set and where to add one, and Setup's resume step says up front that reading a resume needs
+  a key or a connected Claude or Codex.
 - Leaving a job page by Back to Jobs or the browser's Back now morphs the job back into its row, and the Jobs list keeps its scroll position and filters.
 
 ## [0.12.0] — 2026-10-28

@@ -29,129 +29,25 @@ Three steps: [install it](#1-what-you-need) → [add your resumes](#3-your-first
 The app is the only required part. Two add-ons are optional, and you can add
 them at any time: the **Companion**, a browser extension for saving and filling job pages
 ([§4](#4-the-companion-browser-extension-optional)), and a connection to your **AI
-assistant** ([§5](#5-connect-your-ai-assistant-optional)).
+assistant** ([§5](#5-connect-your-ai-assistant-optional)), which can also stand in
+for an API key.
 
 ## 1. What you need
 
-> **Comfortable in a terminal and want no Docker?** Skip this list and use the
-> [uv route](#or-install-with-uv-no-docker-no-git) in step 2. It needs only
-> [uv](https://docs.astral.sh/uv/), which installs Python for you.
+- **A terminal.** Terminal on macOS, PowerShell on Windows, any shell on Linux.
+  You paste three commands into it, once.
+- **About 1 GB of free disk space.** uv fetches Python for Maestro, so you do
+  **not** need Python, Node, Docker or Git.
+- **An AI, one of two ways.** An API key from OpenAI, Gemini or Claude, which
+  Setup asks for first ([what it costs](SETUP_REFERENCE.md#do-you-need-an-api-key)).
+  Or no key: connect Claude or Codex ([§5](#5-connect-your-ai-assistant-optional))
+  and it reads your resume and jobs itself. With neither, Maestro can't read a
+  resume file or a job post.
 
-- **Docker.** Docker is a free program that runs Maestro in a self-contained
-  box on your computer, so you don't install anything else. On macOS or
-  Windows install [Docker Desktop](https://docs.docker.com/desktop/); on
-  Linux, [Docker Engine + Compose v2](https://docs.docker.com/engine/install/).
-  **Start it and leave it running.** Check it works:
-
-  ```bash
-  docker info
-  ```
-
-  If the output ends without an error, you're fine.
-- **Git.** It downloads Maestro, and later its updates. macOS offers to
-  install it the first time you run `git` (accept the "command line developer
-  tools" prompt). On Windows, install it inside WSL
-  ([below](#on-windows-use-wsl)). On Linux, use your
-  package manager.
-- **Disk space.** About a 1 GB download, which takes roughly 3–4 GB once
-  unpacked ([details](SETUP_REFERENCE.md#prerequisites)).
-- **An AI key — optional for now.** OpenAI, Gemini or Claude (or a local
-  OpenAI-compatible server). You add it inside the app after it starts.
-  Without one, scoring, PDFs and tracking still work
-  ([No-Key Mode](SETUP_REFERENCE.md#do-you-need-an-api-key)).
-
-You do **not** need Python or Node.
-
-### On Windows: use WSL
-
-On Windows, run Maestro from **WSL** (the Linux that ships with Windows).
-Every command in this guide then works exactly as written, and your data sits
-on a Linux disk, which the app's database needs. Windows is the least-tested
-platform so far — if a step here fails,
-[open an issue](https://github.com/seinun-ai/maestro-career-studio/issues).
-
-1. **Install Docker Desktop** and leave **Use the WSL 2 based engine** on (the
-   default). If you have no WSL yet, open PowerShell as administrator, run
-   `wsl --install`, and restart. That installs Ubuntu.
-2. In Docker Desktop, open **Settings › Resources › WSL integration** and
-   switch on your Ubuntu. That is what makes `docker` work inside WSL.
-3. Open **Ubuntu** from the Start menu. **Type every command in this guide
-   there**, not in PowerShell or Command Prompt.
-4. In that window, install Git with `sudo apt update && sudo apt install git`
-   (you don't need Git for Windows), then go to your WSL home with `cd ~` before
-   [installing](#2-install-and-start-the-app). **Don't clone into `/mnt/c/...`** (your `C:` drive): the app
-   runs slower there, and its database can report `database is locked`.
-
-The app still opens in your normal Windows browser at
-<http://localhost:3000>. To see the project folder in File Explorer, go to
-`\\wsl.localhost\Ubuntu\home\<your-user>\maestro-career-studio`.
+Running it on a server, or working on the code? Use
+[Docker](#or-run-it-with-docker-self-hosters) instead.
 
 ## 2. Install and start the app
-
-Open a terminal and run these two commands:
-
-```bash
-git clone https://github.com/seinun-ai/maestro-career-studio.git
-```
-
-```bash
-cd maestro-career-studio && cp .env.example .env && docker compose up -d
-```
-
-The first command downloads the project into a folder called
-`maestro-career-studio`. **Keep that folder** — your data lives in it, and
-updates run from it. The second command starts the app. The first start
-downloads about 1 GB, so give it a few minutes.
-
-Then open **<http://localhost:3000>**. The first start sets up your database
-and adds a demo resume so you have something to look at.
-
-Don't put your AI key in `.env`. Add it in the app (Settings › Basics), which
-is step 3 below. A key saved in the app always wins over one in `.env`. Use
-`.env` only for a setup with no browser: paste the key after `OPENAI_API_KEY=`
-(or `GEMINI_API_KEY=`, `ANTHROPIC_API_KEY=`, `OPENROUTER_API_KEY=`) and don't also save one in the app.
-
-**Already use a coding agent** (Claude Code, the Codex CLI)? Install Docker
-and Git yourself, run the `git clone` command, open the agent in that folder,
-and ask: *"Read docs/GETTING_STARTED.md and set Maestro CS up for me — start
-it and wait until it is ready."* Adding your AI key in Settings › Basics and
-loading the browser extension stay your jobs.
-
-Want to build the app from source instead? See [CONTRIBUTING.md](../CONTRIBUTING.md).
-
-### If something goes wrong
-
-| You see | It means | Do |
-| --- | --- | --- |
-| `Cannot connect to the Docker daemon` | Docker isn't running | Start Docker Desktop, wait until it says running, run the command again |
-| `port is already allocated` | Another program uses a port the app needs | Change the `*_HOST_PORT` values in `.env` ([details](SETUP_REFERENCE.md#troubleshooting--common-questions)) |
-| The page loads but everything shows errors | The app is still starting | Wait a minute. It is ready when <http://localhost:8001/health> shows `{"status":"ok"}` |
-| You added a key to `.env` after starting | Keys are read at start | Run `docker compose restart backend` |
-| AI features fail although Settings says "Configured" | An old key is being used | Enter the key again in Settings › Basics and press **Test** |
-
-### Your data, backups and starting over
-
-Everything lives inside the project folder: the database is
-`data/maestro_cs.sqlite3`, and your PDFs and settings sit in the folders
-beside it. **Deleting the project folder deletes your data.** Nothing is kept
-anywhere else.
-
-- **Backups.** Every update saves a database backup to `backups/` first. To
-  make one yourself, run this from the project folder:
-
-  ```bash
-  mkdir -p backups && ( umask 077; docker compose run --rm -T --no-deps backend python -m app.tools.backup_db --stdout | gzip > backups/db-manual.sqlite3.gz )
-  ```
-
-- **Start over.** To erase everything — demo data, your data, saved keys —
-  run these from the project folder. This cannot be undone.
-
-  ```bash
-  docker compose down -v
-  rm -rf data/*
-  ```
-
-### Or install with uv (no Docker, no Git)
 
 uv installs Maestro as a command, and Python 3.12 with it. The package carries the
 web app and its own Node, so there is nothing else to install. It runs on macOS,
@@ -178,16 +74,19 @@ Linux and Windows (x64), natively; on Windows you do not need WSL for this route
    ```
 
    `maestro start` runs Maestro in the background and opens
-   **<http://localhost:3000>**. Closing the terminal does not stop it. The first
-   start downloads the scoring model (about 100 MB, once) from Hugging Face,
-   so give it a minute or two. If the terminal says `maestro` is not found, run
-   `uv tool update-shell` and open another new terminal.
+   **<http://localhost:3000>**. Closing the terminal does not stop it, but
+   restarting the computer does: run `maestro autostart on` once and it starts
+   each time you log in. The first start downloads the scoring model (about
+   100 MB, once) from Hugging Face, so give it a minute or two. If the terminal
+   says `maestro` is not found, run `uv tool update-shell` and open another new
+   terminal.
 
    Best effort, untested: on **Windows ARM64** the PDF engine (typst) has no ARM64 wheel, so use
    `uv tool install --python cpython-3.12-windows-x86_64-none maestro-career-studio`
    (x64 Python under emulation). **Alpine and other musl Linux** are not supported; use a glibc distro or Docker.
 
-Then carry on with step 3. The commands you will use:
+The app opens on **Setup**, which asks for your AI key first. Then carry on with
+step 3. The commands you will use:
 
 | Command | What it does |
 | --- | --- |
@@ -213,8 +112,7 @@ It holds the database, your resumes and settings, `backups/`, `logs/` and
 overrides; `maestro restart` after editing it). To uninstall, run
 `maestro autostart off` and `maestro stop` first (otherwise the login item keeps
 retrying a launcher that is gone), then `uv tool uninstall maestro-career-studio`.
-That leaves the folder; deleting the folder deletes your data. Add your AI key in the app (Settings › Basics), as in the
-Docker route.
+That leaves the folder; deleting the folder deletes your data.
 
 - **Don't run a Docker install and a uv install at the same time.** They are
   separate copies with separate data, and both use ports 8001 and 3000. Coming
@@ -232,24 +130,138 @@ Docker route.
   use is named in the message. `maestro check` prints the install's facts as JSON
   to paste into an issue; it makes no network call.
 
+### Or run it with Docker (self-hosters)
+
+Docker stays the route for servers and for working on the code. It needs:
+
+- **Docker.** Docker is a free program that runs Maestro in a self-contained
+  box on your computer. On macOS or Windows install
+  [Docker Desktop](https://docs.docker.com/desktop/); on Linux,
+  [Docker Engine + Compose v2](https://docs.docker.com/engine/install/).
+  **Start it and leave it running.** Check it works:
+
+  ```bash
+  docker info
+  ```
+
+  If the output ends without an error, you're fine.
+- **Git.** It downloads Maestro, and later its updates. macOS offers to
+  install it the first time you run `git` (accept the "command line developer
+  tools" prompt). On Windows, install it inside WSL
+  ([below](#on-windows-use-wsl)). On Linux, use your
+  package manager.
+- **Disk space.** About a 1 GB download, which takes roughly 3–4 GB once
+  unpacked ([details](SETUP_REFERENCE.md#prerequisites)).
+
+#### On Windows: use WSL
+
+On Windows, run the Docker route from **WSL** (the Linux that ships with Windows).
+Every command in this guide then works exactly as written, and your data sits
+on a Linux disk, which the app's database needs. Windows is the least-tested
+platform so far. If a step here fails,
+[open an issue](https://github.com/seinun-ai/maestro-career-studio/issues).
+
+1. **Install Docker Desktop** and leave **Use the WSL 2 based engine** on (the
+   default). If you have no WSL yet, open PowerShell as administrator, run
+   `wsl --install`, and restart. That installs Ubuntu.
+2. In Docker Desktop, open **Settings › Resources › WSL integration** and
+   switch on your Ubuntu. That is what makes `docker` work inside WSL.
+3. Open **Ubuntu** from the Start menu. **Type every command in this guide
+   there**, not in PowerShell or Command Prompt.
+4. In that window, install Git with `sudo apt update && sudo apt install git`
+   (you don't need Git for Windows), then go to your WSL home with `cd ~` before
+   [installing](#start-it-with-docker). **Don't clone into `/mnt/c/...`** (your `C:` drive): the app
+   runs slower there, and its database can report `database is locked`.
+
+The app still opens in your normal Windows browser at
+<http://localhost:3000>. To see the project folder in File Explorer, go to
+`\\wsl.localhost\Ubuntu\home\<your-user>\maestro-career-studio`.
+
+#### Start it with Docker
+
+Open a terminal and run these two commands:
+
+```bash
+git clone https://github.com/seinun-ai/maestro-career-studio.git
+```
+
+```bash
+cd maestro-career-studio && cp .env.example .env && docker compose up -d
+```
+
+The first command downloads the project into a folder called
+`maestro-career-studio`. **Keep that folder**: your data lives in it, and
+updates run from it. The second command starts the app. The first start
+downloads about 1 GB, so give it a few minutes.
+
+Then open **<http://localhost:3000>**. The first start sets up your database
+and adds a demo resume so you have something to look at.
+
+Don't put your AI key in `.env`. Add it in the app (Setup asks first, and
+Settings › Basics changes it later). A key saved in the app always wins over one in `.env`. Use
+`.env` only for a setup with no browser: paste the key after `OPENAI_API_KEY=`
+(or `GEMINI_API_KEY=`, `ANTHROPIC_API_KEY=`, `OPENROUTER_API_KEY=`) and don't also save one in the app.
+
+**Already use a coding agent** (Claude Code, the Codex CLI)? Install Docker
+and Git yourself, run the `git clone` command, open the agent in that folder,
+and ask: *"Read docs/GETTING_STARTED.md and set Maestro CS up for me with Docker:
+start it and wait until it is ready."* Adding your AI key in the app and
+loading the browser extension stay your jobs.
+
+Want to build the app from source instead? See [CONTRIBUTING.md](../CONTRIBUTING.md).
+
+#### If something goes wrong
+
+| You see | It means | Do |
+| --- | --- | --- |
+| `Cannot connect to the Docker daemon` | Docker isn't running | Start Docker Desktop, wait until it says running, run the command again |
+| `port is already allocated` | Another program uses a port the app needs | Change the `*_HOST_PORT` values in `.env` ([details](SETUP_REFERENCE.md#troubleshooting--common-questions)) |
+| The page loads but everything shows errors | The app is still starting | Wait a minute. It is ready when <http://localhost:8001/health> shows `{"status":"ok"}` |
+| You added a key to `.env` after starting | Keys are read at start | Run `docker compose restart backend` |
+| AI features fail although Settings says "Configured" | An old key is being used | Enter the key again in Settings › Basics and press **Test** |
+
+#### Your data, backups and starting over
+
+Everything lives inside the project folder: the database is
+`data/maestro_cs.sqlite3`, and your PDFs and settings sit in the folders
+beside it. **Deleting the project folder deletes your data.** Nothing is kept
+anywhere else.
+
+- **Backups.** Every update saves a database backup to `backups/` first. To
+  make one yourself, run this from the project folder:
+
+  ```bash
+  mkdir -p backups && ( umask 077; docker compose run --rm -T --no-deps backend python -m app.tools.backup_db --stdout | gzip > backups/db-manual.sqlite3.gz )
+  ```
+
+- **Start over.** To erase everything (demo data, your data, saved keys),
+  run these from the project folder. This cannot be undone.
+
+  ```bash
+  docker compose down -v
+  rm -rf data/*
+  ```
+
 ## 3. Your first tailored resume
 
-Five steps from nothing to a PDF:
+Four steps from nothing to a PDF:
 
-1. **Import your resumes.** Follow the setup screen, or go to **Career history**
+1. **Add your AI key.** Setup asks for it first: pick your AI, paste the key and
+   press **Test** to check the models work. You can change it later in **Settings › Basics**.
+   No key? Skip it, connect Claude or Codex ([§5](#5-connect-your-ai-assistant-optional))
+   and ask it to import your resume, save the job and tailor it. Steps 2 to 4 below are
+   the in-app way, and they need the key.
+2. **Import your resumes.** Follow the setup screen, or go to **Career history**
    and click **Import resumes and documents**. You can add up to 10 files at a time (PDF, DOCX, Markdown or
-   text). Add old versions too — they all hold useful experience. Use the **Other documents** tab for
+   text). Add old versions too: they all hold useful experience. Use the **Other documents** tab for
    PowerPoint decks (.pptx), certificates and reports; these add draft bullets to career history.
-2. **Review and approve bullets in your career history.** Imported bullets arrive as
-   drafts under **Drafts to review**. Only *approved* bullets ever appear on a resume. Merge duplicates
-   while you're there.
-3. **Add your AI key** — **Settings › Basics**. Paste the key into your provider's
-   **API key** field and press **Save**, then press **Test** to check the models work.
-4. **Save a job.** Click **Add job**, paste the job description or
+   Imported bullets arrive as drafts under **Drafts to review**. Only *approved* bullets
+   ever appear on a resume. Merge duplicates while you're there.
+3. **Save a job.** Click **Add job**, paste the job description or
    its link, and click **Save job** — or save it from the job page with the
    [Companion](#4-the-companion-browser-extension-optional). Maestro reads the
    job description, gives it a match score against your resumes and opens the job.
-5. **Tailor and download the PDF.** A job's page has four numbered steps. On
+4. **Tailor and download the PDF.** A job's page has four numbered steps. On
    step 2, **Resume and gaps**, pick a resume and click **Analyze gaps**. Each gap
    is a requirement your resume doesn't show yet. Answer its questions honestly —
    new true facts are saved to your career history for next time — then click
@@ -321,6 +333,10 @@ and the [Companion section of Using Maestro CS](USING_MAESTRO.md#the-companion-b
 MCP lets an AI assistant use Maestro by chat. Keep the app running. HTTP MCP
 clients connect to the backend on this computer; claude.ai and chatgpt.com web
 connectors are outside this setup.
+
+**No API key?** This is the route that replaces it. Your assistant reads your
+resume and the job posts and writes the edits with its own AI, and Maestro
+checks and saves them. Ask it to import your resume first.
 
 Open Settings › Agent apps › **Connect an agent app**. Its **Tool set**
 selector defaults to `full` (all 94 tools). Choose one set per chat. Your
