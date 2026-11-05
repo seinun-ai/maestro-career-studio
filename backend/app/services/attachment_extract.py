@@ -409,14 +409,21 @@ UPLOAD_UNREADABLE = "Couldn't read this file. Try again."
 
 def plain_read_error(exc: Exception) -> str:
     """Why a file could not be read, as a sentence for the user: the error's
-    own words when it was written for them, else the generic one."""
+    own words when it was written for them, else the generic one. A wrapper's
+    cause counts too: the resume parser re-raises a provider error as a
+    RuntimeError, and with no key that sentence is the fix, not the file."""
     # lazy, as above: llm is heavy
     from app.services.llm import LLMProviderError
     from app.services.llm_capabilities import CapabilityMissing
 
-    if isinstance(exc, (UnreadableFile, UnsupportedScriptError, LLMProviderError,
-                        CapabilityMissing)):
-        return str(exc)
+    worded = (UnreadableFile, UnsupportedScriptError, LLMProviderError, CapabilityMissing)
+    seen: BaseException | None = exc
+    visited: set[int] = set()  # a third-party parser can leave a cycle in the chain
+    while seen is not None and id(seen) not in visited:
+        if isinstance(seen, worded):
+            return str(seen)
+        visited.add(id(seen))
+        seen = seen.__cause__
     return "Couldn't read this file."
 
 

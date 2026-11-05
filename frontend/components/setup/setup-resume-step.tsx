@@ -2,11 +2,13 @@
 
 import { useState, type RefObject } from "react";
 
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { Dropzone, type DropzoneRejection } from "@/components/setup/dropzone";
 import { buildSetupSteps } from "@/components/setup/setup-steps";
 import { MAX_BYTES, MAX_FILES, useResumeImport } from "@/components/setup/use-resume-import";
 import { NumberRoll, ResumeTag, WorkingDots } from "@/components/visual";
 import { useBaseResumeColor } from "@/hooks/use-base-resume-label";
+import { CONNECTED_AGENTS_SETTINGS } from "@/lib/agent-links";
 import { importCounts } from "@/lib/setup-flow";
 import type { ImportReport, SetupStatus } from "@/lib/types";
 import { acceptedFilesHint, RESUME_FILE_ACCEPT } from "@/lib/upload-accept";
@@ -51,6 +53,17 @@ export function SetupResumeStep({
 
       {status.import_resumes.done && !importer.report && have?.detail ? (
         <p className="text-body-medium">You have {have.detail}. Drop another file to add it.</p>
+      ) : null}
+
+      {/* Said before the drop, not after it fails: with no key the import can't read a resume. */}
+      {!status.model_key.done ? (
+        <p className="max-w-[65ch] text-body-medium">
+          Reading a resume needs an AI. Add a key in step 1 first, or connect Claude or Codex in{" "}
+          <Link className="underline" href={CONNECTED_AGENTS_SETTINGS}>
+            Settings › Agent apps
+          </Link>{" "}
+          and ask it to import your resume.
+        </p>
       ) : null}
 
       <Dropzone

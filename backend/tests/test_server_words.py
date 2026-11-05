@@ -31,6 +31,33 @@ def test_a_file_that_cannot_be_read_says_so_in_words():
         raise AssertionError("an unknown type must be refused")
 
 
+def test_a_wrapped_provider_error_keeps_its_own_sentence():
+    """The resume parser wraps the provider's error in a RuntimeError (502, not 422). The
+    sentence underneath still names the fix: with no key, "Couldn't read this file." would
+    send a new user looking for a fault in a file that is fine."""
+    from app.services.llm_providers.errors import NO_KEY_MESSAGE
+
+    try:
+        try:
+            raise LLMProviderError(NO_KEY_MESSAGE)
+        except LLMProviderError as inner:
+            raise RuntimeError(f"resume parse LLM call failed: {inner}") from inner
+    except RuntimeError as exc:
+        assert plain_read_error(exc) == NO_KEY_MESSAGE
+    # A developer's error under a developer's error stays the generic sentence.
+    try:
+        try:
+            raise KeyError("contact")
+        except KeyError as inner:
+            raise RuntimeError("parse failed") from inner
+    except RuntimeError as exc:
+        assert plain_read_error(exc) == "Couldn't read this file."
+    # A third-party parser can leave a cycle in the chain; the walk still ends.
+    looped = RuntimeError("parse failed")
+    looped.__cause__ = looped
+    assert plain_read_error(looped) == "Couldn't read this file."
+
+
 def test_an_unsupported_script_keeps_its_own_sentence():
     try:
         validate_script("Резюме разработчика программного обеспечения. Опыт работы 5 лет в IT.",

@@ -1387,7 +1387,7 @@
     `FRONTEND_ALLOWED_HOSTS` from the file. Every Windows child environment keeps `SYSTEMROOT`, `WINDIR`, `COMSPEC`
     and `PATHEXT` when present; `home.child_env` recovers missing names from the process environment without copying secrets.
   - **Run and stop**: `maestro start` preflights both ports, seeds the demo resume, downloads the scoring model into an empty
-    `fastembed_cache/` (skip: `--skip-model`), detaches `maestro run` (on Windows with `CREATE_BREAKAWAY_FROM_JOB` first, without it when the job forbids that: `detach.popen_windows`) and waits for both health URLs. `maestro stop` writes
+    `fastembed_cache/` (skip: `--skip-model`), detaches `maestro run` (on Windows with `CREATE_BREAKAWAY_FROM_JOB` first, without it when the job forbids that: `detach.popen_windows`) and waits for both health URLs; while autostart is off (`autostart_enabled()` is False, not None) it names `maestro autostart on`. `maestro stop` writes
     `run/stop.request`; the supervisor stops each child (SIGTERM to its session on POSIX, `CTRL_BREAK_EVENT` on Windows), then a tree kill after 10 s.
     Backend startup validates seed templates before rendering bases, so a first start without TeX uses ready Typst;
     seed-render failures persist `render_error`. The smoke checks the demo's committed timestamp and PDF download after health,

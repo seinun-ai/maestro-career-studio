@@ -1414,12 +1414,13 @@
       //
       // A SENTENCE FOR A DESKTOP USER, never the configured URL or the fetch
       // error (both words for whoever wrote this file; the console has them).
-      // A status on the result means the backend DID answer, so "check that
-      // it's running" would be the wrong instruction.
+      // A status on the result means the backend DID answer, so "start it"
+      // would be the wrong instruction. No answer names the command, because
+      // the usual cause is a restart since the user last ran it.
       console.warn("[maestro-cs] match failed:", result.error);
       store.note = {
         text: result.status === undefined
-          ? "Couldn't reach Maestro CS. Check that it's running."
+          ? "Couldn't reach Maestro CS. Start it with maestro start, then try again."
           : "Couldn't check this page in Maestro CS. Try again.",
         error: true,
       };

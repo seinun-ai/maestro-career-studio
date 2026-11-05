@@ -358,6 +358,9 @@ class Controller:
             return 1
         self.say(f"Maestro is running: {ctx.web_url}")
         self.say(f"MCP: {ctx.mcp_url}")
+        if autostart_enabled() is False:  # None: the system couldn't say, so no advice
+            self.say("It stops when the computer restarts. "
+                     "`maestro autostart on` starts it each time you log in.")
         if not no_browser:
             try:
                 opened = self.open_url(ctx.web_url)

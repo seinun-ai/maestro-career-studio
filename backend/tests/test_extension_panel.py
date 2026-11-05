@@ -1643,7 +1643,7 @@ def test_the_unreachable_line_is_one_plain_sentence_and_never_login_shaped(appli
     is no account to log in to, so a sentence that reads like a sign-in prompt
     would send the user looking for a password that does not exist."""
     note = applied_match["error"]["store"]["note"]
-    assert note["text"] == "Couldn't reach Maestro CS. Check that it's running."
+    assert note["text"] == "Couldn't reach Maestro CS. Start it with maestro start, then try again."
     assert note["error"] is True
     for forbidden in ("sign in", "log in", "login", "password", "account",
                       "localhost", "failed to fetch"):
@@ -1651,7 +1651,7 @@ def test_the_unreachable_line_is_one_plain_sentence_and_never_login_shaped(appli
     # The same sentence before the settings ask has answered: it never named
     # the address, so there is nothing to say less of.
     assert applied_match["error_before_settings"]["store"]["note"]["text"] == (
-        "Couldn't reach Maestro CS. Check that it's running.")
+        "Couldn't reach Maestro CS. Start it with maestro start, then try again.")
     # A backend that answered with an error is reachable: the sentence says the
     # check failed and asks for another try, and still prints no server words.
     assert applied_match["error_answered"]["store"]["note"] == {

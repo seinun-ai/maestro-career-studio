@@ -289,6 +289,8 @@ class Autostart:
         if kind == "mac":
             return os.path.lexists(self.plist_path)
         if kind == "linux":
+            if not self.which("systemctl"):
+                return None  # no systemd: autostart can't be on, and `on` would refuse
             return self.unit_path.exists() and os.path.lexists(
                 self.unit_dir / "default.target.wants" / UNIT_NAME
             )

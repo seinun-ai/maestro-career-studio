@@ -112,6 +112,19 @@ def test_start_detaches_the_supervisor_and_reports_the_urls(rig, monkeypatch):
     assert rig.opened == []
 
 
+AUTOSTART_TIP = "It stops when the computer restarts. `maestro autostart on` starts it each time you log in."
+
+
+@pytest.mark.parametrize(("enabled", "tipped"), [(False, True), (True, False), (None, False)])
+def test_start_names_autostart_only_while_it_is_off(rig, monkeypatch, enabled, tipped):
+    """A job seeker who comes back after a restart finds nothing running. While autostart
+    is off, start says how to keep it; on, or unknown to the system, it says nothing."""
+    monkeypatch.setattr(runtime, "web_dir_ok", lambda environ=None: True)
+    monkeypatch.setattr(control, "autostart_enabled", lambda: enabled)
+    assert rig.ctl.start(no_browser=True, skip_model=True) == 0
+    assert (AUTOSTART_TIP in rig.printed) is tipped
+
+
 def test_start_opens_the_browser_unless_told_not_to(rig, monkeypatch):
     monkeypatch.setattr(runtime, "web_dir_ok", lambda environ=None: True)
     rig.ctl.start(skip_model=True)

@@ -389,6 +389,8 @@ def test_linux_without_systemd_says_so_and_writes_nothing(tmp_path):
     with pytest.raises(ControlError, match="needs systemd"):
         auto.handle("on")
     assert not unit_file(tmp_path).exists()
+    # Unknown, not off: `maestro start` names `autostart on` only while it could work.
+    assert auto.is_enabled() is None
 
 
 def test_linux_a_refused_enable_rolls_the_unit_back(tmp_path):

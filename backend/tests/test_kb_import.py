@@ -223,6 +223,26 @@ def test_a_skipped_file_is_reported_in_words(db_session, tmp_path, monkeypatch):
         "JSON format.")
 
 
+def test_without_a_key_the_reason_names_the_key_not_the_file(db_session, tmp_path, monkeypatch):
+    """A new user who skipped the key and drops a resume is told what to fix: the file
+    is fine, the key is missing."""
+    from app.services.llm import LLMProviderError
+    from app.services.llm_providers.errors import NO_KEY_MESSAGE
+
+    _stub_pipeline(monkeypatch, tmp_path)
+
+    def no_key(**_kwargs):
+        raise LLMProviderError(NO_KEY_MESSAGE)
+
+    monkeypatch.setattr("app.services.llm.call_openai", no_key)
+    resp = _client(db_session).post(
+        "/api/kb/import",
+        files=[("files", ("sam_resume.md", io.BytesIO(b"# Sam Rivera\n\n- Built dashboards."),
+                          "text/markdown"))])
+    assert resp.status_code == 422
+    assert resp.json()["detail"] == f"No resumes could be imported. {NO_KEY_MESSAGE}"
+
+
 def test_consolidation_source_key_is_the_slug_not_the_filename(db_session, tmp_path, monkeypatch):
     """KBPortLog.resume_key and merge_sources_json store this; everywhere else it
     is a slug, so a filename there points at nothing."""

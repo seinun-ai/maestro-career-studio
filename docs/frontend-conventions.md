@@ -1181,7 +1181,8 @@
   use (WorkingDots, then a chip per everyday job), and only a passed test turns the provider's
   recommended models on, unless your own picks already run on it (`modelPlan`, said under the chips).
   **Your resume**: one drop zone into the import dialog's own flow (`use-resume-import.ts`, shared with
-  its resume lane), its counts only from the response (`importCounts`). **Where and what**: You live
+  its resume lane), its counts only from the response (`importCounts`); with no model key a line above it
+  says reading a resume needs a key or a connected agent app, linking Settings › Agent apps. **Where and what**: You live
   in, You apply in (chips; until you choose, none is pressed and the hint says no country is chosen), roles
   offered from your base resumes and the work mode, saving as you go.
   **Form answers**, one question at a time: **Citizen of** first (Profile's `CitizenshipPicker`), where one
