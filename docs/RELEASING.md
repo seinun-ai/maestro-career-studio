@@ -276,9 +276,6 @@ present and the old applications listed.
 ### 9. After the release
 
 - Refresh the static test-count badge in `README.md`.
-- The ghcr image badge is already up (it went live with v0.1.1, once both
-  packages were public). It is the one badge that
-  would otherwise advertise something a stranger cannot pull.
 
 ---
 

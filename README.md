@@ -7,16 +7,12 @@
 
 <p align="center">
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml"><img src="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/codeql.yml/badge.svg" alt="CodeQL"></a>
   <a href="https://github.com/seinun-ai/maestro-career-studio/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/tests-20%2C298%20passing-brightgreen" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License"></a>
   <a href="https://maestrocareerstudio.com"><img src="https://img.shields.io/badge/site-maestrocareerstudio.com-1a3a5c" alt="Project site"></a>
-  <a href="https://github.com/seinun-ai/maestro-career-studio/pkgs/container/maestro-career-studio-backend"><img src="https://img.shields.io/badge/ghcr.io-multi--arch-blue" alt="Container images"></a>
 </p>
-<!-- The ghcr badge went up with v0.1.1, once both packages were public — a
-     badge for a private package renders as a broken promise. It and the static
-     test-count badge are refreshed from the release checklist in
-     docs/RELEASING.md; edit them there, not here. -->
+<!-- The static test-count badge is refreshed from the release checklist in
+     docs/RELEASING.md; edit it there, not here. -->
 
 # Stop rewriting your resume for every job.
 
@@ -34,84 +30,53 @@ Maestro tailors it from your whole career history in under a minute, and every b
 
 ![Many resume versions become one career history, then a specialist resume per role, company and country, matched to a job and ready to apply. You press Submit.](docs/assets/hero.gif)
 
-**[Install in two commands](#quickstart)** · Free and open source · No account · macOS, Linux and Windows. Already pay for Claude or ChatGPT? [Run it from that app](#give-your-ai-your-career) with no API key. New to the terminal? The [Getting Started guide](docs/GETTING_STARTED.md) walks through every step.
+**Free and open source · No account · macOS, Linux and Windows.** [Watch the 37-second tour](https://www.youtube.com/watch?v=TvNTzPxPNnc) · [Add the Companion to Chrome](https://chromewebstore.google.com/detail/maestro-cs-companion/bppkeipififkepldkogmfpkkhoakgndl)
 
 - **Same score, every time.** The match score runs on fixed rules and a small model on your own computer, with no AI service involved. Same resume, same job, same number.
 - **It asks instead of inventing.** Approved bullets go in word for word. When a job wants something your resume doesn't show, Maestro asks you about it, and every change arrives as a diff you accept or undo.
 - **It fills the form and stops there.** The Companion fills job applications from your saved answers and attaches your resume. It never presses Submit. That click is yours.
 
-**Bring an AI.** Maestro needs one to read a resume or a job post. Add an OpenAI, Gemini or Claude key (about $0.01 per application on the OpenAI default), or skip the key and connect Claude, or ChatGPT through Codex, which then does the reading and writing itself.
+## Start here
 
-## Quickstart
+<a id="quickstart"></a>
 
-Install [uv](https://docs.astral.sh/uv/) once. After that, Maestro is two commands: no Docker, no Git, no clone. uv installs Maestro as a single `maestro` command and fetches the Python it needs, and the package brings its own web app and its own Node. It runs on macOS, Linux and Windows (x64).
-
-```bash
-# 1. Install uv once, then open a new terminal.
-curl -LsSf https://astral.sh/uv/install.sh | sh     # macOS and Linux
-```
-
-```powershell
-# On Windows, in PowerShell instead of the line above:
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
+**1. Paste this in a terminal and press Enter.**
 
 ```bash
-# 2. Install Maestro, then start it.
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
 uv tool install --python 3.12 maestro-career-studio
 maestro start
 ```
 
-`maestro start` runs Maestro in the background and opens **http://localhost:3000**.
-Closing the terminal does not stop it, but restarting the computer does:
-`maestro autostart on` starts it each time you log in. The first start downloads the small
-scoring model (about 100 MB, once) from Hugging Face, so allow a minute or two.
-If the terminal says `maestro` is not found, run `uv tool update-shell` and open a
-new terminal.
+<details>
+<summary>On Windows, paste this in PowerShell instead</summary>
 
-Best effort, not tested: **Windows on ARM** has no PDF-engine (typst) wheel, so install an x64
-Python under emulation: `uv tool install --python cpython-3.12-windows-x86_64-none maestro-career-studio`.
-**Alpine and other musl Linux** are not supported by the PDF engine's wheels; use a glibc distro or Docker.
+```powershell
+powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
+$env:Path = "$env:USERPROFILE\.local\bin;$env:Path"
+uv tool install --python 3.12 maestro-career-studio
+maestro start
+```
 
-Then:
+</details>
 
-1. Setup opens first and asks for your AI key. One key from OpenAI, Gemini or Claude is enough, and you can change it later in **Settings › Basics** ([what a key costs and does](docs/SETUP_REFERENCE.md#do-you-need-an-api-key)). No key? Skip it and do step 3 first.
-2. Import your resumes, save a job, and tailor ([step by step](docs/GETTING_STARTED.md#3-your-first-tailored-resume)).
-3. `maestro connect` adds Maestro to Claude Desktop, Claude Code, Codex (which the ChatGPT desktop app shares), Cursor or VS Code. Without a key, this is the route: your assistant reads your resume and the job and writes the edits, and Maestro checks and saves them.
-4. Optional: add the [Companion from the Chrome Web Store](https://chromewebstore.google.com/detail/maestro-cs-companion/bppkeipififkepldkogmfpkkhoakgndl), a Chrome side panel that saves the job you're on and fills its application ([setup](docs/GETTING_STARTED.md#4-the-companion-browser-extension-optional)). Saving a job from it needs an API key.
+Maestro opens at **http://localhost:3000**. The first start downloads a small scoring model (about 100 MB, once), so allow a minute or two. New to the terminal? The [Getting Started guide](docs/GETTING_STARTED.md) walks through every step.
+
+**2. Add your AI.** Maestro needs one to read a resume or a job post. Setup opens first and suggests an OpenAI key, at about $0.01 per application. Already pay for Claude or ChatGPT? [Run it from that app](#give-your-ai-your-career) with no key.
+
+**3. Drop in your resumes, save a job and tailor.** Here it is [step by step](docs/GETTING_STARTED.md#3-your-first-tailored-resume).
 
 > **Made for one person on one computer.** There is no login, so anything that
 > can reach the app can read and change your whole career record and your saved
 > API keys. Out of the box it only listens on your own machine (`127.0.0.1`).
-> **Never expose the app to a network.** The one published path is `/api/sync`,
-> sealed, and only as [sync setup](docs/sync-setup.md) describes.
-> [`SECURITY.md`](SECURITY.md) has the details. Your career record stays on
-> your computer. When you use AI features, resume and job information goes to
-> the AI service you choose.
-
-| Command | What it does |
-|---|---|
-| `maestro start` | Start Maestro and open the app (`--no-browser`, `--skip-model`) |
-| `maestro stop` | Stop it |
-| `maestro status` | Whether it is running, its version and whether a newer one exists (`--offline` skips that check, `--json` for scripts; exit code 3 means stopped) |
-| `maestro update` | Save a snapshot of your data, update, restart (`-y` skips the question) |
-| `maestro connect [app]` | Add Maestro to Claude Desktop, Claude Code, Codex, Cursor or VS Code |
-| `maestro autostart on` | Start Maestro each time you log in (`off` and `status` too) |
-| `maestro import-docker CHECKOUT` | Move your data from a Docker install into this one, once (`--dry-run` shows the plan; [steps](docs/UPDATING.md#move-from-docker-to-the-uv-install)) |
-
-[The full command table](docs/SETUP_REFERENCE.md#the-maestro-command-and-the-uv-install) also covers `logs`, `open`, `restart`, `backup`, uninstalling and TeX for LaTeX templates. What the command contacts, and when: [PRIVACY.md](PRIVACY.md#what-the-maestro-command-and-first-start-download).
-
-> **Young, but rehearsed.** The app runs daily on my machine. A fresh Docker
-> install (clone, start, first tailored resume) has been checked end to end on a
-> second machine, and CI installs and starts the uv package on macOS, Linux and
-> Windows for every change. It has had little testing on machines that
-> aren't mine. If it fails on yours, please
-> [open an issue](https://github.com/seinun-ai/maestro-career-studio/issues)
-> with the log. That report is one of the most valuable contributions there is.
+> **Never expose the app to a network** ([why, and the one sealed exception](SECURITY.md)).
+> Your career record stays on your computer. When you use AI features, resume
+> and job information goes to the AI service you choose.
 
 ## Give your AI your career
 
-Connect Claude, Codex or the ChatGPT desktop app (through its Codex settings) and your assistant gets your career history, your resumes and your jobs. Then just ask.
+Run `maestro connect`. It adds Maestro to Claude Desktop, Claude Code, Codex (which the ChatGPT desktop app shares), Cursor or VS Code, and your assistant gets your career history, your resumes and your jobs. Then just ask. Without a key, this is the route: your assistant reads your resume and the job and writes the edits, and Maestro checks and saves them.
 
 | | You ask | What happens |
 |---|---|---|
@@ -134,37 +99,78 @@ The long version, with the score, tailoring, templates and the rest of the toolk
 
 ---
 
-## Alternative: run with Docker (self-hosters)
+## More, when you want it
 
-Docker stays the route for contributors and for servers. It needs Docker, Git and about a 1 GB download (roughly 3–4 GB unpacked); the [prerequisites](docs/SETUP_REFERENCE.md#prerequisites) have the detail, and on Windows you run it under WSL ([steps](docs/GETTING_STARTED.md#on-windows-use-wsl)).
+None of this is needed to get started.
 
-```bash
-# 1. Download the project and create your settings file
-git clone https://github.com/seinun-ai/maestro-career-studio.git
-cd maestro-career-studio
-cp .env.example .env
+> **Young, but rehearsed.** The app runs daily on my machine. A fresh Docker
+> install (clone, start, first tailored resume) has been checked end to end on a
+> second machine, and CI installs and starts the uv package on macOS, Linux and
+> Windows for every change. It has had little testing on machines that
+> aren't mine. If it fails on yours, please
+> [open an issue](https://github.com/seinun-ai/maestro-career-studio/issues)
+> with the log. That report is one of the most valuable contributions there is.
 
-# 2. Start the app (downloads about 1 GB the first time)
-docker compose up -d
-```
+### The Companion for Chrome
 
-Then open **http://localhost:3000** and add your AI key in **Settings › Basics**. The first start sets up your database and adds a demo resume so you have something to look at. The rest of the Docker route is in the [setup reference](docs/SETUP_REFERENCE.md#the-docker-route-in-full).
+The [Companion](https://chromewebstore.google.com/detail/maestro-cs-companion/bppkeipififkepldkogmfpkkhoakgndl) is a Chrome side panel that saves the job you're on and fills its application. It never presses Submit. Saving a job from it needs an API key. Here is its [setup](docs/GETTING_STARTED.md#4-the-companion-browser-extension-optional).
+
+### Other AI choices
+
+One key is enough: OpenAI, Gemini or Claude. Setup's **Use a different AI** has the others, including OpenRouter and your own server, and you can change it later in **Settings › Basics**. See [what a key costs and does](docs/SETUP_REFERENCE.md#do-you-need-an-api-key).
+
+### The `maestro` command
+
+| Command | What it does |
+|---|---|
+| `maestro start` | Start Maestro and open the app (`--no-browser`, `--skip-model`) |
+| `maestro stop` | Stop it |
+| `maestro status` | Whether it is running, its version and whether a newer one exists (`--offline` skips that check, `--json` for scripts; exit code 3 means stopped) |
+| `maestro update` | Save a snapshot of your data, update, restart (`-y` skips the question) |
+| `maestro connect [app]` | Add Maestro to Claude Desktop, Claude Code, Codex, Cursor or VS Code |
+| `maestro autostart on` | Start Maestro each time you log in (`off` and `status` too) |
+| `maestro import-docker CHECKOUT` | Move your data from a Docker install into this one, once (`--dry-run` shows the plan; [steps](docs/UPDATING.md#move-from-docker-to-the-uv-install)) |
+
+Closing the terminal does not stop Maestro, but restarting the computer does: `maestro autostart on` starts it each time you log in. If a new terminal says `maestro` is not found, run `uv tool update-shell` and open another. [The full command table](docs/SETUP_REFERENCE.md#the-maestro-command-and-the-uv-install) also covers `logs`, `open`, `restart`, `backup`, uninstalling and TeX for LaTeX templates. What the command contacts, and when: [PRIVACY.md](PRIVACY.md#what-the-maestro-command-and-first-start-download).
+
+### Other systems
+
+Maestro runs on macOS, Linux and Windows (x64). Best effort, not tested: **Windows on ARM** has no PDF-engine (typst) wheel, so install an x64 Python under emulation: `uv tool install --python cpython-3.12-windows-x86_64-none maestro-career-studio`. **Alpine and other musl Linux** are not supported by the PDF engine's wheels; use a glibc distro or Docker.
+
+### Alternative: run with Docker (self-hosters)
+
+Docker stays the route for contributors and for servers. It needs Docker, Git and about a 1 GB download, and on Windows you run it under WSL. [The Docker route, in full](docs/SETUP_REFERENCE.md#the-docker-route-in-full) has the commands.
 
 **Docker and uv are separate copies.** They keep separate data, and both want ports 8001 and 3000, so run one at a time. **Moving from Docker to uv?** Stop Docker, install Maestro as above, then run `maestro import-docker CHECKOUT` once ([steps](docs/UPDATING.md#move-from-docker-to-the-uv-install)). It reads your Docker folder and changes nothing in it.
 
-## Working with AI assistants
-
 ### Driving it from Claude, Codex, or ChatGPT (MCP)
 
-**MCP** is the connector that lets an AI assistant use the app for you: read a posting, score it, work the gaps, make the PDF, all in conversation, on your computer against your data. All 94 tools are on by default, and smaller tool sets (`profile`, `hunt`, `tailor`, `apply`, `track`, `templates`) keep a chat focused. Your assistant writes the text with its own AI unless you pick Maestro's AI in Settings › Agent apps › **Who writes for connected agents**. On a uv install, run `maestro connect`; otherwise open Settings › Agent apps › **Connect an agent app**. Setup, example prompts, tool sets and the ready-made skills are in [Using Maestro CS](docs/USING_MAESTRO.md#driving-it-from-claude-codex-or-chatgpt-mcp) and the [MCP guide](backend/mcp_server/README.md). An [always-on bot](docs/always-on-bot.md) can work your search while your laptop is off.
+**MCP** is the connector that lets an AI assistant use the app for you: read a posting, score it, work the gaps, make the PDF, all in conversation, on your computer against your data.
+
+- **Tools.** All 94 are on by default, and smaller tool sets (`profile`, `hunt`, `tailor`, `apply`, `track`, `templates`) keep a chat focused.
+- **Who writes.** Your assistant writes the text with its own AI unless you pick Maestro's AI in Settings › Agent apps › **Who writes for connected agents**.
+- **Connecting.** On a uv install, run `maestro connect`; otherwise open Settings › Agent apps › **Connect an agent app**.
+- **The detail.** Setup, example prompts, tool sets and the ready-made skills are in [Using Maestro CS](docs/USING_MAESTRO.md#driving-it-from-claude-codex-or-chatgpt-mcp) and the [MCP guide](backend/mcp_server/README.md). An [always-on bot](docs/always-on-bot.md) can work your search while your laptop is off.
 
 ### Going all the way: agent applications
 
-Maestro CS can take an application right up to the submit button. A job your agent finds becomes a **proposal**. You review proposals in the **Agent inbox** and queue or skip them, and an apply run works only the ones you queued. By default it **waits for your yes before each submit**. **Full automation** (off by default, in Settings › Agent apps) lets your agent submit a queued job without asking when its final review shows nothing to check, within your daily limit. It also gives the Companion an **Apply** button: Apply fills each page of one application, clicks Next and stops on the review page, and on known application sites it signs in, or makes the account, with the job-site login you saved. Nothing is ever submitted from the web app itself, and the Companion never presses Submit. That yes is recorded by the agent, so it is an audit trail and a volume limit, not a lock that a manipulated agent can't pick: run it while you're watching. The risks, plainly: a job posting is untrusted text that can try to instruct the agent reading it, a posting the agent found is not a vetted employer, and we won't help you hide automation from bot detection. Read the [full section](docs/USING_MAESTRO.md#going-all-the-way-agent-applications) before you turn it on.
+Maestro CS can take an application right up to the submit button.
 
----
+- **Proposals.** A job your agent finds becomes a **proposal**. You review proposals in the **Agent inbox** and queue or skip them, and an apply run works only the ones you queued.
+- **By default** an apply run **waits for your yes before each submit**.
+- **Full automation** (off by default, in Settings › Agent apps) lets your agent submit a queued job without asking when its final review shows nothing to check, within your daily limit. It also gives the Companion an **Apply** button: Apply fills each page of one application, clicks Next and stops on the review page, and on known application sites it signs in, or makes the account, with the job-site login you saved.
+- **Never.** Nothing is ever submitted from the web app itself, and the Companion never presses Submit.
 
-## Updating
+The risks, plainly:
+
+- That yes is recorded by the agent, so it is an audit trail and a volume limit, not a lock that a manipulated agent can't pick: run it while you're watching.
+- A job posting is untrusted text that can try to instruct the agent reading it.
+- A posting the agent found is not a vetted employer.
+- We won't help you hide automation from bot detection.
+
+Read the [full section](docs/USING_MAESTRO.md#going-all-the-way-agent-applications) before you turn it on.
+
+### Updating
 
 **Installed with uv?** Run `maestro update`. It checks PyPI for a newer release, prints any breaking changes from the changelog, saves a verified snapshot of your data, stops Maestro, updates it and starts it again.
 
@@ -172,7 +178,7 @@ Maestro CS can take an application right up to the submit button. A job your age
 
 Your data is not touched by an update, and **deleting the project folder does delete it** on the Docker route. After updating, reload the browser extension and restart your AI assistant so it sees new tools. [`docs/UPDATING.md`](docs/UPDATING.md) has the rest: updating by hand, pinning a version, what the backup covers, rolling back, and coming from v0.3.0 or older.
 
-## Where your files live
+### Where your files live
 
 A uv install keeps everything in one folder per user: the database, resumes, settings, backups, logs and `maestro.env` (your API keys and, if you need them, port overrides). Deleting the folder deletes your data.
 
@@ -186,7 +192,7 @@ Finished resume PDFs are also copied to `Documents/Maestro Career Studio/Applica
 
 On the Docker route everything stays inside the folder you cloned (`data/`, `base_resumes/`, `applications/`, `settings/` and more; the [full list](docs/SETUP_REFERENCE.md#where-your-files-live-docker)). Your files are yours, never uploaded. Every application's PDF is saved in `applications/`, and `career.md` exports your whole career history as one Markdown file.
 
-## Troubleshooting
+### Troubleshooting
 
 `maestro status` and `maestro logs` come first, and a port already in use is named in the message. `maestro check` prints the install's facts as JSON to paste into an issue. Ports, API keys and quota errors, "database is locked", PDFs that fail to build and an empty app after updating are covered in [Troubleshooting & Common Questions](docs/SETUP_REFERENCE.md#troubleshooting--common-questions).
 
@@ -200,7 +206,7 @@ human reply within 48 hours and is read by a human — we don't merge AI slop.
 This is an early release. If something doesn't work, please say so — a clear bug
 report is one of the most valuable contributions right now.
 
-- **Project site:** [maestrocareerstudio.com](https://maestrocareerstudio.com) — a five-minute tour before you install anything.
+- **Project site:** [maestrocareerstudio.com](https://maestrocareerstudio.com) — a short tour before you install anything.
 - **Getting Started:** [`docs/GETTING_STARTED.md`](docs/GETTING_STARTED.md) — install to first tailored PDF, step by step.
 - **Using Maestro CS:** [`docs/USING_MAESTRO.md`](docs/USING_MAESTRO.md) — how it works, how to use it well, and the rest of the toolkit.
 - **Setup reference:** [`docs/SETUP_REFERENCE.md`](docs/SETUP_REFERENCE.md) — the `maestro` command, prerequisites, API keys, local models and troubleshooting.
