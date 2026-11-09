@@ -158,6 +158,21 @@ def test_provider_cards_name_providers_in_text_and_hold_no_image():
         assert f'"{provider}"' in model, provider
 
 
+def test_a_beginner_gets_one_key_to_paste_and_the_other_ais_wait_behind_a_disclosure():
+    model = _read("components/setup/setup-model-step.tsx")
+    # A new install has nothing to choose: it starts on the suggested provider.
+    assert 'const SUGGESTED: Pick = "openai";' in model
+    assert "?.id ?? SUGGESTED;" in model
+    # The cards sit in the disclosure, which opens only for someone already on another provider.
+    assert "startingPick(info) !== SUGGESTED" in model
+    assert model.index("<details") < model.index("<RadioGroup<Pick>") < model.index("</details>")
+    # The key form comes after the cards, so choosing one reads top to bottom.
+    assert model.index("</details>") < model.index("<KeyField")
+    # The one other way: a key is not the only road in.
+    assert "Already pay for Claude or ChatGPT?" in model
+    assert "CONNECTED_AGENTS_SETTINGS" in model
+
+
 def test_each_work_permit_question_carries_its_country():
     answers = _read("components/setup/setup-answers-step.tsx")
     # The card's heading is the country, and every question's group is named by it AND the question.

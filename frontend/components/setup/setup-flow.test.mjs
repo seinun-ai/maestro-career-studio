@@ -174,10 +174,18 @@ const PERMITTED = {
   },
 };
 
-test("a new install opens on the AI model: five providers in words, no image, one filled Continue", () => {
+test("a new install opens on the AI model: one key to paste, the other AIs tucked away, no image, one filled Continue", () => {
   const html = render();
   assert.match(html, /<h1[^>]*>Setup<\/h1>/);
-  assert.match(html, /Pick the AI that does the writing/);
+  assert.match(html, /Add the AI that does the writing/);
+  // Nothing to choose: it starts on the suggested provider, with its key field showing.
+  assert.match(html, /We suggest OpenAI, at about \$0\.01 per application\./);
+  assert.match(html, /OpenAI API key/);
+  // The five stay in words, behind a closed disclosure.
+  assert.match(html, /<details><summary[^>]*>Use a different AI<\/summary>/);
+  // The one other way, in one line.
+  assert.match(html, /Already pay for Claude or ChatGPT\?/);
+  assert.match(html, /href="\/settings\?tab=agents"[^>]*>Settings › Agent apps</);
   for (const name of ["Claude", "OpenAI", "Gemini", "OpenRouter", "Your own server"]) assert.match(html, new RegExp(`>${name}<`));
   assert.doesNotMatch(html, /<img/);
   // The rail: four steps, each with its time, the first current, and the progress bar.
@@ -192,6 +200,13 @@ test("a new install opens on the AI model: five providers in words, no image, on
   assert.doesNotMatch(html, />Back</);
   assert.equal((html.match(FILLED) ?? []).length, 1);
   assert.match(html, /bg-primary text-primary-foreground[^>]*>Continue</);
+});
+
+test("a saved key for another provider opens on that provider, the choices showing and nothing suggested", () => {
+  const html = render({ status: PERMITTED, applyIn: ["DE"], profile: { personal: { citizenships: ["IN"] }, work_auth_by_country: { DE: PERMITS } }, info: { ...INFO, anthropic_api_key_configured: true, anthropic_key_source: "settings" } });
+  assert.match(html, /<details open=""><summary[^>]*>Use a different AI<\/summary>/);
+  assert.match(html, /Claude API key/);
+  assert.doesNotMatch(html, /We suggest/);
 });
 
 test("a saved key opens the resume step: one drop zone, Back and Skip for now", () => {
@@ -306,7 +321,7 @@ test("every step done opens the first again, all four marked", () => {
     profile: { personal: { citizenships: ["IN"] }, work_auth_by_country: { DE: PERMITS } },
   });
   assert.match(html, /All 4 done/);
-  assert.match(html, /Pick the AI that does the writing/);
+  assert.match(html, /Add the AI that does the writing/);
 });
 
 // An Indian citizen who lives in India and applies in India, the UAE, Germany and the Netherlands, as the server

@@ -69,6 +69,11 @@ once, and each country hears only its own.
 
 ### Changed
 
+- **Setup starts with one key to paste.** The AI step opens on OpenAI, the suggested provider, with its key
+  field showing. Claude, Gemini, OpenRouter and your own server are behind **Use a different AI**, open from
+  the start if you already use one of them, and one line points to Settings › Agent apps if you already pay
+  for Claude or ChatGPT.
+
 - **`maestro start` says how to keep Maestro running after a restart.** While autostart is off it adds one
   line: `maestro autostart on` starts it each time you log in.
 - **The Companion names the command when Maestro isn't running:** "Couldn't reach Maestro CS. Start it with

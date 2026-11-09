@@ -1177,7 +1177,10 @@
   and every country the served set asks, so with no country chosen citizenship alone, while Where and what
   stays open), and it opens on the first step not done. Every
   step writes through an endpoint that already exists, and no `/api/setup` write route exists. **AI
-  model**: five provider cards named in text (no logos); Test saves the key, tests the model it will
+  model**: a new install starts on the suggested provider (OpenAI, `SUGGESTED`), its key field showing, so a
+  beginner has nothing to choose; the five provider cards, named in text (no logos), wait behind **Use a
+  different AI**, open on arrival for someone already on another provider or their own server, and one line
+  offers the keyless road (Settings › Agent apps). Test saves the key, tests the model it will
   use (WorkingDots, then a chip per everyday job), and only a passed test turns the provider's
   recommended models on, unless your own picks already run on it (`modelPlan`, said under the chips).
   **Your resume**: one drop zone into the import dialog's own flow (`use-resume-import.ts`, shared with

@@ -3,12 +3,14 @@
 import { useId, useRef, useState, type RefObject } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
+import { GuardedLink as Link } from "@/components/guarded-link";
 import { KEY_FIELDS, KeyField, keyProblemIn, type ModelSettingsPatch } from "@/components/settings/models-section";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Radio, RadioGroup } from "@/components/ui/radio-group";
 import { CheckDraw, WorkingDots } from "@/components/visual";
+import { CONNECTED_AGENTS_SETTINGS } from "@/lib/agent-links";
 import { keyFormatProblem } from "@/lib/api-key-format";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
@@ -27,10 +29,13 @@ import { cn } from "@/lib/utils";
 
 type Pick = Provider | "server";
 
+/** The one a new install starts on, so a beginner has a key to paste and nothing to choose. */
+const SUGGESTED: Pick = "openai";
+
 /** The five choices, named in words (no logos: Goal Card non-goals). */
 const CARDS: { id: Pick; name: string; note: string }[] = [
+  { id: "openai", name: providerLabel("openai"), note: "Suggested. GPT models" },
   { id: "anthropic", name: providerLabel("anthropic"), note: "Anthropic" },
-  { id: "openai", name: providerLabel("openai"), note: "GPT models" },
   { id: "gemini", name: providerLabel("gemini"), note: "Google" },
   { id: "openrouter", name: providerLabel("openrouter"), note: "Many models, one key" },
   { id: "server", name: "Your own server", note: "Ollama or LM Studio" },
@@ -41,14 +46,15 @@ type Outcome =
   | { kind: "saved"; words: string }
   | { kind: "error"; text: string };
 
-/** Where a new install starts: your own server when one is set, else a provider whose key is saved. */
-function startingPick(info: OpenAIInfo): Pick | null {
+/** Where the step starts: your own server when one is set, else a provider whose key is saved, else the suggested one. */
+function startingPick(info: OpenAIInfo): Pick {
   if (info.custom_endpoint) return "server";
-  return CARDS.find((card) => card.id !== "server" && info[CONFIGURED[card.id]] === true)?.id ?? null;
+  return CARDS.find((card) => card.id !== "server" && info[CONFIGURED[card.id]] === true)?.id ?? SUGGESTED;
 }
 
 /**
- * Step 1, the AI model. Pick a provider (five cards, named in text), paste its key and press Test: the key
+ * Step 1, the AI model. It starts on the suggested provider, so a beginner only pastes a key; the five cards,
+ * named in text, wait behind "Use a different AI", open when you already use another. Paste the key and press Test: the key
  * is saved (`PUT /api/settings/openai`), the model it will use is tested (`POST /api/settings/openai/probe`,
  * WorkingDots while it runs, a chip per result after), and only once it passes are the provider's
  * recommended models turned on (`PUT /api/settings/models/recommended`), unless your own picks already
@@ -56,7 +62,9 @@ function startingPick(info: OpenAIInfo): Pick | null {
  */
 export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; headingRef: RefObject<HTMLHeadingElement | null> }) {
   const qc = useQueryClient();
-  const [pick, setPick] = useState<Pick | null>(() => startingPick(info));
+  const [pick, setPick] = useState<Pick>(() => startingPick(info));
+  // Fixed when the step opens: after that the disclosure is yours, and choosing a card never closes it.
+  const [openOnArrival] = useState(() => startingPick(info) !== SUGGESTED);
   // The typed key; null = untouched, so Test checks the saved one.
   const [typed, setTyped] = useState<string | null>(null);
   const [address, setAddress] = useState(info.custom_endpoint ? (info.base_url ?? "") : "");
@@ -70,7 +78,7 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
   const modelId = useId();
   const modelHintId = useId();
 
-  const card = CARDS.find((c) => c.id === pick);
+  const card = CARDS.find((c) => c.id === pick) ?? CARDS[0];
 
   const saveModels = (patch: ModelSettingsPatch) =>
     apiFetch<OpenAIInfo>("/api/settings/openai", {
@@ -82,7 +90,7 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
     });
 
   const test = async () => {
-    if (!pick || !card || testing) return;
+    if (testing) return;
     setOutcome(null);
     const base = address.trim();
     const model = serverModel.trim();
@@ -173,116 +181,125 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
     <section aria-labelledby="setup-model-title" className="flex flex-col gap-6">
       <div className="flex flex-col gap-1.5">
         <h2 id="setup-model-title" ref={headingRef} tabIndex={-1} className="text-headline-small outline-none">
-          Pick the AI that does the writing
+          Add the AI that does the writing
         </h2>
         <p className="max-w-[65ch] text-body-medium text-muted-foreground">
-          Your key is saved on this computer and sent only to that provider. You can change it any time in
-          Settings.
+          {pick === SUGGESTED ? `We suggest ${card.name}, at about $0.01 per application. ` : null}
+          One key is enough, and you can change it any time in Settings.
         </p>
       </div>
 
-      <RadioGroup<Pick>
-        aria-label="AI provider"
-        value={pick ?? undefined}
-        onValueChange={(next) => {
-          setPick(next);
-          setTyped(null);
-          setProblem(undefined);
-          setOutcome(null);
-        }}
-        className="grid grid-cols-2 gap-3 lg:grid-cols-3"
-      >
-        {CARDS.map((c) => (
-          <label
-            key={c.id}
-            className={cn(
-              "flex cursor-pointer items-start gap-3 rounded-corner-md border bg-card p-4 transition-colors duration-(--duration-short3) ease-standard",
-              pick === c.id ? "border-primary" : "border-border hover:bg-surface-container-low",
-            )}
-          >
-            <Radio value={c.id} />
-            <span className="flex min-w-0 flex-col">
-              <span className="text-title-small">{c.name}</span>
-              <span className="text-body-small text-muted-foreground">{c.note}</span>
-            </span>
-          </label>
-        ))}
-      </RadioGroup>
+      <details open={openOnArrival}>
+        <summary className="w-fit cursor-pointer rounded-corner-sm text-body-medium text-primary outline-none focus-visible:ring-3 focus-visible:ring-ring">
+          Use a different AI
+        </summary>
+        <RadioGroup<Pick>
+          aria-label="AI provider"
+          value={pick}
+          onValueChange={(next) => {
+            setPick(next);
+            setTyped(null);
+            setProblem(undefined);
+            setOutcome(null);
+          }}
+          className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-3"
+        >
+          {CARDS.map((c) => (
+            <label
+              key={c.id}
+              className={cn(
+                "flex cursor-pointer items-start gap-3 rounded-corner-md border bg-card p-4 transition-colors duration-(--duration-short3) ease-standard",
+                pick === c.id ? "border-primary" : "border-border hover:bg-surface-container-low",
+              )}
+            >
+              <Radio value={c.id} />
+              <span className="flex min-w-0 flex-col">
+                <span className="text-title-small">{c.name}</span>
+                <span className="text-body-small text-muted-foreground">{c.note}</span>
+              </span>
+            </label>
+          ))}
+        </RadioGroup>
+      </details>
 
-      {card ? (
-        <div className="flex max-w-xl flex-col gap-4">
-          {pick === "server" ? (
-            <>
-              <div className="grid gap-1.5">
-                <Label htmlFor={addressId}>Server address</Label>
-                <p id={addressHintId} className="text-body-small text-muted-foreground">
-                  The address of a model server on your computer. It usually ends in /v1.
+      <div className="flex max-w-xl flex-col gap-4">
+        {pick === "server" ? (
+          <>
+            <div className="grid gap-1.5">
+              <Label htmlFor={addressId}>Server address</Label>
+              <p id={addressHintId} className="text-body-small text-muted-foreground">
+                The address of a model server on your computer. It usually ends in /v1.
+              </p>
+              <Input
+                id={addressId}
+                aria-describedby={addressHintId}
+                value={address}
+                readOnly={testing}
+                onChange={(e) => setAddress(e.target.value)}
+              />
+              {isRemoteEndpoint(address) ? (
+                <p className="text-body-small text-warning">
+                  This address isn&apos;t on your computer, and your resume will be sent to it. Use a server
+                  you trust.
                 </p>
-                <Input
-                  id={addressId}
-                  aria-describedby={addressHintId}
-                  value={address}
-                  readOnly={testing}
-                  onChange={(e) => setAddress(e.target.value)}
-                />
-                {isRemoteEndpoint(address) ? (
-                  <p className="text-body-small text-warning">
-                    This address isn&apos;t on your computer, and your resume will be sent to it. Use a server
-                    you trust.
-                  </p>
-                ) : null}
-              </div>
-              <div className="grid gap-1.5">
-                <Label htmlFor={modelId}>Model name</Label>
-                <p id={modelHintId} className="text-body-small text-muted-foreground">
-                  The model as your server names it. Every job uses it.
-                </p>
-                <Input
-                  id={modelId}
-                  aria-describedby={modelHintId}
-                  value={serverModel}
-                  readOnly={testing}
-                  onChange={(e) => setServerModel(e.target.value)}
-                />
-              </div>
-              {problem ? <p className="text-body-small text-destructive">{problem}</p> : null}
-            </>
-          ) : (
-            <KeyField
-              label={`${card.name} API key`}
-              hintUnset={
-                <>
-                  {KEY_FIELDS[card.id as Provider].hint} It&apos;s saved on this computer and sent only to {card.name}.
-                </>
-              }
-              configured={info[CONFIGURED[card.id as Provider]] === true}
-              source={info[KEY_FIELDS[card.id as Provider].source]}
-              value={typed}
-              saving={testing}
-              problem={problem}
-              inputRef={keyRef}
-              onChange={(next) => {
-                setTyped(next);
-                setProblem(undefined);
-              }}
-            />
-          )}
-          <div className="flex flex-wrap items-center gap-4">
-            <Button type="button" variant="tonal" size="lg" pending={testing} onClick={() => void test()}>
-              Test
-            </Button>
-            <div aria-live="polite" className="min-w-0">
-              {testing ? (
-                <WorkingDots label={pick === "server" ? "Checking your server" : "Checking your key"} />
-              ) : outcome ? (
-                <TestOutcome outcome={outcome} />
               ) : null}
             </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor={modelId}>Model name</Label>
+              <p id={modelHintId} className="text-body-small text-muted-foreground">
+                The model as your server names it. Every job uses it.
+              </p>
+              <Input
+                id={modelId}
+                aria-describedby={modelHintId}
+                value={serverModel}
+                readOnly={testing}
+                onChange={(e) => setServerModel(e.target.value)}
+              />
+            </div>
+            {problem ? <p className="text-body-small text-destructive">{problem}</p> : null}
+          </>
+        ) : (
+          <KeyField
+            label={`${card.name} API key`}
+            hintUnset={
+              <>
+                {KEY_FIELDS[card.id as Provider].hint} It&apos;s saved on this computer and sent only to {card.name}.
+              </>
+            }
+            configured={info[CONFIGURED[card.id as Provider]] === true}
+            source={info[KEY_FIELDS[card.id as Provider].source]}
+            value={typed}
+            saving={testing}
+            problem={problem}
+            inputRef={keyRef}
+            onChange={(next) => {
+              setTyped(next);
+              setProblem(undefined);
+            }}
+          />
+        )}
+        <div className="flex flex-wrap items-center gap-4">
+          <Button type="button" variant="tonal" size="lg" pending={testing} onClick={() => void test()}>
+            Test
+          </Button>
+          <div aria-live="polite" className="min-w-0">
+            {testing ? (
+              <WorkingDots label={pick === "server" ? "Checking your server" : "Checking your key"} />
+            ) : outcome ? (
+              <TestOutcome outcome={outcome} />
+            ) : null}
           </div>
         </div>
-      ) : (
-        <p className="text-body-medium text-muted-foreground">Pick one to add its key.</p>
-      )}
+      </div>
+
+      <p className="max-w-[65ch] text-body-medium">
+        Already pay for Claude or ChatGPT? You can skip the key and connect that app in{" "}
+        <Link className="underline" href={CONNECTED_AGENTS_SETTINGS}>
+          Settings › Agent apps
+        </Link>
+        .
+      </p>
     </section>
   );
 }

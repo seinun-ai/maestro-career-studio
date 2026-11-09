@@ -246,8 +246,8 @@ anywhere else.
 
 Four steps from nothing to a PDF:
 
-1. **Add your AI key.** Setup asks for it first: pick your AI, paste the key and
-   press **Test** to check the models work. You can change it later in **Settings › Basics**.
+1. **Add your AI key.** Setup asks for it first. It suggests OpenAI, and **Use a different AI**
+   has the others. Paste the key and press **Test** to check the models work. You can change it later in **Settings › Basics**.
    No key? Skip it, connect Claude or Codex ([§5](#5-connect-your-ai-assistant-optional))
    and ask it to import your resume, save the job and tailor it. Steps 2 to 4 below are
    the in-app way, and they need the key.
