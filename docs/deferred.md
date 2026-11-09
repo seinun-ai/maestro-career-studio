@@ -184,3 +184,4 @@
     the knockout card's "Add your expected pay" chip could say "Give your expected pay as one amount" when a figure exists but is
     not a plain amount ("₹40 lakh"); and MCP's compact `questions` (`mcp_server/client.py` `_agent_questions`) could carry
     `home: true`, so an agent sees which country's pay is the one saved as `desired_salary`. Do with the next pay or fill change.
+68. UAE dirham pay comparisons: the ECB publishes no AED rate, so a job paid in another currency is never converted to or from dirhams (`money.convert` returns None, D8) and the salary check says it can't compare; `test_money.py` pins it. The Central Bank of the UAE's fixed peg (3.6725 AED to the USD) would be a named exception to D8. Do when someone who lives or applies in the UAE wants pay compared across currencies.

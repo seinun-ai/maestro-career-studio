@@ -24,6 +24,14 @@ def test_convert_goes_through_euro_and_never_guesses():
     assert money.convert(Decimal("1"), "USD", "EUR", None) is None  # no cache yet
 
 
+def test_dirhams_have_no_ecb_rate_so_they_are_never_guessed():
+    # docs/deferred.md item 68: the ECB publishes no AED rate, and the salary check says it can't compare.
+    assert "AED" not in RATES["rates"]
+    assert money.convert(Decimal("1000"), "USD", "AED", RATES) is None
+    assert money.convert(Decimal("1000"), "AED", "USD", RATES) is None
+    assert money.convert(Decimal("1000"), "AED", "AED", RATES) == Decimal("1000")  # same currency needs no rate
+
+
 def test_convert_between_two_non_euro_currencies_and_its_edges():
     # 87.70 GBP = 100 EUR = 108.70 USD
     assert money.convert(Decimal("87.70"), "GBP", "USD", RATES).quantize(Decimal("0.01")) == Decimal("108.70")
