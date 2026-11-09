@@ -28,6 +28,8 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-11-09
+
 Until now, Maestro's form answers were written for a US applicant. Apply in India and nobody asked your
 notice period in days. Pick no country at all and you got the US questions anyway.
 
@@ -35,6 +37,16 @@ Now the questions follow the countries you apply in, and the UAE joins as the ni
 citizenship once and it settles the work-permit answers wherever the law already does, like a French
 citizen working in Germany. Anything you answer yourself still wins. You answer each fact about yourself
 once, and each country hears only its own.
+
+A new install also asks less of you. Setup used to open on five AI providers before you had done anything.
+Now it opens on one key to paste, and the README is one paste and three steps. The other choices are still
+there, one click down.
+
+### Breaking changes
+
+None in the database or your settings files. One answer may need a look: if you live in the Netherlands or
+the UAE, a desired salary saved before this release, likely yearly, now reads as monthly and counts twelve
+times until you edit it in Country answers.
 
 ### Added
 
@@ -73,14 +85,14 @@ once, and each country hears only its own.
   field showing. Claude, Gemini, OpenRouter and your own server are behind **Use a different AI**, open from
   the start if you already use one of them, and one line points to Settings › Agent apps if you already pay
   for Claude or ChatGPT.
-
 - **`maestro start` says how to keep Maestro running after a restart.** While autostart is off it adds one
   line: `maestro autostart on` starts it each time you log in.
 - **The Companion names the command when Maestro isn't running:** "Couldn't reach Maestro CS. Start it with
   maestro start, then try again."
-- **The README and Getting Started lead with the uv install.** The README's first screen is shorter, says
-  plainly that reading a resume or a job post needs an AI key or a connected assistant, and links the
-  Companion on the Chrome Web Store. Getting Started puts uv first and Docker under it for self-hosters.
+- **The README starts with one paste and three steps.** Everything else moves under **More, when you want
+  it**, and the Docker commands live in the setup reference. It says plainly that reading a resume or a job
+  post needs an AI, and links the Companion on the Chrome Web Store. Getting Started puts uv first and Docker
+  under it for self-hosters.
 - **Profile › Work permits is now Country answers:** Citizen of at the top, then each country you apply in
   with its work permits and its own answers. **Eligibility is now Screening questions.** Messages that send
   you there use the new names.
