@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 
 README = Path(__file__).resolve().parent.parent / "README.md"
@@ -44,8 +45,19 @@ def without_local_bin(path: str) -> str:
     return os.pathsep.join(keep)
 
 
+def new_terminal_env(environ: Mapping[str, str]) -> dict[str, str]:
+    """The environment a new terminal has, not the one this check was started from.
+
+    PSModulePath comes from the PowerShell 7 a CI step runs in. Windows PowerShell can't load its own
+    modules with it, so the uv installer stops at Get-ExecutionPolicy, which no fresh terminal does.
+    """
+    env = {name: value for name, value in environ.items() if name.upper() != "PSMODULEPATH"}
+    env["PATH"] = without_local_bin(environ["PATH"])
+    return env
+
+
 def run_paste(lines: list[str]) -> subprocess.CompletedProcess[str]:
-    env = {**os.environ, "PATH": without_local_bin(os.environ["PATH"])}
+    env = new_terminal_env(os.environ)
     with tempfile.TemporaryDirectory() as folder:
         if os.name == "nt":
             script = Path(folder) / "paste.ps1"

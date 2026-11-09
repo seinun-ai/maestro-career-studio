@@ -40,3 +40,11 @@ def test_the_check_swaps_only_the_last_line():
 def test_the_check_runs_without_the_folder_a_new_terminal_lacks():
     sep = paste.os.pathsep
     assert paste.without_local_bin(sep.join(["/usr/bin", "/home/me/.local/bin", "/bin"])) == sep.join(["/usr/bin", "/bin"])
+
+
+def test_the_check_starts_the_paste_the_way_a_new_terminal_does():
+    # Windows keeps environment names upper-case, and PowerShell 7's PSModulePath stops the uv installer.
+    for name in ("PSModulePath", "PSMODULEPATH"):
+        env = paste.new_terminal_env({"PATH": "/usr/bin", name: "C:/pwsh/Modules", "HOME": "/home/me"})
+        assert env == {"PATH": "/usr/bin", "HOME": "/home/me"}
+
