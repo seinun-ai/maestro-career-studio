@@ -288,7 +288,7 @@ def test_leaving_the_raw_pane_returns_to_the_menu():
         in toggle
     )
     # Mutant: the ref on Apply (a kept draft returned focus to Apply).
-    assert '<Button onClick={apply}>Apply</Button> <Button ref={cancelRef} variant="outline" onClick={cancel}>' in toggle
+    assert '<Button variant="tonal" onClick={apply}>Apply</Button> <Button ref={cancelRef} variant="outline" onClick={cancel}>' in toggle
     assert toggle.count("ref={cancelRef}") == 1
 
 
@@ -327,7 +327,7 @@ def test_entry_cards_focus_their_editor_and_return_to_the_pencil():
     # Both must close through `onClose`, which returns focus to the pencil.
     assert _squash(_function(card, "function EditPane(")).endswith(
         '}) { return ( <div ref={ref} className="flex flex-col gap-3"> {edit(onClose)} '
-        '<div className="flex justify-end"> <Button size="sm" onClick={onClose}> Done </Button> </div> </div> );'
+        '<div className="flex justify-end"> <Button variant="tonal" size="sm" onClick={onClose}> Done </Button> </div> </div> );'
     )
 
 

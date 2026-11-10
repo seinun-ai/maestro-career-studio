@@ -17,7 +17,11 @@ const buttonVariants = cva(
         // The signal (marigold): "this is your move". A fill with dark text and
         // a 1px signal-outline edge, since marigold on white is only 1.7:1. One
         // filled button per view keeps it rare (test_frontend_one_filled_button.py).
-        default: "border-signal-outline bg-signal text-on-signal hover:bg-signal-hover",
+        // Disabled, it is neutral grey: a washed marigold still read as "your
+        // move". A pending (aria-busy, spinning) one is disabled too and stays
+        // marigold, since that move is the one running.
+        default:
+          "border-signal-outline bg-signal text-on-signal hover:bg-signal-hover not-aria-busy:data-disabled:border-transparent not-aria-busy:data-disabled:bg-muted not-aria-busy:data-disabled:text-muted-foreground",
         // The one low-emphasis filled button (the grey `secondary` variant was
         // folded into it). M3's filled-tonal: SECONDARY container, M3's role for "recessive
         // components like tonal buttons". It was `bg-primary/10 text-primary`,

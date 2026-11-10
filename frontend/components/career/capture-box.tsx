@@ -205,6 +205,7 @@ export function CaptureBox() {
               <Button
                 // Stays focusable while it captures: a disabled button that
                 // has focus drops it to the page.
+                variant="tonal"
                 className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
                 type="submit"
                 disabled={!text.trim() || capture.isPending}

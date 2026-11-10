@@ -34,7 +34,9 @@
   marigold `oklch(0.828 0.166 79.4)` in both modes, with `--on-signal`,
   `--signal-hover` and `--signal-outline`) means "this is your move" and appears
   in exactly three places: the `default` Button (`bg-signal text-on-signal
-  hover:bg-signal-hover` with a `border-signal-outline` edge), the needs-you
+  hover:bg-signal-hover` with a `border-signal-outline` edge; disabled and not
+  pending it is `bg-muted text-muted-foreground` with no edge, so only a live or
+  running move is marigold, and the Companion's `.cta` does the same), the needs-you
   count in the sidebar, and the current step's mark on the job page's four
   steps. It is a fill with dark text, never a text colour, an icon colour on a
   light surface, a border on its own or a chart colour, and a signal fill on a

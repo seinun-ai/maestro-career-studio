@@ -57,7 +57,7 @@ _TEXT_PAIRS = [
     ("text", "surface-2", "body copy on the Next card"),
     ("muted", "surface", ".sub, .note, .ats .lbl, .qna"),
     ("muted", "surface-2", ".sub and .stg-sum inside the Next card"),
-    ("muted", "muted-container", ".stg.active > button.stg-row:hover"),
+    ("muted", "muted-container", ".stg.active > button.stg-row:hover, a disabled .cta that is not running"),
     ("primary", "surface", ".linkish, .resid button"),
     ("primary", "surface-2", ".stg.active ::before (Next), .resid button in the card"),
     ("primary", "primary-tonal", ".chip.lib, .identity .linkish:hover"),
@@ -107,6 +107,11 @@ def test_the_main_button_is_the_signal_with_its_edge():
     assert ".cta:hover:not(:disabled):not([aria-disabled=\"true\"]) { background: var(--cs-signal-hover); }" in _PANEL_CSS
     # Secondary footer buttons stay neutral.
     assert ".cta.alt { background: var(--cs-surface); color: var(--cs-text); border: 1px solid var(--cs-line); }" in _PANEL_CSS
+    # Disabled but not running, it goes neutral grey (a washed marigold still read as "your move"); a spinning one
+    # keeps the signal, as the app's default Button does.
+    grey = _PANEL_CSS.split("\n.cta:disabled:not(.spin):not(.alt) {", 1)[1].split("}", 1)[0]
+    assert "background: var(--cs-muted-container);" in grey and "color: var(--cs-muted);" in grey
+    assert "border-color: transparent;" in grey
 
 
 def test_the_signal_is_never_a_text_colour_in_the_panel():

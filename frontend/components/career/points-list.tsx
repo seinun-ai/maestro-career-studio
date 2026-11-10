@@ -440,6 +440,7 @@ function PointRow({ entityId, point }: { entityId: string; point: KBPointOut }) 
               <X aria-hidden="true" /> Cancel
             </Button>
             <Button
+              variant="tonal"
               className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
               size="sm"
               onClick={() =>

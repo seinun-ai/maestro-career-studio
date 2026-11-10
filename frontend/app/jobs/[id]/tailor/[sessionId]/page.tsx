@@ -1034,6 +1034,7 @@ export default function TailorSessionPage({
             )}
             {/* Focusable while disabled: the confirm hands focus back here as the lock takes it. */}
             <Button
+              variant={staleReason ? "tonal" : "default"}
               className="data-disabled:opacity-50"
               onClick={onTailorClick}
               focusableWhenDisabled

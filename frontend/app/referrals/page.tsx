@@ -537,6 +537,7 @@ function ReferralEditRow({
       <TableCell>
         <div className="flex justify-end gap-2">
           <Button
+            variant="tonal"
             size="sm"
             onClick={save}
             disabled={!canSave}

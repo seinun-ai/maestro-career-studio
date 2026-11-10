@@ -666,7 +666,7 @@ function SummaryBlock({
           onChange={(e) => onChange(e.target.value)}
         />
         <div className="flex justify-end">
-          <Button size="sm" onClick={close}>
+          <Button variant="tonal" size="sm" onClick={close}>
             Done
           </Button>
         </div>
@@ -721,7 +721,7 @@ function CertificationsBlock({
           placeholder="Add certification…"
         />
         <div className="flex justify-end">
-          <Button size="sm" onClick={close}>
+          <Button variant="tonal" size="sm" onClick={close}>
             Done
           </Button>
         </div>

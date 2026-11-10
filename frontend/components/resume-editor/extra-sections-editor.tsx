@@ -334,6 +334,7 @@ function SectionCard({
             {editing && (
               <div className="flex justify-end">
                 <Button
+                  variant="tonal"
                   size="sm"
                   className="data-disabled:pointer-events-none data-disabled:opacity-50"
                   // Focusable while a colliding name holds it: a disabled button drops focus.

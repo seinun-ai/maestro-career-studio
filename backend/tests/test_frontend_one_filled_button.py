@@ -276,6 +276,14 @@ _VIEWS = {
     "Analytics": "app/analytics/page.tsx",
     "Setup": "app/setup/page.tsx",
     "Profile": "app/profile/page.tsx",
+    "Career history": "app/career/page.tsx",
+    "Base resumes": "app/base-resumes/page.tsx",
+    "Referrals": "app/referrals/page.tsx",
+    "Career item": "app/career/[id]/page.tsx",
+    "Chat": "app/chat/page.tsx",
+    "Base resume editor": "app/base-resumes/[slug]/page.tsx",
+    "Tailored resume editor": "app/applications/[id]/resume/page.tsx",
+    "Gap analysis": "app/jobs/[id]/tailor/[sessionId]/page.tsx",
 }
 
 # Where each view's filled controls sit, {(file, function): how many}. Jobs, Automations and Analytics are a plain
@@ -301,6 +309,20 @@ _FILLED = {
     "Analytics": {},
     "Setup": {("components/setup/setup-flow.tsx", "StepNav"): 1, ("components/setup/setup-done.tsx", "SetupDone"): 1},
     "Profile": {("components/profile/next-up.tsx", "NextUp"): 4},
+    "Career history": {
+        ("app/career/page.tsx", "CareerPage"): 1,
+        ("components/career/inbox-panel.tsx", "InboxPanel"): 1,
+    },
+    "Base resumes": {("app/base-resumes/page.tsx", "BaseResumesListPage"): 1},
+    "Referrals": {("app/referrals/page.tsx", "ReferralsPage"): 1, ("app/referrals/page.tsx", "ReferralForm"): 1},
+    "Career item": {("components/career/entity-detail.tsx", "EntityDetail"): 1},
+    "Chat": {("components/chat/chat-page.tsx", "ChatPage"): 1},
+    "Base resume editor": {("components/resume-editor/studio-save-button.tsx", "StudioSaveButton"): 1},
+    "Tailored resume editor": {
+        ("components/resume-editor/studio-save-button.tsx", "StudioSaveButton"): 1,
+        ("components/resume-editor/tailored-resume-studio.tsx", "BuildDraft"): 1,
+    },
+    "Gap analysis": {("app/jobs/[id]/tailor/[sessionId]/page.tsx", "TailorSessionPage"): 5},
 }
 
 
@@ -374,3 +396,121 @@ def test_profile_next_up_returns_one_lead_card():
     assert next_up.index("return ( <LeadCard", diversity) < next_up.index('if (current.kind === "citizenship") {')
     citizenship = next_up.index('if (current.kind === "citizenship") {')
     assert next_up.index("return ( <LeadCard", citizenship) < next_up.index("const field = current.field;")
+
+
+def test_career_history_leads_with_approve_all_or_add_item_never_both():
+    # With drafts to review the page showed Approve all shown, every draft's Approve and the header's Add item filled
+    # at once. Add item is filled only while the panel's Approve all shown is hidden: the same three conditions.
+    page = _body("Career history", ("app/career/page.tsx", "CareerPage"))
+    assert (
+        "const draftsToReview = !drafts.isLoading && !drafts.error && (drafts.data?.length ?? 0) > 0;" in page
+        and "drafts={drafts.data ?? []}" in page and "isLoading={drafts.isLoading} error={drafts.error}" in page
+    )
+    (add,) = [tag for tag, label in _elements(page, "Button") if "Add item" in label]
+    assert _variant(add) == '{draftsToReview ? "tonal" : "default"}', add
+    panel = _body("Career history", ("components/career/inbox-panel.tsx", "InboxPanel"))
+    (approve_all,) = _filled(panel)
+    gate = "{drafts.length > 0 && !isLoading && !error && ("
+    assert gate in panel and panel.index(gate) < panel.index(approve_all)
+
+
+_DRAFT_APPROVE = '<ApproveIcon aria-hidden="true" /> {approving ? "Approving…" : "Approve"}'
+
+
+def test_a_drafts_own_approve_and_save_are_tonal():
+    # A draft row renders once per draft, so the count above sees it once: its actions are pinned by name.
+    row = _body("Career history", ("components/career/inbox-panel.tsx", "DraftRow"))
+    actions = {label: tag for tag, label in _elements(row, "Button") if label in (_DRAFT_APPROVE, "Save")}
+    assert set(actions) == {_DRAFT_APPROVE, "Save"}
+    for tag in actions.values():
+        assert _variant(tag) == '"tonal"', tag
+
+
+def _tag_for(body: str, label: str) -> str:
+    (tag,) = [tag for tag, children in _elements(body, "Button") if label in children]
+    return tag
+
+
+def test_referrals_leads_with_add_referral_or_the_first_referral_form():
+    # The header's Add referral shows only once there are referrals; before that the first-referral card's own Add
+    # referral leads (the dialog's is its own view). An edited row's Save sat filled beside the header's: it is tonal.
+    page = _body("Referrals", ("app/referrals/page.tsx", "ReferralsPage"))
+    assert "actions={ populated ? ( <Button ref={addButtonRef}" in page
+    assert ") : populated ? ( <ReferralsTable rows={rows} /> ) : ( <FirstReferralCard" in page
+    edit = _body("Referrals", ("app/referrals/page.tsx", "ReferralEditRow"))
+    assert _variant(_tag_for(edit, '{update.isPending ? "Saving…" : "Save"}')) == '"tonal"'
+
+
+def test_a_career_items_lead_is_add_to_a_resume_and_its_cards_save_quietly():
+    # Save notes and Save details are their cards' own saves, shown while Add to a resume stays on screen.
+    notes = _body("Career item", ("components/career/notes-editor.tsx", "NotesEditor"))
+    assert _variant(_tag_for(notes, '"Save notes"')) == '"tonal"'
+    header = _body("Career item", ("components/career/entity-detail.tsx", "EntityHeader"))
+    assert _variant(_tag_for(header, '"Save details"')) == '"tonal"'
+
+
+def test_chat_leads_with_send_and_a_cards_answer_is_tonal():
+    # Every message's proposal card renders its own button, so the count sees each card once: pinned by name.
+    merge = _body("Chat", ("components/chat/proposal-card.tsx", "ProposalCard"))
+    assert _variant(_tag_for(merge, '"Add to resume"')) == '"tonal"'
+    apply = _body("Chat", ("components/chat/edit-proposal-card.tsx", "EditProposalCard"))
+    assert _variant(_tag_for(apply, "apply.isPending")) == '"tonal"'
+
+
+_EDITOR_DONES = {
+    ("components/resume-editor/editable-card.tsx", "EditPane"),
+    ("components/resume-editor/contact-form.tsx", "ContactForm"),
+    ("components/resume-editor/editor-body.tsx", "SummaryBlock"),
+    ("components/resume-editor/editor-body.tsx", "CertificationsBlock"),
+    ("components/resume-editor/extra-sections-editor.tsx", "SectionCard"),
+}
+
+
+# editor-body.tsx is the base studio's; the tailored studio lays out its own summary and certifications.
+_BASE_ONLY_DONES = {key for key in _EDITOR_DONES if key[0].endswith("editor-body.tsx")}
+
+
+def _labelled(graph: dict[tuple[str, str], str], label: str) -> list[tuple[tuple[str, str], str]]:
+    return [(key, tag) for key, body in graph.items() for tag, text in _elements(squash(body), "Button") if text == label]
+
+
+@pytest.mark.parametrize(
+    "view,expected",
+    [("Base resume editor", _EDITOR_DONES), ("Tailored resume editor", _EDITOR_DONES - _BASE_ONLY_DONES)],
+)
+def test_a_resume_editor_leads_with_save_and_each_card_closes_quietly(view, expected):
+    # Every open card's Done, the raw JSON pane's Apply and the sync pill's Add now sat filled beside Save.
+    dones = _labelled(_rendered(_VIEWS[view]), "Done")
+    assert {key for key, _ in dones} == expected
+    assert [tag for _, tag in dones if _variant(tag) != '"tonal"'] == []
+    raw = _body(view, ("components/resume-editor/raw-json-toggle.tsx", "RawJsonToggle"))
+    assert _variant(_tag_for(raw, "Apply")) == '"tonal"'
+
+
+def test_the_base_resume_editors_sync_pill_adds_quietly():
+    pill = _body("Base resume editor", ("components/kb-sync-pill.tsx", "KbSyncPill"))
+    assert _variant(_tag_for(pill, "Add now")) == '"tonal"'
+
+
+def test_the_tailored_editor_builds_a_draft_or_opens_the_studio_never_both():
+    studio = _body("Tailored resume editor", ("components/resume-editor/tailored-resume-studio.tsx", "TailoredResumeStudio"))
+    assert studio.index("if (!adoptedData) { return ( <BuildDraft") < studio.index("return ( <StudioEditor")
+
+
+def test_the_gap_analysis_leads_with_one_button_per_state():
+    # Missing or failed: Back to job, each its own early return. Closed: View tailored resume (or Go to Resume and
+    # gaps). Open: Tailor resume, except while the analysis is out of date, when Tailor resume cannot run, goes
+    # tonal, and the banner's Start new gap analysis leads.
+    page = _body("Gap analysis", ("app/jobs/[id]/tailor/[sessionId]/page.tsx", "TailorSessionPage"))
+    error, closed, live = (
+        page.index("if (sessionError != null) {"),
+        page.index('if (session.data.status !== "open") {'),
+        page.index("const gapsJson"),
+    )
+    hits = [page.index(hit) for hit in _filled(page)]
+    assert error < hits[0] == hits[1] < closed < hits[2] < live < hits[3] < hits[4]
+    # The two Back to job returns, then the loading skeleton's; the closed state's one return.
+    assert page[error:closed].count("return (") == 3 and page[closed:live].count("return (") == 1
+    stale = page.index("{staleReason ? (")
+    assert stale < hits[3] < page.index(") : null}", stale)
+    assert _variant(_tag_for(page, '"Tailor resume"')) == '{staleReason ? "tonal" : "default"}'

@@ -108,6 +108,7 @@ export function ProposalCard({
               Discard
             </Button>
             <Button
+              variant="tonal"
               size="sm"
               disabled={merge.isPending}
               onClick={() => merge.mutate()}

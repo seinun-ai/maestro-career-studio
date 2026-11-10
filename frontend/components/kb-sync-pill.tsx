@@ -204,6 +204,7 @@ export function KbSyncPill({ slug }: { slug: string }) {
           )}
           <div className="flex items-center justify-between gap-2">
             <Button
+              variant="tonal"
               size="sm"
               onClick={() => syncOnce()}
               disabled={sync.isPending}

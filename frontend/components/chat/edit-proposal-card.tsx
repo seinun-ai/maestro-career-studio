@@ -142,6 +142,7 @@ export function EditProposalCard({
               Discard
             </Button>
             <Button
+              variant="tonal"
               size="sm"
               className="px-4"
               disabled={apply.isPending}

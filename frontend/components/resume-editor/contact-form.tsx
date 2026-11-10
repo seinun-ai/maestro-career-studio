@@ -86,7 +86,7 @@ export function ContactForm({
           ))}
         </div>
         <div className="flex justify-end">
-          <Button size="sm" onClick={close}>
+          <Button variant="tonal" size="sm" onClick={close}>
             Done
           </Button>
         </div>

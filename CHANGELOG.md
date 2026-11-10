@@ -52,6 +52,7 @@ Setup keeps the key you paste, and Today points you at your first job.
   screen), the needs-you count in the sidebar and the current step of a job page are marigold with dark text.
   Everything that was blue is ink or neutral grey; blue stays only in charts, where it is data.
 - **Links are underlined**, so they read as links without relying on colour.
+- **A main button you can't press yet is grey**, not a faded marigold. One that is working keeps its colour.
 - **The logo is one colour.** The two bolts of the mark are joined into one shape. The app icon, favicon
   and Companion icons are a marigold tile with the ink mark.
 - **The Companion matches.** Its panel uses the same ink, greys and marigold, and its one main button is

@@ -129,7 +129,7 @@ One corner per kind of thing: `radius-corner-2xs` (2px) the resume square; `radi
 - **A button whose request is running** takes `pending`: a spinner replaces its icon, `aria-busy` is set, presses are ignored and focus stays on it (a natively disabled button would drop focus to the page). Some of these swap the label too (Save job "Saving…", the job header's Queue "Queueing…", "Updating scores…", "Approving…", "Adapting…", "Answering…", "Writing…", "Applying…"); the rest keep it and show the spinner only (the studios' Save, the bulk Queue, the Skip confirm).
 - **A field warning** is the amber sibling of an error: an icon and words under the control (`TriangleAlert` in `warning` for a warning, `CircleX` in `destructive` for an error), and `data-warning` turns the border and halo amber. It never blocks a save and shows on blur. See TextField.
 - Pending work dims its section (`data-pending`); a pressed button scales to 0.97.
-- Disabled is 50% opacity and no pointer events.
+- Disabled is 50% opacity and no pointer events. A disabled filled Button is also neutral grey (muted fill and text, no signal edge), since a faded marigold still says "your move"; a pending (spinning) one keeps the signal.
 
 ## Layout and spacing
 

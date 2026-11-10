@@ -20,17 +20,16 @@
 
 Maestro tailors your resume from your whole career history in under a minute, and every bullet is something you actually did, so you can defend it in an interview. Then the Companion fills in the application. You press Submit.
 
-<!-- hero.gif: career-history animation, approved by the owner 2026-10-12 for the
-     launch. All data is the fictional Jordan Ellis persona (example.com email,
-     555 phone, sample-company employers, target "Woodgrove Bank"). The resume
-     pages, the 82.4 -> 87.3 Match score and the Apache Spark gap card are real
-     captures from the app (v0.10.1) on a throwaway stack; tailoring took 4.6 s.
-     Source, captures and the encode script live in the private marketing repo
-     (hero-gif/; the Figtree captions are hero-site-figtree/, re-rendered 2026-10-16
-     to match the site). 1000px / 12fps / 32 colors, no dither, 1.86 MB; keep any
-     replacement under 2 MB. -->
+<!-- hero.gif: the "Give your job search a memory" loop, approved by the owner
+     2026-11-10. All data is the fictional Jordan Ellis persona (example.com email,
+     555 phone, sample-company employers, target "Woodgrove Bank"). The three
+     resume pages, the 82.3 -> 91.6 Match score and the MLOps gap card ("Add it
+     only if you have it") are real captures from the refreshed app on a throwaway
+     stack; the file chips, the mark and the closing form are drawn. Source,
+     captures and the export script live in the owner's private animation project.
+     1000px / 12fps / 64 colors, no dither, 1.32 MB; keep any replacement under 2 MB. -->
 
-![Many resume versions become one career history, then a specialist resume per role, company and country, matched to a job and ready to apply. You press Submit.](docs/assets/hero.gif)
+![Old resume files become one career history, then a specialist resume for each role. Maestro asks before adding a skill your resume doesn't show, and the application form waits for you to press Submit.](docs/assets/hero.gif)
 
 **Free and open source · No account · macOS, Linux and Windows.** [Watch the 37-second tour](https://www.youtube.com/watch?v=TvNTzPxPNnc) · [Add the Companion to Chrome](https://chromewebstore.google.com/detail/maestro-cs-companion/bppkeipififkepldkogmfpkkhoakgndl)
 

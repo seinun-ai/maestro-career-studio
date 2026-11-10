@@ -69,7 +69,7 @@ export function FirstRunImportCard() {
             </div>
           </div>
           <div className="flex items-center gap-1">
-            <Button size="sm" onClick={() => setOpen(true)}>
+            <Button size="sm" variant="tonal" onClick={() => setOpen(true)}>
               Import resumes
             </Button>
             <Button

@@ -160,7 +160,7 @@ export function RawJsonToggle({
         </pre>
       )}
       <div className="flex gap-2">
-        <Button onClick={apply}>Apply</Button>
+        <Button variant="tonal" onClick={apply}>Apply</Button>
         <Button ref={cancelRef} variant="outline" onClick={cancel}>
           Cancel
         </Button>

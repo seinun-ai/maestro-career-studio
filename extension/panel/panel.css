@@ -813,6 +813,11 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 /* An action is running. The button is out of reach either way — `disabled` is
    the real guard — and this is what says so before the user presses it again. */
 .cta:disabled { opacity: .6; cursor: default; }
+/* Disabled but not running (another action on this card is), the signal goes neutral grey, as the app's
+   default Button does: a washed marigold still read as "your move". A spinning one keeps the signal. */
+.cta:disabled:not(.spin):not(.alt) {
+  background: var(--cs-muted-container); color: var(--cs-muted); border-color: transparent;
+}
 /* Stop, beside the running fill's spinner: outlined, so it never reads as the
    primary it sits next to. The primary then takes the rest of Stop's line. */
 .stop {

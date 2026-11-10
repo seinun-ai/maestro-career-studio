@@ -172,7 +172,7 @@ function EditPane({
     <div ref={ref} className="flex flex-col gap-3">
       {edit(onClose)}
       <div className="flex justify-end">
-        <Button size="sm" onClick={onClose}>
+        <Button variant="tonal" size="sm" onClick={onClose}>
           Done
         </Button>
       </div>

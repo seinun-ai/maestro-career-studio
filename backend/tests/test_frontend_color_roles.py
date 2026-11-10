@@ -217,6 +217,27 @@ def test_the_default_button_is_the_signal_with_its_edge():
     assert "bg-primary" not in default
 
 
+_DISABLED_DEFAULT = {
+    "not-aria-busy:data-disabled:border-transparent",
+    "not-aria-busy:data-disabled:bg-muted",
+    "not-aria-busy:data-disabled:text-muted-foreground",
+}
+
+
+def test_a_disabled_default_button_is_grey_and_a_pending_one_stays_the_signal():
+    # A washed marigold still read as "your move". `not-aria-busy:` keeps a pending (spinning) one the signal.
+    default = set(_variant(_BUTTON, "default", "button.tsx").split())
+    assert _DISABLED_DEFAULT <= default
+    assert not {c for c in default if c.startswith(("data-disabled:", "disabled:"))}, default
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_a_disabled_default_buttons_muted_pair_meets_aa(mode):
+    t = _MODES[mode]
+    ratio = _contrast(_rgb(t, "muted-foreground"), _rgb(t, "muted"))
+    assert ratio >= 4.5, f"{mode}: --muted-foreground on --muted is {ratio:.2f}:1"
+
+
 def test_the_link_variants_are_underlined_at_rest():
     for where, source in (("button.tsx", _BUTTON), ("badge.tsx", _BADGE)):
         link = _variant(source, "link", where).split()

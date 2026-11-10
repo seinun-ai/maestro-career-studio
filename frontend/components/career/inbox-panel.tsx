@@ -427,6 +427,7 @@ function DraftRow({
           />
           <div className="flex gap-2">
             <Button
+              variant="tonal"
               className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
               size="sm"
               onClick={() =>
@@ -491,6 +492,7 @@ function DraftRow({
       <div className="mt-3 flex flex-wrap items-end gap-2 pt-1">
         <Button
           data-draft-action="approve"
+          variant="tonal"
           className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
           size="sm"
           onClick={approve}

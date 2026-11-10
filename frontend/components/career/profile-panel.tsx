@@ -384,6 +384,7 @@ function ProfileSection<T>({
             </Button>
             <Button
               type="submit"
+              variant="tonal"
               size="sm"
               className="px-4 data-disabled:pointer-events-none data-disabled:opacity-50"
               disabled={save.isPending}

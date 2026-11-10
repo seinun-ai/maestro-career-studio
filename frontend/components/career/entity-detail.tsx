@@ -342,7 +342,7 @@ function EntityHeader({ entity }: { entity: KBEntityDetailType }) {
             <Button type="button" variant="ghost" onClick={reset} disabled={save.isPending}>
               <X aria-hidden="true" /> Cancel
             </Button>
-            <Button className="px-4" type="submit" disabled={!title.trim() || save.isPending}>
+            <Button variant="tonal" className="px-4" type="submit" disabled={!title.trim() || save.isPending}>
               {save.isPending ? "Saving…" : "Save details"}
             </Button>
           </div>

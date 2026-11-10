@@ -49,6 +49,10 @@ export default function CareerPage() {
     queryFn: listKbDrafts,
   });
 
+  // The inbox's Approve all shown is the page's one filled button while drafts wait (the
+  // panel's own test), so Add item steps down to tonal; with none it is the page's lead.
+  const draftsToReview = !drafts.isLoading && !drafts.error && (drafts.data?.length ?? 0) > 0;
+
   const openNewEntity = (kind: KBEntityKind) => setNewEntity({ open: true, kind });
   // On an item tab, "Add item" defaults to that kind; on Basics, to experience.
   const activeKind = ENTITY_TABS.find((tab) => tab.value === activeTab)?.kind ?? "experience";
@@ -78,6 +82,7 @@ export default function CareerPage() {
               <Upload aria-hidden="true" /> Import resumes and documents
             </Button>
             <Button
+              variant={draftsToReview ? "tonal" : "default"}
               className="px-4"
               onClick={() => openNewEntity(activeKind)}
             >
@@ -224,7 +229,7 @@ function CustomSectionsTab({
       ) : items.length === 0 ? (
         <div className="rounded-corner-md bg-surface-container-low p-10 text-center">
           <p className="text-title-small">No other sections yet</p>
-          <Button className="mt-4" size="sm" onClick={onAdd}>
+          <Button className="mt-4" size="sm" variant="tonal" onClick={onAdd}>
             <Plus aria-hidden="true" /> Add section
           </Button>
         </div>
@@ -298,7 +303,7 @@ function EntityTab({
       ) : items.length === 0 ? (
         <div className="rounded-corner-md bg-surface-container-low p-10 text-center">
           <p className="text-title-small">No {title.toLowerCase()} yet</p>
-          <Button className="mt-4" size="sm" onClick={onAdd}>
+          <Button className="mt-4" size="sm" variant="tonal" onClick={onAdd}>
             <Plus aria-hidden="true" /> Add {singular}
           </Button>
         </div>
