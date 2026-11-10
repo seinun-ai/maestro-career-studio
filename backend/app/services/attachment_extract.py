@@ -43,6 +43,9 @@ _PPTX_MAX_SLIDES = 1_000
 VISION_TEXT_THRESHOLD = 150
 VISION_MAX_PAGES = 5
 VISION_MARKER = "[Transcribed from document images]"
+# One bounded request, no SDK retries: an unbounded call held the upload (and,
+# before the route went sync, the whole server) for up to the SDK's 10 minutes.
+VISION_TIMEOUT_SECONDS = 120.0
 
 _TRANSCRIBE_PROMPT = (
     "Transcribe ALL text visible in the attached document page image(s), faithfully and "
@@ -101,8 +104,13 @@ def _image_png(data: bytes) -> list[bytes]:
     return [buf.getvalue()]
 
 
+class _VisionTimedOut(Exception):
+    """The vision call ran past VISION_TIMEOUT_SECONDS."""
+
+
 def _transcribe_images(images: list[bytes], filename: str) -> str:
-    """OCR-via-vision-model; returns "" on any failure so callers can degrade."""
+    """OCR-via-vision-model; returns "" on any failure so callers can degrade,
+    except a timeout, which raises _VisionTimedOut so the caller can say so."""
     from app.services import llm, model_settings
 
     try:
@@ -112,7 +120,15 @@ def _transcribe_images(images: list[bytes], filename: str) -> str:
             response_format="text",
             images=images,
             trace_name="doc-vision-transcribe",
+            timeout=VISION_TIMEOUT_SECONDS,
+            max_retries=0,
         )
+    except llm.LLMProviderError as exc:
+        if exc.timed_out:
+            logger.warning("Vision transcription timed out for %r", filename)
+            raise _VisionTimedOut from exc
+        logger.warning("Vision transcription failed for %r: %s", filename, exc)
+        return ""
     except Exception as exc:  # noqa: BLE001 — degrade to the raw text layer
         logger.warning("Vision transcription failed for %r: %s", filename, exc)
         return ""
@@ -404,6 +420,7 @@ UNSUPPORTED_TYPE = "Use a PDF, Word, PowerPoint, text or image file."
 # (`isPlainSentence`), hiding the whole reason.
 NOT_AN_IMAGE = "This file isn't a readable image."
 NO_TEXT = "No text could be read in this file."
+READ_TIMED_OUT = "Reading this file took too long. Try again, or paste its text instead."
 UPLOAD_UNREADABLE = "Couldn't read this file. Try again."
 
 
@@ -439,7 +456,12 @@ def extract_text(filename: str, mime: str | None, data: bytes) -> str:
     if suffix == ".pdf" or mime == "application/pdf":
         text = _pdf_text(data)
         if len(text.strip()) < VISION_TEXT_THRESHOLD and _pdf_has_images(data):
-            transcript = _transcribe_images(_pdf_page_pngs(data, scale=2.0), filename)
+            try:
+                transcript = _transcribe_images(_pdf_page_pngs(data, scale=2.0), filename)
+            except _VisionTimedOut as exc:
+                if not text.strip():  # nothing to fall back on: say why
+                    raise UnreadableFile(READ_TIMED_OUT) from exc
+                transcript = ""
             if transcript:
                 text = f"{text.strip()}\n\n{VISION_MARKER}\n{transcript}"
     elif suffix == ".docx" or mime == (
@@ -455,7 +477,10 @@ def extract_text(filename: str, mime: str | None, data: bytes) -> str:
             pages = _image_png(data)
         except Exception as exc:  # corrupt/undecodable image bytes
             raise UnreadableFile(NOT_AN_IMAGE) from exc
-        transcript = _transcribe_images(pages, filename)
+        try:
+            transcript = _transcribe_images(pages, filename)
+        except _VisionTimedOut as exc:
+            raise UnreadableFile(READ_TIMED_OUT) from exc
         text = f"{VISION_MARKER}\n{transcript}" if transcript else ""
     elif suffix in _TEXT_SUFFIXES or mime in _TEXT_MIMES:
         text = data.decode("utf-8", errors="replace")

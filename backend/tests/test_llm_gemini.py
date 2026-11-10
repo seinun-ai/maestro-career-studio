@@ -259,14 +259,16 @@ def test_stream_timeout_and_connection_errors_at_open(monkeypatch):
     def timed_out(request, timeout=None):
         raise TimeoutError("slow")
 
-    with pytest.raises(LLMProviderError, match="timed out"):
+    with pytest.raises(LLMProviderError, match="timed out") as caught:
         list(_provider(monkeypatch, timed_out).stream(_hello_req()))
+    assert caught.value.timed_out  # attachment_extract words a slow file from this flag
 
     def refused(request, timeout=None):
         raise URLError(ConnectionRefusedError("no"))
 
-    with pytest.raises(LLMProviderError, match="no connection"):
+    with pytest.raises(LLMProviderError, match="no connection") as caught:
         list(_provider(monkeypatch, refused).stream(_hello_req()))
+    assert not caught.value.timed_out
 
 
 def test_stream_mid_stream_errors_map_and_close_the_response(monkeypatch):

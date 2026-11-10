@@ -161,12 +161,16 @@ def set_card_state(
     return ChatMessageRead.model_validate(row)
 
 
+# Sync def (not async): extract_text can make a vision model call for an image or
+# a scanned PDF. FastAPI runs a sync handler in its threadpool, so one slow file
+# no longer stalls every other request; the call itself is bounded too
+# (attachment_extract.VISION_TIMEOUT_SECONDS).
 @router.post("/sessions/{session_id}/attachments", response_model=ChatAttachmentRead)
-async def upload_attachment(
+def upload_attachment(
     session_id: UUID, file: UploadFile, db: Annotated[Session, Depends(get_db)]
 ):
     _get_session_or_404(db, session_id)
-    data = await file.read()
+    data = file.file.read()
     if len(data) > MAX_ATTACHMENT_BYTES:
         raise HTTPException(status_code=413, detail="This file is over 10 MB.")
     try:

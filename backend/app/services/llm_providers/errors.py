@@ -24,6 +24,10 @@ class LLMProviderError(RuntimeError):
     log and for `llm_capabilities`' reachability check, which reads it.
     """
 
+    # True when the request ran out of time, so a caller can word that case
+    # (a file that took too long to read) apart from the others.
+    timed_out: bool = False
+
     def __init__(self, message: str, provider_detail: str | None = None) -> None:
         super().__init__(message)
         self.provider_detail = provider_detail or message
@@ -51,11 +55,13 @@ def _no_answer(reason: str, provider_detail: str, provider: str = "OpenAI") -> L
             f"{provider} refused your API key. Check it in Settings › Basics.",
             provider_detail=provider_detail,
         )
-    return LLMProviderError(
+    error = LLMProviderError(
         f"The AI model didn't answer ({reason}). Try again, or check your key in "
         "Settings › Basics.",
         provider_detail=provider_detail,
     )
+    error.timed_out = reason == _TIMED_OUT
+    return error
 
 
 def _gemini_reason(status: int, body: str) -> str:
