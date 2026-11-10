@@ -28,9 +28,15 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+## [0.14.0] — 2026-11-10
+
 Until now one blue did every job in the app, so nothing on a screen told you what to do next. Now the app
 is ink and grey, and one marigold fill marks your next move. Your first ten minutes also lead somewhere:
 Setup keeps the key you paste, and Today points you at your first job.
+
+### Breaking changes
+
+None. No change to the database, your settings files or `.env`.
 
 ### Added
 
