@@ -92,6 +92,8 @@ None. No change to the database, your settings files or `.env`.
 - **A photo or scanned PDF in the Assistant no longer stalls the app.** Reading one used to hold every other request
   until the AI model answered, for up to ten minutes. It now runs on its own, gives up after two minutes and says
   the file took too long to read.
+- A form section name or heading the Companion cut at 200 characters could end in half an emoji. The cut now
+  drops the stray half, as the fill log already did.
 
 ### Removed
 

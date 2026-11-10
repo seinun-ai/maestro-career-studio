@@ -501,7 +501,7 @@
       today: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`,
     };
     if (options.applicationId) selector.application_id = options.applicationId;
-    else if (options.base) selector.base = String(options.base).slice(0, 200);
+    else if (options.base) selector.base = String(options.base).slice(0, 200).replace(LONE_SURROGATE, "");
     if (options.pageUrl) selector.page_url = String(options.pageUrl);
     const asked = { ...selector, source_hint: options.sourceHint ? String(options.sourceHint).slice(0, 60) : null };
     // fid -> { fid, field, frameId, status, attempts, route, slot, value, answer, lastOutcome,
@@ -1733,7 +1733,7 @@
         const { res, ms } = await post("/api/autofill/map", {
           ...selector,
           fields: part.map((f) => ({
-            fid: f.fid, question: question(f), section: f.section ? String(f.section).slice(0, 200) : null,
+            fid: f.fid, question: question(f), section: f.section ? String(f.section).slice(0, 200).replace(LONE_SURROGATE, "") : null,
             repeat_index: entryIndex(f.repeatIndex), ...placement(f), ...(slotHints.has(f.fid) ? { slot_hint: slotHints.get(f.fid) } : {}), shape: f.shape,
             multi: Boolean(f.multi), required: Boolean(f.required),
             options: usable(f.options).slice(0, MAP_OPTIONS).map((o) => o.text.slice(0, 300)),
@@ -2056,7 +2056,7 @@
         // `held`: what each entry already holds, for the LOCAL backend to
         // match entries to profile entries (it never reaches a model).
         sections: ask.map((s) => ({
-          sid: s.sid, heading: s.heading.slice(0, 200), entries: s.entries,
+          sid: s.sid, heading: s.heading.slice(0, 200).replace(LONE_SURROGATE, ""), entries: s.entries,
           filled: (Array.isArray(s.filled) ? s.filled : []).slice(0, MAX_ENTRIES).map(Boolean),
           held: (Array.isArray(s.held) ? s.held : []).slice(0, MAX_ENTRIES).map((vs) => (Array.isArray(vs) ? vs : [])
             .slice(0, MAX_HELD).map((v) => String(v).slice(0, HELD_CHARS))),
