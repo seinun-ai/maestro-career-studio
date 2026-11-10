@@ -73,6 +73,16 @@ def test_compose_still_binds_the_host_side_to_loopback():
     assert '"127.0.0.1:${FRONTEND_HOST_PORT:-3000}:3000"' in COMPOSE
 
 
+def test_compose_web_origins_follow_the_published_web_port():
+    """The browser's Origin carries the HOST port. A default fixed at :3000 made the
+    backend refuse every save once FRONTEND_HOST_PORT moved, while pages still loaded."""
+    line = next(s for s in COMPOSE.splitlines() if s.strip().startswith("ALLOWED_WEB_ORIGINS:"))
+    port = "${FRONTEND_HOST_PORT:-3000}"
+    assert f"http://localhost:{port}" in line
+    assert f"http://127.0.0.1:{port}" in line
+    assert line.strip().startswith("ALLOWED_WEB_ORIGINS: ${ALLOWED_WEB_ORIGINS:-")  # an explicit value still wins
+
+
 def test_npm_start_runs_the_standalone_server_on_loopback():
     """`next start` warns under standalone output; `npm start` assembles and runs server.js."""
     package = json.loads((REPO / "frontend" / "package.json").read_text())
