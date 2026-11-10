@@ -1,0 +1,801 @@
+{
+  "base": {
+    "contact": {
+      "name": "Sam Rivera",
+      "email": "sam.rivera@example.com",
+      "phone": null,
+      "location": "Lisbon, Portugal",
+      "linkedin": null,
+      "github": null,
+      "website": null
+    },
+    "summary": "Operations coordinator with five years in warehouse logistics.",
+    "skills": [
+      {
+        "category": "Planning",
+        "items": [
+          "Route planning",
+          "Forecasting"
+        ]
+      },
+      {
+        "category": "Tools",
+        "items": [
+          "Spreadsheets",
+          "Stock software"
+        ]
+      }
+    ],
+    "experience": [
+      {
+        "company": "Harbor Freight Co-op",
+        "role": "Operations Coordinator",
+        "location": null,
+        "start_date": "2021-03",
+        "end_date": null,
+        "enabled": true,
+        "bullets": [
+          "Scheduled 40 weekly deliveries across three depots.",
+          "Trained six new dispatchers."
+        ]
+      },
+      {
+        "company": "Northside Market",
+        "role": "Stock Assistant",
+        "location": null,
+        "start_date": "2018-06",
+        "end_date": "2021-02",
+        "enabled": true,
+        "bullets": [
+          "Counted stock each week.",
+          "Reported shortages to the floor manager.",
+          "Kept the loading bay clear.",
+          "Closed the stockroom on Fridays."
+        ]
+      },
+      {
+        "company": "City Library",
+        "role": "Volunteer Shelver",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "enabled": true,
+        "bullets": [
+          "Shelved returned books twice a week."
+        ]
+      }
+    ],
+    "projects": [
+      {
+        "name": "Depot handbook",
+        "enabled": true,
+        "tech": null,
+        "link": null,
+        "date": null,
+        "bullets": [
+          "Wrote a 20-page handbook for new dispatchers."
+        ]
+      }
+    ],
+    "education": [
+      {
+        "institution": "Lisbon Polytechnic",
+        "degree": "BSc",
+        "field": "Logistics",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "graduation_date": null,
+        "gpa": null,
+        "coursework": [],
+        "bullets": []
+      },
+      {
+        "institution": "Coastal Evening School",
+        "degree": "Certificate",
+        "field": "Bookkeeping",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "graduation_date": null,
+        "gpa": null,
+        "coursework": [],
+        "bullets": []
+      },
+      {
+        "institution": "Harbor Training Centre",
+        "degree": null,
+        "field": "Warehouse safety",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "graduation_date": null,
+        "gpa": null,
+        "coursework": [],
+        "bullets": []
+      },
+      {
+        "institution": "Riverside Adult College",
+        "degree": null,
+        "field": "Spanish",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "graduation_date": null,
+        "gpa": null,
+        "coursework": [],
+        "bullets": []
+      }
+    ],
+    "certifications": [
+      "Forklift licence",
+      "First aid"
+    ],
+    "extra_sections": [
+      {
+        "key": "volunteering",
+        "title": "Volunteering",
+        "enabled": true,
+        "type": "bullets",
+        "bullets": [
+          "Food bank driver, weekends."
+        ]
+      },
+      {
+        "key": "languages",
+        "title": "Languages",
+        "enabled": true,
+        "type": "bullets",
+        "bullets": [
+          "Portuguese, English"
+        ]
+      },
+      {
+        "key": "interests",
+        "title": "Interests",
+        "enabled": true,
+        "type": "bullets",
+        "bullets": [
+          "Cycling, chess"
+        ]
+      }
+    ]
+  },
+  "tailored": {
+    "contact": {
+      "name": "Sam Rivera",
+      "email": "sam.rivera@example.com",
+      "phone": null,
+      "location": "Porto, Portugal",
+      "linkedin": null,
+      "github": null,
+      "website": null
+    },
+    "summary": "Operations coordinator who cut late deliveries by a third across three depots.",
+    "skills": [
+      {
+        "category": "Planning",
+        "items": [
+          "Route planning",
+          "Forecasting",
+          "Capacity planning"
+        ]
+      },
+      {
+        "category": "Tools",
+        "items": [
+          "Spreadsheets",
+          "Stock software"
+        ]
+      },
+      {
+        "category": "Safety",
+        "items": [
+          "Risk assessments"
+        ]
+      },
+      {
+        "category": "People",
+        "items": [
+          "Rota planning",
+          "Onboarding"
+        ]
+      },
+      {
+        "category": "Reporting",
+        "items": [
+          "Weekly delivery reports"
+        ]
+      }
+    ],
+    "experience": [
+      {
+        "company": "Harbor Freight Co-op",
+        "role": "Operations Coordinator",
+        "location": null,
+        "start_date": "2021-03",
+        "end_date": null,
+        "enabled": true,
+        "bullets": [
+          "Scheduled 40 weekly deliveries across three depots and cut late arrivals by a third.",
+          "Trained six new dispatchers.",
+          "Planned routes for a fleet of 12 vans.",
+          "Ran the weekly depot safety walk.",
+          "Wrote the handover notes each shift."
+        ]
+      },
+      {
+        "company": "Northside Market",
+        "role": "Stock Assistant",
+        "location": null,
+        "start_date": "2018-06",
+        "end_date": "2021-02",
+        "enabled": true,
+        "bullets": [
+          "Counted stock each week."
+        ]
+      },
+      {
+        "company": "City Library",
+        "role": "Volunteer Shelver",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "enabled": false,
+        "bullets": [
+          "Shelved and catalogued returned books twice a week."
+        ]
+      }
+    ],
+    "projects": [
+      {
+        "name": "Depot handbook",
+        "enabled": false,
+        "tech": null,
+        "link": null,
+        "date": null,
+        "bullets": [
+          "Wrote a 20-page handbook for new dispatchers."
+        ]
+      },
+      {
+        "name": "Route board",
+        "enabled": true,
+        "tech": null,
+        "link": null,
+        "date": null,
+        "bullets": [
+          "Built a wall board that shows every van's day."
+        ]
+      },
+      {
+        "name": "Returns log",
+        "enabled": true,
+        "tech": null,
+        "link": null,
+        "date": null,
+        "bullets": [
+          "Set up a shared log for returned parcels."
+        ]
+      },
+      {
+        "name": "Depot map",
+        "enabled": true,
+        "tech": null,
+        "link": null,
+        "date": null,
+        "bullets": [
+          "Drew a floor map of the main depot."
+        ]
+      }
+    ],
+    "education": [
+      {
+        "institution": "Lisbon Polytechnic",
+        "degree": "BSc",
+        "field": "Logistics",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "graduation_date": null,
+        "gpa": null,
+        "coursework": [],
+        "bullets": []
+      }
+    ],
+    "certifications": [
+      "Forklift licence (2024)",
+      "First aid",
+      "Dangerous goods handling",
+      "Fire warden",
+      "Manual handling"
+    ],
+    "extra_sections": [
+      {
+        "key": "volunteering",
+        "title": "Volunteering",
+        "enabled": true,
+        "type": "bullets",
+        "bullets": [
+          "Food bank driver and route planner, weekends."
+        ]
+      },
+      {
+        "key": "interests",
+        "title": "Interests",
+        "enabled": false,
+        "type": "bullets",
+        "bullets": [
+          "Cycling, chess"
+        ]
+      },
+      {
+        "key": "awards",
+        "title": "Awards",
+        "enabled": true,
+        "type": "bullets",
+        "bullets": [
+          "Depot of the year, 2023."
+        ]
+      },
+      {
+        "key": "memberships",
+        "title": "Memberships",
+        "enabled": true,
+        "type": "bullets",
+        "bullets": [
+          "Logistics guild."
+        ]
+      }
+    ]
+  },
+  "hunks": [
+    {
+      "kind": "contact_changed",
+      "section": "contact",
+      "index": null,
+      "before": {
+        "name": "Sam Rivera",
+        "email": "sam.rivera@example.com",
+        "phone": null,
+        "location": "Lisbon, Portugal",
+        "linkedin": null,
+        "github": null,
+        "website": null
+      },
+      "after": {
+        "name": "Sam Rivera",
+        "email": "sam.rivera@example.com",
+        "phone": null,
+        "location": "Porto, Portugal",
+        "linkedin": null,
+        "github": null,
+        "website": null
+      },
+      "provenance": "llm"
+    },
+    {
+      "kind": "summary_changed",
+      "section": "summary",
+      "index": null,
+      "before": "Operations coordinator with five years in warehouse logistics.",
+      "after": "Operations coordinator who cut late deliveries by a third across three depots.",
+      "provenance": "llm"
+    },
+    {
+      "kind": "skills_group_changed",
+      "section": "skills",
+      "index": 0,
+      "before": {
+        "category": "Planning",
+        "items": [
+          "Route planning",
+          "Forecasting"
+        ]
+      },
+      "after": {
+        "category": "Planning",
+        "items": [
+          "Route planning",
+          "Forecasting",
+          "Capacity planning"
+        ]
+      },
+      "provenance": "llm"
+    },
+    {
+      "kind": "skills_group_changed",
+      "section": "skills",
+      "index": 2,
+      "before": null,
+      "after": {
+        "category": "Safety",
+        "items": [
+          "Risk assessments"
+        ]
+      },
+      "provenance": "llm"
+    },
+    {
+      "kind": "skills_group_changed",
+      "section": "skills",
+      "index": 3,
+      "before": null,
+      "after": {
+        "category": "People",
+        "items": [
+          "Rota planning",
+          "Onboarding"
+        ]
+      },
+      "provenance": "llm"
+    },
+    {
+      "kind": "skills_group_changed",
+      "section": "skills",
+      "index": 4,
+      "before": null,
+      "after": {
+        "category": "Reporting",
+        "items": [
+          "Weekly delivery reports"
+        ]
+      },
+      "provenance": "llm"
+    },
+    {
+      "kind": "bullet_edited",
+      "section": "experience",
+      "index": 0,
+      "before": "Scheduled 40 weekly deliveries across three depots.",
+      "after": "Scheduled 40 weekly deliveries across three depots and cut late arrivals by a third.",
+      "provenance": "llm"
+    },
+    {
+      "kind": "bullet_added",
+      "section": "experience",
+      "index": 0,
+      "before": null,
+      "after": "Planned routes for a fleet of 12 vans.",
+      "provenance": "llm"
+    },
+    {
+      "kind": "bullet_added",
+      "section": "experience",
+      "index": 0,
+      "before": null,
+      "after": "Ran the weekly depot safety walk.",
+      "provenance": "llm"
+    },
+    {
+      "kind": "bullet_added",
+      "section": "experience",
+      "index": 0,
+      "before": null,
+      "after": "Wrote the handover notes each shift.",
+      "provenance": "llm"
+    },
+    {
+      "kind": "bullet_removed",
+      "section": "experience",
+      "index": 1,
+      "before": "Reported shortages to the floor manager.",
+      "after": null,
+      "provenance": "llm"
+    },
+    {
+      "kind": "bullet_removed",
+      "section": "experience",
+      "index": 1,
+      "before": "Kept the loading bay clear.",
+      "after": null,
+      "provenance": "llm"
+    },
+    {
+      "kind": "bullet_removed",
+      "section": "experience",
+      "index": 1,
+      "before": "Closed the stockroom on Fridays.",
+      "after": null,
+      "provenance": "llm"
+    },
+    {
+      "kind": "entry_disabled",
+      "section": "experience",
+      "index": 2,
+      "before": {
+        "company": "City Library",
+        "role": "Volunteer Shelver",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "enabled": true,
+        "bullets": [
+          "Shelved returned books twice a week."
+        ]
+      },
+      "after": {
+        "company": "City Library",
+        "role": "Volunteer Shelver",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "enabled": false,
+        "bullets": [
+          "Shelved and catalogued returned books twice a week."
+        ]
+      },
+      "provenance": "llm"
+    },
+    {
+      "kind": "bullet_edited",
+      "section": "experience",
+      "index": 2,
+      "before": "Shelved returned books twice a week.",
+      "after": "Shelved and catalogued returned books twice a week.",
+      "provenance": "llm"
+    },
+    {
+      "kind": "entry_disabled",
+      "section": "projects",
+      "index": 0,
+      "before": {
+        "name": "Depot handbook",
+        "enabled": true,
+        "tech": null,
+        "link": null,
+        "date": null,
+        "bullets": [
+          "Wrote a 20-page handbook for new dispatchers."
+        ]
+      },
+      "after": {
+        "name": "Depot handbook",
+        "enabled": false,
+        "tech": null,
+        "link": null,
+        "date": null,
+        "bullets": [
+          "Wrote a 20-page handbook for new dispatchers."
+        ]
+      },
+      "provenance": "llm"
+    },
+    {
+      "kind": "entry_added",
+      "section": "projects",
+      "index": 1,
+      "before": null,
+      "after": {
+        "name": "Route board",
+        "enabled": true,
+        "tech": null,
+        "link": null,
+        "date": null,
+        "bullets": [
+          "Built a wall board that shows every van's day."
+        ]
+      },
+      "provenance": "llm"
+    },
+    {
+      "kind": "entry_added",
+      "section": "projects",
+      "index": 2,
+      "before": null,
+      "after": {
+        "name": "Returns log",
+        "enabled": true,
+        "tech": null,
+        "link": null,
+        "date": null,
+        "bullets": [
+          "Set up a shared log for returned parcels."
+        ]
+      },
+      "provenance": "llm"
+    },
+    {
+      "kind": "entry_added",
+      "section": "projects",
+      "index": 3,
+      "before": null,
+      "after": {
+        "name": "Depot map",
+        "enabled": true,
+        "tech": null,
+        "link": null,
+        "date": null,
+        "bullets": [
+          "Drew a floor map of the main depot."
+        ]
+      },
+      "provenance": "llm"
+    },
+    {
+      "kind": "entry_removed",
+      "section": "education",
+      "index": 1,
+      "before": {
+        "institution": "Coastal Evening School",
+        "degree": "Certificate",
+        "field": "Bookkeeping",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "graduation_date": null,
+        "gpa": null,
+        "coursework": [],
+        "bullets": []
+      },
+      "after": null,
+      "provenance": "llm"
+    },
+    {
+      "kind": "entry_removed",
+      "section": "education",
+      "index": 2,
+      "before": {
+        "institution": "Harbor Training Centre",
+        "degree": null,
+        "field": "Warehouse safety",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "graduation_date": null,
+        "gpa": null,
+        "coursework": [],
+        "bullets": []
+      },
+      "after": null,
+      "provenance": "llm"
+    },
+    {
+      "kind": "entry_removed",
+      "section": "education",
+      "index": 3,
+      "before": {
+        "institution": "Riverside Adult College",
+        "degree": null,
+        "field": "Spanish",
+        "location": null,
+        "start_date": null,
+        "end_date": null,
+        "graduation_date": null,
+        "gpa": null,
+        "coursework": [],
+        "bullets": []
+      },
+      "after": null,
+      "provenance": "llm"
+    },
+    {
+      "kind": "bullet_edited",
+      "section": "certifications",
+      "index": 0,
+      "before": "Forklift licence",
+      "after": "Forklift licence (2024)",
+      "provenance": "llm"
+    },
+    {
+      "kind": "bullet_added",
+      "section": "certifications",
+      "index": 2,
+      "before": null,
+      "after": "Dangerous goods handling",
+      "provenance": "llm"
+    },
+    {
+      "kind": "bullet_added",
+      "section": "certifications",
+      "index": 3,
+      "before": null,
+      "after": "Fire warden",
+      "provenance": "llm"
+    },
+    {
+      "kind": "bullet_added",
+      "section": "certifications",
+      "index": 4,
+      "before": null,
+      "after": "Manual handling",
+      "provenance": "llm"
+    },
+    {
+      "kind": "extra_section_added",
+      "section": "extra_sections",
+      "index": 2,
+      "before": null,
+      "after": {
+        "key": "awards",
+        "title": "Awards",
+        "enabled": true,
+        "type": "bullets",
+        "bullets": [
+          "Depot of the year, 2023."
+        ]
+      },
+      "provenance": "llm"
+    },
+    {
+      "kind": "extra_section_added",
+      "section": "extra_sections",
+      "index": 3,
+      "before": null,
+      "after": {
+        "key": "memberships",
+        "title": "Memberships",
+        "enabled": true,
+        "type": "bullets",
+        "bullets": [
+          "Logistics guild."
+        ]
+      },
+      "provenance": "llm"
+    },
+    {
+      "kind": "extra_section_removed",
+      "section": "extra_sections",
+      "index": 1,
+      "before": {
+        "key": "languages",
+        "title": "Languages",
+        "enabled": true,
+        "type": "bullets",
+        "bullets": [
+          "Portuguese, English"
+        ]
+      },
+      "after": null,
+      "provenance": "llm"
+    },
+    {
+      "kind": "extra_section_changed",
+      "section": "extra_sections",
+      "index": 0,
+      "before": {
+        "key": "volunteering",
+        "title": "Volunteering",
+        "enabled": true,
+        "type": "bullets",
+        "bullets": [
+          "Food bank driver, weekends."
+        ]
+      },
+      "after": {
+        "key": "volunteering",
+        "title": "Volunteering",
+        "enabled": true,
+        "type": "bullets",
+        "bullets": [
+          "Food bank driver and route planner, weekends."
+        ]
+      },
+      "provenance": "llm"
+    },
+    {
+      "kind": "extra_section_disabled",
+      "section": "extra_sections",
+      "index": 1,
+      "before": {
+        "key": "interests",
+        "title": "Interests",
+        "enabled": true,
+        "type": "bullets",
+        "bullets": [
+          "Cycling, chess"
+        ]
+      },
+      "after": {
+        "key": "interests",
+        "title": "Interests",
+        "enabled": false,
+        "type": "bullets",
+        "bullets": [
+          "Cycling, chess"
+        ]
+      },
+      "provenance": "llm"
+    }
+  ]
+}

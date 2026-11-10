@@ -28,7 +28,18 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+### Added
+
+- **Redo in Review changes.** In the resume studio, a change you undo now offers **Redo** where Undo was,
+  until you save. Redo puts back exactly what the resume held before the Undo, including anything you had
+  typed there, and you can undo and redo several changes in any order. Redo every Undo and the page reads
+  as saved again. Saving keeps the Undo, as before: the change leaves the list, and Version history has
+  the version before it.
+
 ### Fixed
+
+- In Review changes, undoing two added skill groups, items or certifications from the top down could say
+  "Couldn't undo this change", or take out the wrong one of three. Each Undo now removes its own item.
 
 - The Companion said "No job description found on this page" on Cornerstone career sites (`csod.com`), over a
   job you could see. Those sites write the job's title and description under capitalised names, which the

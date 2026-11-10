@@ -396,6 +396,41 @@ def test_review_changes_diff_node_suite():
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_review_changes_undo_and_redo_node_suite():
+    """Undo then Redo, in every order and across rows, ends on the saved draft; the row's one button says which."""
+    result = run_node_render_test("components/resume-editor/diff-review.test.mjs")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_studio_redoes_through_the_undo_path():
+    """A Redo is the Undo's own inverse through `revertHunk` and the working copy: no second write path."""
+    studio = _read("components/resume-editor/tailored-resume-studio.tsx")
+    undo = _block(studio, "const handleRevert = ", "\n  };\n")
+    assert "const next = revertHunk(data, hunk);" in undo
+    assert "setUndone((prev) => new Map(prev).set(key, inverseHunk(data, next, hunk)));" in undo
+    redo = _block(studio, "const handleRedo = ", "\n  };\n")
+    # Placed like the saved draft, which is the one the list describes.
+    assert "revertHunk(data, redo, initialData)" in redo and "setData(next);" in redo
+    assert "Couldn't redo this change because the text has changed since. Edit it yourself." in redo
+    assert "Couldn't undo this change because the text has changed since. Edit it yourself." in undo
+    panel = studio[studio.index("<DiffReviewPanel") :]
+    panel = panel[: panel.index("/>")]
+    assert "revertedKeys={undone}" in panel and "onRevert={handleRevert}" in panel and "onRedo={handleRedo}" in panel
+    # A Save re-diffs against the saved draft, so an undone row leaves the list and takes its Redo with it.
+    saved = _block(studio, "onSuccess: (result, sent) => {", "onError:")
+    assert "setUndone(new Map());" in saved and "revertedKeys" not in studio.replace("revertedKeys={undone}", "")
+
+
+def test_the_review_row_keeps_one_button_for_undo_and_redo():
+    """One element for both, so focus stays on it when it turns; never disabled (that drops focus to <body>)."""
+    row = _block(_read("components/resume-editor/diff-review.tsx"), "function HunkRow(", "\n}\n")
+    assert row.count("<Button") == 1 and "disabled" not in row
+    assert "onClick={reverted ? onRedo : onRevert}" in row
+    assert "<Redo2 /> Redo" in row and "<Undo2 /> Undo" in row
+    assert "aria-labelledby={`${id}-action ${id}-kind`}" in row and "aria-describedby={`${id}-diff`}" in row
+    assert "Undone. Not saved yet." in row
+
+
 def test_versions_and_review_copy_first_read():
     versions = _read("components/resume-versions/version-history-sheet.tsx")
     assert "versionSummaryWords(v.summary)" in versions

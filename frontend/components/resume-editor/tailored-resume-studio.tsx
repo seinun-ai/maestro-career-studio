@@ -35,6 +35,7 @@ import {
   applyCoherenceProposal,
   type CoherenceState,
   DiffReviewPanel,
+  inverseHunk,
   revertHunk,
   sectionChangeCounts,
 } from "@/components/resume-editor/diff-review";
@@ -512,7 +513,8 @@ function StudioEditor({
   // other failure is equally uninteresting here, so BOTH just take the toggle
   // away rather than shouting at someone who came to edit a resume.
   const [review, setReview] = useState(reviewDefault);
-  const [revertedKeys, setRevertedKeys] = useState<Set<string>>(new Set());
+  // Each row undone in the working copy and not yet saved, with the hunk that takes its Undo back.
+  const [undone, setUndone] = useState<Map<string, ResumeDiffHunk>>(new Map());
   // Keyed on the draft's updated_at: after a Save the previous list stays up while the new one loads, as it did
   // when a Save only invalidated it (no "No changes" flash).
   const diff = useQuery({ ...resumeDiffQuery(application), placeholderData: keepPreviousData });
@@ -552,7 +554,30 @@ function StudioEditor({
       return;
     }
     setData(next);
-    setRevertedKeys((prev) => new Set(prev).add(key));
+    setUndone((prev) => new Map(prev).set(key, inverseHunk(data, next, hunk)));
+  };
+  /**
+   * Redo is the same edit path run over the Undo's own inverse: it puts back what the working copy held before
+   * the Undo (a hand edit included), in the place the saved draft gives it, so rows can be undone and redone in
+   * any order. When every Undo is redone and nothing else was edited the copy equals the saved one again, and
+   * the page says so by its usual rule (`dirty` compares content).
+   */
+  const handleRedo = (key: string) => {
+    const redo = undone.get(key);
+    if (!redo) return;
+    const next = revertHunk(data, redo, initialData);
+    if (!next) {
+      toast.error(
+        "Couldn't redo this change because the text has changed since. Edit it yourself.",
+      );
+      return;
+    }
+    setData(next);
+    setUndone((prev) => {
+      const rest = new Map(prev);
+      rest.delete(key);
+      return rest;
+    });
   };
 
   // --- Coherence lint (design §4.4): read-only flags, applied on click only ---
@@ -708,8 +733,10 @@ function StudioEditor({
       qc.invalidateQueries({ queryKey: ["ats-compare", applicationId] });
       // Review mode reads the SAVED draft, so reverts (and any other edit) have
       // to re-diff or the list would keep offering changes that are already gone.
+      // A saved Undo leaves the list with its row, so no Redo outlives the Save
+      // (Version history restores the version before it).
       qc.invalidateQueries({ queryKey: ["resume-diff", applicationId] });
-      setRevertedKeys(new Set());
+      setUndone(new Map());
       // Auto-render so the PDF regenerates without a second click. `render`
       // lives in the parent, so a remount mid-chain cannot tear it down.
       // `thenRescore` chains the same mutation the manual "Re-score" button
@@ -992,9 +1019,10 @@ function StudioEditor({
                 {showReview && (
                   <DiffReviewPanel
                     hunks={hunks}
-                    revertedKeys={revertedKeys}
+                    revertedKeys={undone}
                     dirty={unsaved}
                     onRevert={handleRevert}
+                    onRedo={handleRedo}
                     coherence={coherence}
                     onCheckCoherence={handleCheckCoherence}
                     onApplyProposal={handleApplyProposal}

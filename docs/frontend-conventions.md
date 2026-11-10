@@ -342,6 +342,16 @@
     IMAGES only, so the render-error banner, page-count pill and zoom keep full
     contrast. The strip is not a live region (the status line announces) and
     never says "your last save": after a failed render the pages are older.
+  - *Review changes* (tailored studio, `diff-review.tsx`): each row has ONE button, **Undo** or, once undone
+    and until the next Save, **Redo** in the same place (ghost `xs`, `Undo2`/`Redo2`; never disabled, so focus
+    stays on it as it turns). Its name is its word plus the change's (`aria-labelledby`: "Redo Summary
+    rewritten") and the row's old and new text describe it. Undo is `revertHunk` on the working copy; Redo is
+    `revertHunk` over that Undo's `inverseHunk`, read from the draft on both sides of the Undo, so it puts back
+    what the draft held (a hand edit included) in its saved place, and rows undo and redo in any order. A Redo
+    whose restored item was edited since, or sits inside an entry another undone row replaced, refuses with a
+    toast and writes nothing. Unsaved follows content: every Undo redone, nothing else edited, reads as saved.
+    A Save re-diffs, so a saved Undo leaves the list (Version history restores it). Pinned by
+    `diff-review.test.mjs` over the backend's own hunks (`test_resume_diff_fixture.py`).
   - *Cmd/Ctrl+S*: owned by `StudioSaveButton`, both studios' one Save button,
     which calls `useSaveShortcut(onSave, canSave)` with the `canSave` that
     enables it, so key and button agree, and is mounted exactly while the

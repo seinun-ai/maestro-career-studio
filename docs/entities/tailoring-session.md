@@ -110,7 +110,8 @@ session. A pre-op-only session tailors with zero LLM calls; MCP can pass caller 
 to skip the backend LLM. The route refuses an agent request that passes neither while the agent app writes
 (409, after the session's 404; SYSTEM.md §6 `inv-agent-writer`). After a tailor the web UI lands in review mode (`?review=1`): a provenance-labeled
 structural diff (`GET /applications/{id}/resume-diff`, hunks attributed `kb_auto`/`user`/`llm`, plus the
-application's `updated_at` it was computed against), revert per hunk through the normal edit path (the job
+application's `updated_at` it was computed against), revert per hunk through the normal edit path, with a Redo of each
+unsaved revert in the studio (docs/frontend-conventions.md, "Review changes"; the job
 page's step 3 sends that `updated_at` back as the PATCH's `expected_updated_at`: a row that has moved since
 answers 409 and writes nothing), and an on-demand, read-only coherence lint
 (`POST .../coherence-check`).

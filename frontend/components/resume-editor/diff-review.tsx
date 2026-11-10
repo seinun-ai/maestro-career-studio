@@ -1,6 +1,7 @@
 "use client";
 
-import { SpellCheck, Undo2 } from "lucide-react";
+import { useId } from "react";
+import { Redo2, SpellCheck, Undo2 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { HunkDiff } from "@/components/resume-editor/hunk-diff";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { ActorChip } from "@/components/visual";
 import { resumeDataSchema } from "@/lib/resume-schema";
 import { KIND_LABELS, SECTION_LABELS } from "@/lib/resume-diff";
+import { serverKey } from "@/lib/studio";
 import type {
   CoherenceFlag,
   HealthGate,
@@ -23,8 +25,9 @@ import { cn } from "@/lib/utils";
  * Reads the backend's structural base→tailored diff and renders it beside the
  * ordinary editor — an OVERLAY, never a fork: the section editors below stay
  * live, and a revert is just an inverse edit written into the studio's working
- * copy, so the studio's own Save is what snapshots the ResumeVersion. No new
- * undo machinery, no second write path.
+ * copy, so the studio's own Save is what snapshots the ResumeVersion. A Redo is
+ * the revert of that revert (`inverseHunk`), written the same way. No undo
+ * stack, no second write path.
  */
 
 // Each provenance as its register chip, for the studio's review mode and the job page's step 3 (one set of words).
@@ -135,66 +138,100 @@ function asList(doc: Loose, section: string): unknown[] | null {
   return Array.isArray(list) ? list : null;
 }
 
+/** Same content, whatever the key order (the server's and the form's differ). */
+const same = (a: unknown, b: unknown) => serverKey(a) === serverKey(b);
+
+const sameKey = (a: unknown, b: unknown) => isRecord(a) && isRecord(b) && a.key === b.key;
+
+/** Where `item` sits in `list`: at `hint` when that is it, else at the first identical item; -1 when nowhere. */
+function findSame(list: unknown[], item: unknown, hint: number | null): number {
+  if (hint !== null && hint < list.length && same(list[hint], item)) return hint;
+  return list.findIndex((other) => same(other, item));
+}
+
+/**
+ * Where an item put back into `list` goes. An Undo has no `reference` and takes `fallback`. A Redo passes the
+ * saved draft's list and where that holds the item (`at`): the item goes before its nearest later neighbour
+ * still in `list`, else after its nearest earlier one, else to `at` itself. Its neighbours can be undone and
+ * redone in any order and it still lands in its saved place, which an index remembered at the Undo cannot do.
+ */
+function placeLike(
+  list: unknown[],
+  reference: unknown[] | null,
+  at: number,
+  fallback: number,
+  alike: (a: unknown, b: unknown) => boolean = same,
+): number {
+  if (!reference || at < 0) return fallback;
+  for (let i = at + 1; i < reference.length; i++) {
+    const found = list.findIndex((item) => alike(item, reference[i]));
+    if (found >= 0) return found;
+  }
+  for (let i = at - 1; i >= 0; i--) {
+    const found = list.findIndex((item) => alike(item, reference[i]));
+    if (found >= 0) return found + 1;
+  }
+  return Math.min(at, list.length);
+}
+
+/** A bullet hunk's own list: its entry's bullets (`hunk.index` is the ENTRY index). */
+function entryBullets(doc: Loose, hunk: ResumeDiffHunk): unknown[] | null {
+  const list = asList(doc, hunk.section);
+  const entry = list && hunk.index !== null ? list[hunk.index] : null;
+  if (!isRecord(entry)) return null;
+  return Array.isArray(entry.bullets) ? entry.bullets : [];
+}
+
 /** Bullets live on the entry; `hunk.index` is the ENTRY index and the bullet's
  *  own position is not in the hunk, so added/edited bullets are matched by text. */
-function revertEntryBullet(doc: Loose, hunk: ResumeDiffHunk): boolean {
-  const list = asList(doc, hunk.section);
-  if (!list || hunk.index === null) return false;
-  const entry = list[hunk.index];
-  if (!isRecord(entry)) return false;
-  const bullets = Array.isArray(entry.bullets) ? [...entry.bullets] : [];
+function revertEntryBullet(doc: Loose, hunk: ResumeDiffHunk, saved: Loose | null): boolean {
+  const current = entryBullets(doc, hunk);
+  if (!current) return false;
+  const bullets = [...current];
   if (hunk.kind === "bullet_added") {
     const at = bullets.indexOf(hunk.after);
     if (at < 0) return false;
     bullets.splice(at, 1);
   } else if (hunk.kind === "bullet_removed") {
-    bullets.push(hunk.before);
+    const reference = saved && entryBullets(saved, hunk);
+    const at = placeLike(bullets, reference, reference ? reference.indexOf(hunk.before) : -1, bullets.length);
+    bullets.splice(at, 0, hunk.before);
   } else {
     const at = bullets.indexOf(hunk.after);
     if (at < 0) return false;
     bullets[at] = hunk.before;
   }
-  entry.bullets = bullets;
+  (asList(doc, hunk.section)![hunk.index!] as Loose).bullets = bullets;
   return true;
 }
 
-/** Certifications are a flat top-level list, so their bullet_* hunks carry the
- *  ITEM index — reverting by position, not by text. */
-function revertCertification(doc: Loose, hunk: ResumeDiffHunk): boolean {
-  const list = asList(doc, "certifications");
-  if (!list || hunk.index === null) return false;
-  const next = [...list];
-  if (hunk.kind === "bullet_added") {
-    if (hunk.index >= next.length) return false;
-    next.splice(hunk.index, 1);
-  } else if (hunk.kind === "bullet_removed") {
-    next.splice(Math.min(hunk.index, next.length), 0, hunk.before);
-  } else {
-    if (hunk.index >= next.length) return false;
-    next[hunk.index] = hunk.before;
-  }
-  doc.certifications = next;
-  return true;
-}
-
+/**
+ * Skill groups, entries and certifications: flat lists the hunk indexes (a certification's bullet_* hunk carries
+ * the ITEM index). The hunk's item is found by content first, since a sibling undone above it has moved it; an
+ * Undo then falls back to the index, as its hunk came from the server and may be shaped differently from the
+ * form's copy. A Redo's hunk was read from the draft (`inverseHunk`), so its item is found exactly or not at all.
+ */
 function revertIndexedList(
   doc: Loose,
   section: string,
   hunk: ResumeDiffHunk,
   added: boolean,
   removed: boolean,
+  saved: Loose | null,
 ): boolean {
   const list = asList(doc, section);
   if (!list || hunk.index === null) return false;
   const next = [...list];
-  if (added) {
-    if (hunk.index >= next.length) return false;
-    next.splice(hunk.index, 1);
-  } else if (removed) {
-    next.splice(Math.min(hunk.index, next.length), 0, hunk.before);
+  if (removed) {
+    const reference = saved && asList(saved, section);
+    const from = reference ? findSame(reference, hunk.before, hunk.index) : -1;
+    next.splice(placeLike(next, reference, from, Math.min(hunk.index, next.length)), 0, hunk.before);
   } else {
-    if (hunk.index >= next.length) return false;
-    next[hunk.index] = hunk.before;
+    let at = findSame(next, hunk.after, hunk.index);
+    if (at < 0 && !saved && hunk.index < next.length) at = hunk.index;
+    if (at < 0) return false;
+    if (added) next.splice(at, 1);
+    else next[at] = hunk.before;
   }
   doc[section] = next;
   return true;
@@ -202,7 +239,7 @@ function revertIndexedList(
 
 /** Extra sections are keyed, not positional — match on `key` so a reordering
  *  tailor op can't make a revert overwrite the wrong section. */
-function revertExtraSection(doc: Loose, hunk: ResumeDiffHunk): boolean {
+function revertExtraSection(doc: Loose, hunk: ResumeDiffHunk, saved: Loose | null): boolean {
   const list = asList(doc, "extra_sections");
   if (!list) return false;
   const next = [...list];
@@ -215,7 +252,10 @@ function revertExtraSection(doc: Loose, hunk: ResumeDiffHunk): boolean {
     next.splice(at, 1);
   } else if (hunk.kind === "extra_section_removed") {
     if (at >= 0) return false;
-    next.splice(Math.min(hunk.index ?? next.length, next.length), 0, hunk.before);
+    const reference = saved && asList(saved, "extra_sections");
+    const from = reference ? reference.findIndex((item) => sameKey(item, source)) : -1;
+    const fallback = Math.min(hunk.index ?? next.length, next.length);
+    next.splice(placeLike(next, reference, from, fallback, sameKey), 0, hunk.before);
   } else {
     if (at < 0) return false;
     next[at] = hunk.before;
@@ -230,12 +270,18 @@ function revertExtraSection(doc: Loose, hunk: ResumeDiffHunk): boolean {
  * Returns null when the change can no longer be located (already reverted, or
  * hand-edited since the diff was computed) or when the result would not validate
  * — the caller surfaces that instead of silently writing a broken document.
+ *
+ * A Redo is this same function over the Undo's own inverse (`inverseHunk`), with
+ * `redoIn` set to the saved draft: what the Redo puts back takes its saved place
+ * among its neighbours, and what it takes out again is found exactly or not at all.
  */
 export function revertHunk(
   data: ResumeData,
   hunk: ResumeDiffHunk,
+  redoIn?: ResumeData,
 ): ResumeData | null {
   const doc = cloneLoose(data);
+  const saved = redoIn ? cloneLoose(redoIn) : null;
   let ok = false;
   switch (hunk.kind) {
     case "summary_changed":
@@ -255,6 +301,7 @@ export function revertHunk(
         hunk,
         hunk.before === null,
         hunk.after === null,
+        saved,
       );
       break;
     case "bullet_added":
@@ -262,26 +309,85 @@ export function revertHunk(
     case "bullet_edited":
       ok =
         hunk.section === "certifications"
-          ? revertCertification(doc, hunk)
-          : revertEntryBullet(doc, hunk);
+          ? revertIndexedList(
+              doc,
+              "certifications",
+              hunk,
+              hunk.kind === "bullet_added",
+              hunk.kind === "bullet_removed",
+              saved,
+            )
+          : revertEntryBullet(doc, hunk, saved);
       break;
     case "entry_added":
-      ok = revertIndexedList(doc, hunk.section, hunk, true, false);
+      ok = revertIndexedList(doc, hunk.section, hunk, true, false, saved);
       break;
     case "entry_removed":
-      ok = revertIndexedList(doc, hunk.section, hunk, false, true);
+      ok = revertIndexedList(doc, hunk.section, hunk, false, true, saved);
       break;
     case "entry_enabled":
     case "entry_disabled":
-      ok = revertIndexedList(doc, hunk.section, hunk, false, false);
+      ok = revertIndexedList(doc, hunk.section, hunk, false, false, saved);
       break;
     default:
-      ok = revertExtraSection(doc, hunk);
+      ok = revertExtraSection(doc, hunk, saved);
       break;
   }
   if (!ok) return null;
   const parsed = resumeDataSchema.safeParse(doc);
   return parsed.success ? parsed.data : null;
+}
+
+/** The kind that describes a hunk's Undo: what was added is now removed, what was hidden is now shown. */
+const INVERSE_KIND: Record<ResumeDiffHunk["kind"], ResumeDiffHunk["kind"]> = {
+  summary_changed: "summary_changed",
+  contact_changed: "contact_changed",
+  skills_group_changed: "skills_group_changed",
+  bullet_added: "bullet_removed",
+  bullet_removed: "bullet_added",
+  bullet_edited: "bullet_edited",
+  entry_added: "entry_removed",
+  entry_removed: "entry_added",
+  entry_enabled: "entry_disabled",
+  entry_disabled: "entry_enabled",
+  extra_section_added: "extra_section_removed",
+  extra_section_removed: "extra_section_added",
+  extra_section_changed: "extra_section_changed",
+  extra_section_enabled: "extra_section_disabled",
+  extra_section_disabled: "extra_section_enabled",
+};
+
+/**
+ * The hunk that takes an Undo back, read off the draft on both sides of it: `before` is what the draft held
+ * (`data`, a hand edit included) and `after` is what the Undo left there (`undone`, the result of
+ * `revertHunk(data, hunk)`). `revertHunk` over it with the saved draft is the Redo, so Undo and Redo are one
+ * mechanism and a Redo restores the draft's own text, not the saved version's.
+ */
+export function inverseHunk(
+  data: ResumeData,
+  undone: ResumeData,
+  hunk: ResumeDiffHunk,
+): ResumeDiffHunk {
+  const kind = INVERSE_KIND[hunk.kind];
+  const [pre, post] = [cloneLoose(data), cloneLoose(undone)];
+  if (hunk.kind === "summary_changed" || hunk.kind === "contact_changed") {
+    return { ...hunk, kind, before: pre[hunk.section] ?? null, after: post[hunk.section] ?? null };
+  }
+  const inEntry = hunk.kind.startsWith("bullet_") && hunk.section !== "certifications";
+  const listOf = (doc: Loose) => (inEntry ? entryBullets(doc, hunk) : asList(doc, hunk.section)) ?? [];
+  const [was, now] = [listOf(pre), listOf(post)];
+  // An Undo is one edit to one list: the first place the two differ is where it took an item out, put one in or
+  // swapped one. Where it changed nothing, the hunk's own index is the place.
+  let at = 0;
+  while (at < was.length && at < now.length && same(was[at], now[at])) at++;
+  if (was.length === now.length && at === was.length) at = hunk.index ?? 0;
+  return {
+    ...hunk,
+    kind,
+    index: inEntry ? hunk.index : at,
+    before: (now.length <= was.length ? was[at] : null) ?? null,
+    after: (now.length >= was.length ? now[at] : null) ?? null,
+  };
 }
 
 /**
@@ -382,18 +488,21 @@ function HunkRow({
   hunk,
   reverted,
   onRevert,
+  onRedo,
 }: {
   hunk: ResumeDiffHunk;
   reverted: boolean;
   onRevert: () => void;
+  onRedo: () => void;
 }) {
+  const id = useId();
   const before = sideText(hunk.before);
   const after = sideText(hunk.after);
   return (
     <li className="flex flex-wrap items-start gap-2 py-1.5">
       <div className="min-w-0 flex-1 space-y-0.5">
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-label-medium">{KIND_LABELS[hunk.kind]}</span>
+          <span id={`${id}-kind`} className="text-label-medium">{KIND_LABELS[hunk.kind]}</span>
           <ProvenanceChip value={hunk.provenance} />
           {reverted && (
             <span className="text-muted-foreground text-body-small">
@@ -401,16 +510,30 @@ function HunkRow({
             </span>
           )}
         </div>
-        <HunkDiff before={before} after={after} className="text-body-small" />
+        <div id={`${id}-diff`}>
+          <HunkDiff before={before} after={after} className="text-body-small" />
+        </div>
       </div>
+      {/* One button for both, so focus stays on it when Undo turns into Redo and back. Its name is its word and
+          the change's ("Redo Summary rewritten"); the old and new text describe which change that is. */}
       <Button
+        id={`${id}-action`}
         variant="ghost"
         size="xs"
         className="shrink-0"
-        disabled={reverted}
-        onClick={onRevert}
+        aria-labelledby={`${id}-action ${id}-kind`}
+        aria-describedby={`${id}-diff`}
+        onClick={reverted ? onRedo : onRevert}
       >
-        <Undo2 /> Undo
+        {reverted ? (
+          <>
+            <Redo2 /> Redo
+          </>
+        ) : (
+          <>
+            <Undo2 /> Undo
+          </>
+        )}
       </Button>
     </li>
   );
@@ -635,17 +758,19 @@ export function DiffReviewPanel({
   revertedKeys,
   dirty,
   onRevert,
+  onRedo,
   coherence,
   onCheckCoherence,
   onApplyProposal,
   onApplyHygiene,
 }: {
   hunks: ResumeDiffHunk[];
-  /** `hunkKey`s already reverted in the working copy but not yet saved. */
-  revertedKeys: Set<string>;
+  /** `hunkKey`s undone in the working copy but not yet saved: these rows offer Redo. */
+  revertedKeys: { has(key: string): boolean };
   /** The working copy differs from the saved one, so the diff below is stale. */
   dirty: boolean;
   onRevert: (hunk: ResumeDiffHunk, key: string) => void;
+  onRedo: (key: string) => void;
   coherence?: CoherenceState;
   onCheckCoherence?: () => void;
   onApplyProposal?: (flag: CoherenceFlag, key: string) => void;
@@ -718,6 +843,7 @@ export function DiffReviewPanel({
                 hunk={hunk}
                 reverted={revertedKeys.has(key)}
                 onRevert={() => onRevert(hunk, key)}
+                onRedo={() => onRedo(key)}
               />
             ))}
           </ul>
