@@ -80,6 +80,12 @@ Setup keeps the key you paste, and Today points you at your first job.
   ("Annual SalaryJob Closing") and lose its paragraphs. The description now keeps its lines, paragraphs, list
   items and table rows, and a page's styling code no longer lands in it. A job saved before keeps its old
   text.
+- **Saves work on any Docker web port.** With `FRONTEND_HOST_PORT` set to anything but 3000, pages loaded but every
+  save was refused, because the backend only trusted pages from port 3000. The default now follows that port. If you
+  set `ALLOWED_WEB_ORIGINS` yourself, it still has to name the port.
+- **A photo or scanned PDF in the Assistant no longer stalls the app.** Reading one used to hold every other request
+  until the AI model answered, for up to ten minutes. It now runs on its own, gives up after two minutes and says
+  the file took too long to read.
 
 ### Removed
 

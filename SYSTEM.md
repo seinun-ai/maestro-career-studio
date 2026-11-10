@@ -843,6 +843,9 @@ still on a job's country text.
 invariant has done its job: promote it (into Cross-cutting invariants or `.system_md_enforcement.json`) and delete
 the entry here. Entries are dated symptom → cause → rule, ≤3 lines.
 
+- **One chat attachment froze the whole backend** (2026-11-10): `upload_attachment` was `async def` but ran `extract_text`, whose
+  vision call is blocking, on the event loop → a route doing blocking file or model work is a plain `def` (FastAPI's threadpool), and
+  every model call it makes passes a `timeout` (`attachment_extract.VISION_TIMEOUT_SECONDS`).
 - **Back from a job page never morphed** (2026-10-28): React renders a cached popstate synchronously (for the browser's scroll restore)
   and a synchronous commit runs no view transition; a named element off screen, or a `flushSync` while one prepares (a Base UI tooltip
   closing), skips it too → hold the pop one task (`holdForMorph`), restore scroll in a layout effect, `IconButton` `transitionOnClick`.

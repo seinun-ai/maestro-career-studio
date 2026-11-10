@@ -200,7 +200,9 @@ The code lives in `backend/` (the server), `frontend/` (the web app) and
 **"port is already allocated" when starting:**
 Another program is using a port the app needs. Change `FRONTEND_HOST_PORT`
 (3000) or `BACKEND_HOST_PORT` (8001) in `.env` and run `docker compose up -d`
-again (`lsof -i :<port>` shows what's using it). If you change the backend port,
+again (`lsof -i :<port>` shows what's using it). The web app follows a new
+`FRONTEND_HOST_PORT` by itself, unless you set `ALLOWED_WEB_ORIGINS` in `.env`:
+then add the new port there too, or saves are refused. If you change the backend port,
 the Companion needs the new address too — see
 [`extension/README.md`](../extension/README.md).
 

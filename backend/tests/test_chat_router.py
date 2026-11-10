@@ -146,6 +146,38 @@ def test_upload_attachment_certificate_pdf_stores_transcript(db_session, monkeyp
     assert "Riley Quill" in row.text_content
 
 
+def test_attachment_upload_runs_off_the_event_loop():
+    """A sync handler runs in FastAPI's threadpool. As `async def` it ran the vision
+    call on the event loop, and every other request waited for it."""
+    import inspect
+
+    from app.routers.chat import upload_attachment
+
+    assert not inspect.iscoroutinefunction(upload_attachment)
+
+
+def test_attachment_vision_timeout_returns_a_400(db_session, monkeypatch):
+    from app.services.llm_providers.errors import _TIMED_OUT, _no_answer
+
+    def slow(**kwargs):
+        raise _no_answer(_TIMED_OUT, "request timed out")
+
+    monkeypatch.setattr("app.services.llm.call_openai", slow)
+    monkeypatch.setattr(
+        "app.services.model_settings.get_fast_model", lambda session=None: "fast-model"
+    )
+    from tests.pdf_fixtures import small_png
+
+    client = _client(db_session)
+    session_id = client.post("/api/chat/sessions", json={}).json()["id"]
+    resp = client.post(
+        f"/api/chat/sessions/{session_id}/attachments",
+        files={"file": ("scan.png", io.BytesIO(small_png()), "image/png")},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["detail"].startswith("Reading this file took too long.")
+
+
 @pytest.mark.parametrize('data', [b'not a zip', b'PK\x03\x04'])
 def test_broken_pptx_attachment_returns_a_400(db_session, data):
     client = _client(db_session, raise_server_exceptions=False)

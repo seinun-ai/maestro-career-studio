@@ -62,8 +62,10 @@ services:
       # READ; this governs what it may RUN, because a cross-origin form POST
       # needs no preflight and its write lands whether or not the reply is
       # readable. Moves together with ALLOWED_HOSTS: a host is `studio.lan`,
-      # an origin is `http://studio.lan`.
-      ALLOWED_WEB_ORIGINS: ${ALLOWED_WEB_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
+      # an origin is `http://studio.lan`. The default follows FRONTEND_HOST_PORT,
+      # because the browser's Origin carries the HOST port it typed: a fixed
+      # :3000 refused every save once that port moved.
+      ALLOWED_WEB_ORIGINS: ${ALLOWED_WEB_ORIGINS:-http://localhost:${FRONTEND_HOST_PORT:-3000},http://127.0.0.1:${FRONTEND_HOST_PORT:-3000}}
       # Exact extension ids allowed through CORS (chrome://extensions shows it).
       # Unset = the companion extension may not write to the API; the web UI is
       # unaffected. Never widen this to all extensions.
@@ -120,7 +122,8 @@ services:
       FRONTEND_ALLOWED_HOSTS: ${FRONTEND_ALLOWED_HOSTS:-}
     ports:
       # Bound strictly to localhost for security. Only the HOST side moves —
-      # Next.js keeps serving on 3000 inside the container, and the browser
-      # reaches the API through this same origin, so a changed host port needs
-      # no other edit except the extension card's app URL.
+      # Next.js keeps serving on 3000 inside the container, and the backend's
+      # default ALLOWED_WEB_ORIGINS above follows this port, so a changed host
+      # port needs no other edit except the extension card's app URL. A custom
+      # ALLOWED_WEB_ORIGINS must name the new port itself.
       - "127.0.0.1:${FRONTEND_HOST_PORT:-3000}:3000"

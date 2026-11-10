@@ -177,6 +177,55 @@ def test_image_attachment_vision_failure_raises(monkeypatch):
         extract_text("cert.png", "image/png", _small_png())
 
 
+def _timed_out():
+    from app.services.llm_providers.errors import _TIMED_OUT, _no_answer
+
+    return _no_answer(_TIMED_OUT, "request timed out")
+
+
+def test_vision_call_is_bounded(monkeypatch):
+    """One request with a time limit and no SDK retries, so a slow model cannot
+    hold the upload for the SDK's 10-minute default."""
+    from app.services.attachment_extract import VISION_TIMEOUT_SECONDS
+
+    calls = _mock_vision(monkeypatch, "Transcript")
+    extract_text("cert.png", "image/png", _small_png())
+
+    assert calls[0]["timeout"] == VISION_TIMEOUT_SECONDS
+    assert calls[0]["max_retries"] == 0
+
+
+def test_image_attachment_vision_timeout_says_so(monkeypatch):
+    _mock_vision(monkeypatch, _timed_out())
+    with pytest.raises(ValueError, match=r"^Reading this file took too long\."):
+        extract_text("cert.png", "image/png", _small_png())
+
+
+def test_sparse_pdf_vision_timeout_keeps_layer_text(monkeypatch):
+    _mock_vision(monkeypatch, _timed_out())
+    data = _make_certificate_pdf_bytes("Riley Quill")
+
+    assert extract_text("certificate.pdf", "application/pdf", data).strip() == "Riley Quill"
+
+
+def test_imageonly_pdf_vision_timeout_says_so(monkeypatch):
+    _mock_vision(monkeypatch, _timed_out())
+    data = _make_certificate_pdf_bytes("")
+
+    with pytest.raises(ValueError, match=r"^Reading this file took too long\."):
+        extract_text("scan.pdf", "application/pdf", data)
+
+
+def test_timeout_message_is_a_plain_sentence():
+    """The web app shows an attachment's 400 only when it passes isPlainSentence."""
+    import re
+
+    from app.services.attachment_extract import READ_TIMED_OUT
+
+    assert len(READ_TIMED_OUT) <= 240
+    assert re.fullmatch(r"[A-Z][^{}\[\]<>_`|\\]*[.!?]", READ_TIMED_OUT)
+
+
 def test_corrupt_image_raises_value_error(monkeypatch):
     _mock_vision(monkeypatch, "should never be called")
     with pytest.raises(ValueError):
