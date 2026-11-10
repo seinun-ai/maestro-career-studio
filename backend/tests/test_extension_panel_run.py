@@ -465,6 +465,9 @@ def test_every_stop_has_words_and_only_the_ones_a_user_can_take_back_offer_resum
     assert reason in _text(body)
     buttons = _buttons(body)
     assert ("run-resume" in buttons) is resume and "run-done" in buttons and "run-skip" not in buttons
+    # Resume (outlined) leads; Done is the ready card's text-style button, never a second outlined one.
+    classes = {one["id"]: one["class"] for one in _walk(body) if one["tag"] == "BUTTON" and one["id"]}
+    assert classes["run-done"] == "unpick" and classes.get("run-resume", "save") == "save"
 
 
 def test_a_wall_names_the_other_walls_in_one_line(tmp_path):

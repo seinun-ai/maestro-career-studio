@@ -231,6 +231,27 @@ def test_a_disabled_default_button_is_grey_and_a_pending_one_stays_the_signal():
     assert not {c for c in default if c.startswith(("data-disabled:", "disabled:"))}, default
 
 
+def test_a_busy_default_button_keeps_the_full_signal():
+    # The base dims every disabled Button to half; a pending (spinning) default one showed at ~50%, which
+    # read as washed out. The default variant lifts it back for a busy one only (two attributes outrank
+    # the base's one), so other variants' busy states are untouched.
+    base = _BUTTON.split("cva(", 1)[1].split('"', 2)[1].split()
+    assert "data-disabled:opacity-50" in base
+    variants = {name: set(_variant(_BUTTON, name, "button.tsx").split())
+                for name in ("default", "tonal", "fab", "outline", "ghost", "destructive", "link")}
+    assert "aria-busy:data-disabled:opacity-100" in variants.pop("default")
+    assert not [n for n, v in variants.items() if any("opacity" in c for c in v)], variants
+
+
+def test_the_assistant_send_button_spins_as_pending_not_as_disabled():
+    # Disabled while streaming, Send spun in grey; marked pending it spins in the signal, like every other
+    # busy main button.
+    chat = _read("components/chat/chat-page.tsx")
+    send = chat.split('aria-label="Send"', 1)[1].split("</Button>", 1)[0]
+    assert "pending={!!streaming}" in send and "disabled={!input.trim()}" in send
+    assert "animate-spin" not in send
+
+
 @pytest.mark.parametrize("mode", list(_MODES))
 def test_a_disabled_default_buttons_muted_pair_meets_aa(mode):
     t = _MODES[mode]

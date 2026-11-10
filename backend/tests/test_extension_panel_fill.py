@@ -3908,6 +3908,19 @@ def test_an_attach_that_landed_is_reported_as_what_it_is(tmp_path):
         "Attached tailored-resume.pdf. Check the upload before you submit.")
 
 
+def test_a_long_attached_file_name_ends_in_an_ellipsis_at_the_panel_edge(tmp_path):
+    """A long file name ran past the panel's right edge, cut off with no ellipsis. The landed row is
+    `prog attached`, and that row's detail truncates on one line while its name keeps its width."""
+    out = _attach(tmp_path, press=True)
+    [row] = [r for r in _by_class(out["settled"]["rail"], "prog") if _text(r["children"][1]) == "Resume attached"]
+    assert row["class"].split() == ["prog", "attached"]
+    detail = re.search(r"^\.prog\.attached \.n \{([^}]*)\}", PANEL_CSS, re.M)
+    assert detail, "the attached row's detail has no rule of its own"
+    for decl in ("min-width: 0;", "overflow: hidden;", "text-overflow: ellipsis;", "white-space: nowrap;"):
+        assert decl in detail.group(1), decl
+    assert re.search(r"^\.prog\.attached > :nth-child\(2\) \{ flex: none; \}", PANEL_CSS, re.M)
+
+
 def test_an_attach_alone_does_not_tick_a_form_nobody_looked_at(tmp_path):
     """An attach is evidence about the upload box, not about the form. Without
     this, a Workday page with twenty empty fields would tick Fill the moment the

@@ -370,7 +370,8 @@
     }
     out.push(logOffLine(ctx, run));
     if (canResume(run)) attach(actions, button(ctx, "save", "run-resume", "Resume", () => ctx.act.resumeRun(run.id)));
-    attach(actions, button(ctx, "save", "run-done", "Done", () => ctx.act.closeRun(run.id)));
+    // Stopped, Done is the ready card's text-style button, so an outlined Resume beside it leads.
+    attach(actions, button(ctx, run.status === "applied" ? "save" : "unpick", "run-done", "Done", () => ctx.act.closeRun(run.id)));
     return [...out, actions];
   }
 

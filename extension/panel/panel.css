@@ -567,6 +567,10 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 .prog .st.open { color: var(--cs-warn-text); }
 .prog .st .dot { width: 8px; height: 8px; margin: 3px; border-radius: 50%; background: currentColor; flex: none; }
 .prog .n { color: var(--cs-muted); margin-left: auto; font-size: 12px; }
+/* The attached file's row: the name and its box count end in an ellipsis at the panel's edge rather than
+ * running past it, and the row's own name keeps its width. */
+.prog.attached > :nth-child(2) { flex: none; }
+.prog.attached .n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The still-open list, styled as what it is: labels that jump to a control,
  * which is a link's job even though it is a button (it goes nowhere; it asks a
@@ -649,7 +653,9 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 }
 /* The row's own submit. Smaller than the footer's `.cta` and deliberately so:
  * there is one primary on this surface and it is the footer's, and a second
- * button of the same weight beside it would be two.
+ * button of the same weight beside it would be two. So it is outlined, as
+ * `.cta.alt` and `.stop` are, never a solid fill: a solid ink "Attach resume"
+ * beside the marigold Autofill read as a second main action.
  *
  * SHARED WITH THE DRAWER'S "Ask" and the ATTACH's own button rather than copied
  * for them: all three are the same control in the same body — a secondary
@@ -659,8 +665,8 @@ button.stg-row:focus-visible { outline-offset: -2px; }
  * claim demonstrated. */
 .needs .save, .qna .save, .attach .save, .run .save {
   margin-top: 7px; font: 700 12px/1 var(--cs-font);
-  background: var(--cs-primary); color: var(--cs-on-primary);
-  border: none; border-radius: 9px; padding: 8px 12px; cursor: pointer;
+  background: var(--cs-surface); color: var(--cs-text);
+  border: 1px solid var(--cs-line); border-radius: 9px; padding: 7px 11px; cursor: pointer;
 }
 .needs .save:disabled, .qna .save:disabled, .attach .save:disabled, .run .save:disabled {
   opacity: .6; cursor: default;
@@ -811,8 +817,11 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 }
 .cta.spin::after { margin-left: 0; }
 /* An action is running. The button is out of reach either way — `disabled` is
-   the real guard — and this is what says so before the user presses it again. */
-.cta:disabled { opacity: .6; cursor: default; }
+   the real guard — and this is what says so before the user presses it again.
+   The spinning main button is the exception: it keeps the full signal, so the user sees their press was
+   taken (a secondary `.cta.alt` still dims while it spins). */
+.cta:disabled { cursor: default; }
+.cta:disabled:not(.spin), .cta.alt:disabled { opacity: .6; }
 /* Disabled but not running (another action on this card is), the signal goes neutral grey, as the app's
    default Button does: a washed marigold still read as "your move". A spinning one keeps the signal. */
 .cta:disabled:not(.spin):not(.alt) {

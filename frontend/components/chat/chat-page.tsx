@@ -731,14 +731,11 @@ export function ChatPage() {
         <Button
           size="icon"
           aria-label="Send"
-          disabled={!input.trim() || !!streaming}
+          disabled={!input.trim()}
+          pending={!!streaming}
           onClick={() => void send()}
         >
-          {streaming ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <ArrowUp className="size-4" />
-          )}
+          <ArrowUp className="size-4" />
         </Button>
       </div>
     </div>

@@ -53,7 +53,7 @@ def _mix(tokens, base, toward, weight):
 # (text, fill, where it is used). Every `color:` the stylesheet puts on a fill that is not the panel's own
 # surface is here, and so is every text token on the two surfaces.
 _TEXT_PAIRS = [
-    ("text", "surface", "body copy, .cta.alt, .stop"),
+    ("text", "surface", "body copy, .cta.alt, .stop, .save"),
     ("text", "surface-2", "body copy on the Next card"),
     ("muted", "surface", ".sub, .note, .ats .lbl, .qna"),
     ("muted", "surface-2", ".sub and .stg-sum inside the Next card"),
@@ -61,7 +61,7 @@ _TEXT_PAIRS = [
     ("primary", "surface", ".linkish, .resid button"),
     ("primary", "surface-2", ".stg.active ::before (Next), .resid button in the card"),
     ("primary", "primary-tonal", ".chip.lib, .identity .linkish:hover"),
-    ("on-primary", "primary", ".save"),
+    ("on-primary", "primary", "the app's ink pair, mirrored (no panel button is an ink fill)"),
     ("on-signal", "signal", ".cta (the one main button)"),
     ("on-signal", "signal-hover", ".cta:hover"),
     ("good", "surface", ".prog .st.done, the done tick"),
@@ -112,6 +112,31 @@ def test_the_main_button_is_the_signal_with_its_edge():
     grey = _PANEL_CSS.split("\n.cta:disabled:not(.spin):not(.alt) {", 1)[1].split("}", 1)[0]
     assert "background: var(--cs-muted-container);" in grey and "color: var(--cs-muted);" in grey
     assert "border-color: transparent;" in grey
+
+
+def _rules():
+    """(selector, body) for every plain rule in the stylesheet, at-rule wrappers ignored."""
+    css = re.sub(r"/\*.*?\*/", "", _PANEL_CSS, flags=re.S)
+    return re.findall(r"(?:^|(?<=[{}]))\s*([^{}@]+?)\s*\{([^{}]*)\}", css)
+
+
+def test_no_button_is_a_solid_ink_fill_beside_the_signal():
+    """One marigold fill per panel view and no solid ink fill competing with it: a solid ink "Attach
+    resume" beside the marigold Autofill read as a second main action. The only ink fills left are the
+    stage bar, a picked base row's radio dot and the run's progress bar: none of them a button."""
+    ink = [sel for sel, body in _rules() if re.search(r"background:\s*var\(--cs-primary\)", body)]
+    assert ink == [".seg-bar.active", ".baserow.sel .r", ".run-fill"], ink
+    save = _PANEL_CSS.split("\n.needs .save, .qna .save, .attach .save, .run .save {", 1)[1].split("}", 1)[0]
+    assert "background: var(--cs-surface);" in save and "color: var(--cs-text);" in save
+    assert "border: 1px solid var(--cs-line);" in save
+
+
+def test_a_spinning_main_button_keeps_the_full_signal():
+    """Busy (spinning) the main button stays full-strength marigold, so the press reads as taken; only a
+    disabled one that is not running, or a secondary `.cta.alt`, dims."""
+    dims = [sel for sel, body in _rules() if ".cta" in sel and re.search(r"opacity:\s*\.6", body)]
+    assert dims == [".cta:disabled:not(.spin), .cta.alt:disabled"], dims
+    assert ".cta:disabled { cursor: default; }" in _PANEL_CSS
 
 
 def test_the_signal_is_never_a_text_colour_in_the_panel():

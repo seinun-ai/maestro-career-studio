@@ -229,8 +229,10 @@
   function attachRow(ctx) {
     const { facts, build } = ctx;
     if (facts.attached) {
-      return progressRow(ctx, DONE, "Resume attached",
-                         `${facts.attached.filename} · ${boxes(facts.attached.count)}`);
+      const row = progressRow(ctx, DONE, "Resume attached",
+                              `${facts.attached.filename} · ${boxes(facts.attached.count)}`);
+      row.className = "prog attached";  // a long file name ends in an ellipsis (panel.css)
+      return row;
     }
     const auto = facts.autoAttach;
     const said = auto?.outcome === "skipped" || auto?.outcome === "left"

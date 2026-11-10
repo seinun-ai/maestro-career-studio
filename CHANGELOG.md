@@ -57,6 +57,7 @@ Setup keeps the key you paste, and Today points you at your first job.
   and Companion icons are a marigold tile with the ink mark.
 - **The Companion matches.** Its panel uses the same ink, greys and marigold, and its one main button is
   the marigold one.
+- **In the Companion, Attach resume and the other in-box buttons are outlined**, so Autofill stays the one main button, and a long attached file name ends in an ellipsis instead of running off the panel.
 - **After tailoring you land on the job page's Tailored resume step**, which lists every change with an
   undo and holds **Create PDF**. The full editor is one click away behind **Edit resume**.
 - **The "no AI key" notices on Add job and Jobs open Setup** instead of Settings.

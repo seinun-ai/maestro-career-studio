@@ -19,9 +19,10 @@ const buttonVariants = cva(
         // filled button per view keeps it rare (test_frontend_one_filled_button.py).
         // Disabled, it is neutral grey: a washed marigold still read as "your
         // move". A pending (aria-busy, spinning) one is disabled too and stays
-        // marigold, since that move is the one running.
+        // full-strength marigold, since that move is the one running: the base's
+        // disabled opacity-50 is lifted for it here (two attributes outrank one).
         default:
-          "border-signal-outline bg-signal text-on-signal hover:bg-signal-hover not-aria-busy:data-disabled:border-transparent not-aria-busy:data-disabled:bg-muted not-aria-busy:data-disabled:text-muted-foreground",
+          "border-signal-outline bg-signal text-on-signal hover:bg-signal-hover not-aria-busy:data-disabled:border-transparent not-aria-busy:data-disabled:bg-muted not-aria-busy:data-disabled:text-muted-foreground aria-busy:data-disabled:opacity-100",
         // The one low-emphasis filled button (the grey `secondary` variant was
         // folded into it). M3's filled-tonal: SECONDARY container, M3's role for "recessive
         // components like tonal buttons". It was `bg-primary/10 text-primary`,

@@ -413,6 +413,11 @@ def test_the_studio_redoes_through_the_undo_path():
     assert "revertHunk(data, redo, initialData)" in redo and "setData(next);" in redo
     assert "Couldn't redo this change because the text has changed since. Edit it yourself." in redo
     assert "Couldn't undo this change because the text has changed since. Edit it yourself." in undo
+
+
+def test_the_review_panel_gets_undo_and_redo_and_a_save_clears_them():
+    """The list is handed both presses and the undone set; a Save empties that set."""
+    studio = _read("components/resume-editor/tailored-resume-studio.tsx")
     panel = studio[studio.index("<DiffReviewPanel") :]
     panel = panel[: panel.index("/>")]
     assert "revertedKeys={undone}" in panel and "onRevert={handleRevert}" in panel and "onRedo={handleRedo}" in panel
