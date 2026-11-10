@@ -11,7 +11,9 @@ import {
   planWords,
   progressWords,
   stepsDone,
-  testPassed,
+  checkVerdict,
+  movesOnUnchecked,
+  refusedWords,
 } from "./setup-flow.ts";
 
 const MARKETS = [
@@ -236,12 +238,41 @@ test("a passed test says what it chose", () => {
   );
 });
 
-test("a test passes only when the model was reached and writes", () => {
+test("a check passes only when the model was reached and writes; a refusal and a check that never ran differ", () => {
   const report = { model: "m", base_url: null, text: true, json: true, tools: false, errors: {}, checked_at: "" };
-  assert.equal(testPassed(report, false), true);
-  assert.equal(testPassed({ ...report, reachable: false }, false), false);
-  assert.equal(testPassed({ ...report, text: false }, false), false);
-  assert.equal(testPassed(report, true), false);
+  assert.equal(checkVerdict(report, false, false), "passed");
+  assert.equal(checkVerdict({ ...report, reachable: false }, true, false), "refused");
+  assert.equal(checkVerdict({ ...report, reachable: false }, false, false), "unchecked");
+  // Your own server never reached is a failed check of its address, not a check that could not run.
+  assert.equal(checkVerdict({ ...report, reachable: false }, false, true), "failed");
+  assert.equal(checkVerdict({ ...report, text: false }, false, false), "failed");
+  assert.equal(checkVerdict(report, true, false), "refused");
+});
+
+test("Save and continue moves on unchecked only when untouched, set, and the last check did not fail", () => {
+  assert.equal(movesOnUnchecked(true, true, null), true);
+  assert.equal(movesOnUnchecked(true, true, "passed"), true);
+  // The check could not run: the key is saved and the same button now moves on.
+  assert.equal(movesOnUnchecked(true, true, "unchecked"), true);
+  // After a failed or refused check, the next press checks again, key set or not.
+  assert.equal(movesOnUnchecked(true, true, "failed"), false);
+  assert.equal(movesOnUnchecked(true, true, "refused"), false);
+  assert.equal(movesOnUnchecked(false, true, null), false);
+  assert.equal(movesOnUnchecked(true, false, null), false);
+});
+
+test("a refused key says it was not saved, what that left, and to paste it again, never Settings", () => {
+  const none = refusedWords("OpenAI", true, false, false);
+  assert.equal(none, "OpenAI refused this key, so it wasn't saved. Check the key and paste it again.");
+  assert.equal(
+    refusedWords("OpenAI", true, true, false),
+    "OpenAI refused this key, so it wasn't saved. It had replaced your earlier key, so no OpenAI key is saved now. Check the key and paste it again.",
+  );
+  assert.match(refusedWords("OpenAI", true, true, true), /The key set outside the app is used again\./);
+  assert.equal(refusedWords("Gemini", false, true, true), "Gemini refused your saved key. Check the key and paste it again.");
+  for (const words of [none, refusedWords("OpenAI", true, true, false), refusedWords("OpenAI", false, true, true)]) {
+    assert.doesNotMatch(words, /Settings/);
+  }
 });
 
 

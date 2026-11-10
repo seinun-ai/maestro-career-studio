@@ -23,8 +23,9 @@ export default function ApplicationTailoredResumePage({
   searchParams: Promise<{ review?: string | string[] }>;
 }) {
   const { id } = use(params);
-  // `?review=1` — set by the post-tailor CTA, so the studio opens on the
-  // provenance-labeled change list. Everything else opens the plain editor.
+  // `?review=1` opens the studio on the provenance-labeled change list; nothing
+  // in the app sets it now (tailoring lands on the job page), so a link with
+  // it is the only way in. Everything else opens the plain editor.
   const { review: reviewParam } = use(searchParams);
   const reviewDefault =
     (Array.isArray(reviewParam) ? reviewParam[0] : reviewParam) === "1";

@@ -7,7 +7,8 @@ counts rather than expired (the Agent inbox's own read does that, so its lists n
 Like the Jobs list, it reads every job, the other copy's replicas included: an action on one becomes
 a request for the next sync (docs/entities/job.md, "Ownership under sync"). Next up passes over an
 application whose status change, or a proposal whose decision, is on its way there, so a Skip that was
-"Sent at the next sync" moves the card on now; a refused request brings it back.
+"Sent at the next sync" moves the card on now; a refused request brings it back. Its last pick, a
+saved job's next step, offers only a job this copy owns with no request on its way.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from app.models.application_status_event import ApplicationStatusEvent
 from app.models.base_resume import BaseResume
 from app.models.job import Job
 from app.models.resume_version import ResumeVersion
+from app.models.sync import SyncRequest
 from app.models.tailoring_session import TailoringSession
 from app.services import (
     ats_score,
@@ -38,12 +40,19 @@ from app.services import (
     stage,
 )
 from app.services.search_summary import INTERVIEW_STATUSES, REPLY_STATUSES
+from app.services.sync import jobs_bundle
 from app.services.sync import requests as sync_requests
 
 # Next up is the first of these that exists, in this order: an offer waits on your answer to an
-# employer, a ready PDF is one click from applying (the best match first), and a proposal's question
-# waits on you but is the agent's work.
-NEXT_UP_ORDER = ("offer", "pdf_ready", "needs_you")
+# employer, a ready PDF is one click from applying (the best match first), a proposal's question
+# waits on you but is the agent's work, and last a job you saved that is not applied to and has no
+# ready PDF: the most recently touched one, on its next step.
+NEXT_UP_ORDER = ("offer", "pdf_ready", "needs_you", "next_step")
+# The rungs `next_step` picks from: below a ready PDF, not applied, not closed.
+_NEXT_STEP_RUNGS = ("saved", "scored", "gaps", "tailored")
+# `next_step` offers only a job saved or touched this many days ago at most: an older one is not
+# picked, so a long search does not lead with a weeks-old job every day.
+NEXT_STEP_DAYS = 14
 # "Quiet, follow up": sent this many days ago with nothing since. Two weeks is the usual point to
 # follow up; Analytics' "no reply" waits longer (search_summary.QUIET_AFTER_DAYS) because it asks
 # whether a reply will come at all.
@@ -242,6 +251,57 @@ def _needs_you(db: Session, now: datetime, decided: set) -> dict[str, Any] | Non
                  score=score, status=proposal.status, steps=steps)
 
 
+def _yours():
+    """Jobs you saved (not the agent's, and none an agent proposal carries: the Agent inbox has those)."""
+    proposed = select(ApplicationProposal.job_id).where(ApplicationProposal.job_id.is_not(None))
+    return (Job.source == "user", Job.id.not_in(proposed))
+
+
+def _recently_touched(db: Session, since: datetime) -> dict:
+    """Your jobs this copy owns and has no request on its way for, each with when it was last touched
+    (the newest of its save and its applications' and gap analyses' last writes), only those touched
+    since `since`. Ids and times only: the winner alone is loaded."""
+    asked = select(SyncRequest.job_id).where(
+        SyncRequest.origin == "local", SyncRequest.status.in_(("pending", "sent")),
+        SyncRequest.job_id.is_not(None))
+    touched = dict(db.execute(select(Job.id, Job.created_at).where(
+        *_yours(), jobs_bundle.owned_clause(db), Job.id.not_in(asked))).all())
+    for model in (Application, TailoringSession):
+        rows = db.execute(select(model.job_id, func.max(model.updated_at))
+                          .where(model.job_id.in_(list(touched))).group_by(model.job_id))
+        for job_id, at in rows:
+            touched[job_id] = max(touched[job_id], at or touched[job_id])
+    return {job_id: at for job_id, at in touched.items() if at >= since}
+
+
+def _next_step(db: Session, now: datetime) -> dict[str, Any] | None:
+    """The job you most recently touched in the past NEXT_STEP_DAYS that is not applied to and has no
+    ready PDF. Its rung names the job page's next step."""
+    touched = _recently_touched(db, now - timedelta(days=NEXT_STEP_DAYS))
+    rungs = stage.for_job_ids(db, list(touched))
+    open_ids = [job_id for job_id, st in rungs.items() if st.rung in _NEXT_STEP_RUNGS]
+    if not open_ids:
+        return None
+    job = db.get(Job, max(open_ids, key=lambda job_id: (touched[job_id], str(job_id))))
+    return _next_step_item(db, job, rungs[job.id])
+
+
+def _next_step_item(db: Session, job: Job, st: stage.Stage) -> dict[str, Any]:
+    application = stage.newest_applications(db, [job.id]).get(job.id)
+    if application is not None:
+        score = ats_score.tracker_scores(db, [application]).get(application.id)
+        steps = _steps(("saved", job.created_at), *_draft_steps(db, application))
+    else:
+        score = ats_score.best_base_scores(db, [job.id]).get(job.id)
+        steps = _steps(("saved", job.created_at))
+    item = _item(db, "next_step", job, application=application,
+                 base=application.base_resume if application is not None else None,
+                 score=score, status=application.status if application is not None else None, steps=steps)
+    item["stage"] = st.rung
+    item["session_id"] = str(st.open_session_id) if st.open_session_id is not None else None
+    return item
+
+
 # ---------------------------------------------------------------------------- counts
 
 
@@ -327,6 +387,7 @@ def build(db: Session, *, zone: tzinfo = UTC, zone_label: str = "UTC",
         "offer": lambda: _offer(db, waiting),
         "pdf_ready": lambda: _pdf_ready(db, unsent, rungs, waiting),
         "needs_you": lambda: _needs_you(db, now, decided),
+        "next_step": lambda: _next_step(db, now),
     }
     next_up = next((item for kind in NEXT_UP_ORDER if (item := pickers[kind]()) is not None), None)
 
@@ -338,6 +399,8 @@ def build(db: Session, *, zone: tzinfo = UTC, zone_label: str = "UTC",
         "today": now.astimezone(zone).date().isoformat(),
         "time_zone": zone_label,
         "next_up": next_up,
+        # With none you saved yourself, the page leads you to add one.
+        "has_jobs": db.scalar(select(Job.id).where(*_yours()).limit(1)) is not None,
         "also": _counts([
             {"key": "to_approve", "count": _to_review(db, now), "href": "/proposals"},
             {"key": "to_check", "count": sum(st.rung == "tailored" for st in rungs.values()),

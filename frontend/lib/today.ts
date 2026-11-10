@@ -26,10 +26,27 @@ export type NextUpAction = { label: string; href: string };
 /**
  * Next up's one button: the move, and the place it is made. A ready PDF and an offer open the job's Apply
  * step (where an application is sent and its status kept); a proposal opens its job from the Agent inbox,
- * on the agent's card, where a question is answered.
+ * on the agent's card, where a question is answered. A saved job's next step is worded as the job page's own
+ * button for it (Resume and gaps, then Tailored resume) and opens that step, or its open gap analysis.
  */
-export function nextUpAction(item: Pick<TodayNextUp, "kind" | "job_id" | "status">): NextUpAction {
+export function nextUpAction(
+  item: Pick<TodayNextUp, "kind" | "job_id" | "status" | "stage" | "session_id">,
+): NextUpAction {
   switch (item.kind) {
+    case "next_step":
+      switch (item.stage) {
+        case "saved":
+          return { label: "Score my resumes", href: `/jobs/${item.job_id}?tab=fit` };
+        case "gaps":
+          return {
+            label: "Continue gap analysis",
+            href: item.session_id ? `/jobs/${item.job_id}/tailor/${item.session_id}` : `/jobs/${item.job_id}?tab=fit`,
+          };
+        case "tailored":
+          return { label: "Create PDF", href: `/jobs/${item.job_id}?tab=output` };
+        default:
+          return { label: "Analyze gaps", href: `/jobs/${item.job_id}?tab=fit` };
+      }
     case "offer":
       return { label: "Review the offer", href: `/jobs/${item.job_id}?tab=qa` };
     case "needs_you":
@@ -94,7 +111,7 @@ export function moreSummary(more: readonly TodayCount[]): string {
     .join(", ");
 }
 
-/** A folded row's next step (D3's blue link): where its `href` goes, in words. One base resume opens its
+/** A folded row's next step (D3's ink link with a chevron): where its `href` goes, in words. One base resume opens its
  * own health report; several open the gallery. */
 export function moreStepLabel(count: TodayCount): string {
   if (count.key === "health_check") return count.count === 1 ? "Check health" : "See base resumes";

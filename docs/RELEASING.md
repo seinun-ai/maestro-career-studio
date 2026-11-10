@@ -65,7 +65,7 @@ They must agree, and most of them will keep lying silently if you forget:
 | `backend/pyproject.toml` | `version = "X.Y.Z"` |
 | `extension/manifest.json` | `"version": "X.Y.Z"` |
 | `CITATION.cff` | `version: "X.Y.Z"` + `date-released` (cffconvert cannot catch a stale one — check by eye) |
-| `mcpb/manifest.json` | `"version": "X.Y.Z"` — what Claude Desktop shows for the installed extension. Re-pack: `cd mcpb && npx @anthropic-ai/mcpb pack . maestro-career-studio.mcpb`, then update `server.json` `fileSha256` (`scripts/check_mcpb_bundle.py` fails otherwise) |
+| `mcpb/manifest.json` | `"version": "X.Y.Z"` — what Claude Desktop shows for the installed extension. First run `backend/.venv/bin/python scripts/build_brand_assets.py --with-mcpb` so `mcpb/icon.png` carries the current mark. Re-pack: `cd mcpb && npx @anthropic-ai/mcpb pack . maestro-career-studio.mcpb`, then update `server.json` `fileSha256` (`scripts/check_mcpb_bundle.py` fails otherwise) |
 | `plugins/maestro-career-studio/.claude-plugin/plugin.json` | `"version": "X.Y.Z"` — what `/plugins` shows for the marketplace install |
 | `plugins/maestro-career-studio/.codex-plugin/plugin.json` | `"version": "X.Y.Z"` — its Codex twin; the two must not diverge |
 | `server.json` | `"version"` and the package's `"version"`, plus `vX.Y.Z` inside its `identifier` URL. Its `fileSha256` is re-set after the re-pack: `shasum -a 256 mcpb/maestro-career-studio.mcpb` |

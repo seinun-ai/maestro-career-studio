@@ -28,16 +28,44 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+Until now one blue did every job in the app, so nothing on a screen told you what to do next. Now the app
+is ink and grey, and one marigold fill marks your next move. Your first ten minutes also lead somewhere:
+Setup keeps the key you paste, and Today points you at your first job.
+
 ### Added
 
+- **Today leads a new user.** With no job saved, Next up is **Add your first job**. With a job saved that you
+  have not applied to and that has no ready PDF, Next up is the one you touched last in the past two weeks, with its next step
+  worded as the job page words it. Offers, ready PDFs and agent questions still come first. **This week**
+  shows once you have sent a first application.
+- **The Apply step names the Companion.** While an application is a draft, a row reads **Fill the form with
+  the Companion**, with **Add to Chrome** linking its Chrome Web Store listing.
 - **Redo in Review changes.** In the resume studio, a change you undo now offers **Redo** where Undo was,
   until you save. Redo puts back exactly what the resume held before the Undo, including anything you had
   typed there, and you can undo and redo several changes in any order. Redo every Undo and the page reads
   as saved again. Saving keeps the Undo, as before: the change leaves the list, and Version history has
   the version before it.
 
+### Changed
+
+- **The app is ink and grey, with one marigold signal for your next move.** The filled button (one per
+  screen), the needs-you count in the sidebar and the current step of a job page are marigold with dark text.
+  Everything that was blue is ink or neutral grey; blue stays only in charts, where it is data.
+- **Links are underlined**, so they read as links without relying on colour.
+- **The logo is one colour.** The two bolts of the mark are joined into one shape. The app icon, favicon
+  and Companion icons are a marigold tile with the ink mark.
+- **The Companion matches.** Its panel uses the same ink, greys and marigold, and its one main button is
+  the marigold one.
+- **After tailoring you land on the job page's Tailored resume step**, which lists every change with an
+  undo and holds **Create PDF**. The full editor is one click away behind **Edit resume**.
+- **The "no AI key" notices on Add job and Jobs open Setup** instead of Settings.
+
 ### Fixed
 
+- **Setup's AI key step saved the key only when you pressed Test.** A pasted key followed by Continue was
+  lost. The step's main button is now **Save and continue**: it saves the key, checks it, and moves on once
+  the check passes. A key the provider refuses is not kept. The separate Test button is gone; **Skip for now**
+  still saves nothing.
 - In Review changes, undoing two added skill groups, items or certifications from the top down could say
   "Couldn't undo this change", or take out the wrong one of three. Each Undo now removes its own item.
 
@@ -50,6 +78,11 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
   ("Annual SalaryJob Closing") and lose its paragraphs. The description now keeps its lines, paragraphs, list
   items and table rows, and a page's styling code no longer lands in it. A job saved before keeps its old
   text.
+
+### Removed
+
+- **The Jobs page's Getting started card.** Setup is the one setup list. Its base resume suggestions no
+  longer appear anywhere.
 
 ## [0.13.0] — 2026-11-09
 

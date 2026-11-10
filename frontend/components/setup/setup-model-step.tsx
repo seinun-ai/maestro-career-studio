@@ -1,11 +1,10 @@
 "use client";
 
-import { useId, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { GuardedLink as Link } from "@/components/guarded-link";
-import { KEY_FIELDS, KeyField, keyProblemIn, type ModelSettingsPatch } from "@/components/settings/models-section";
-import { Button } from "@/components/ui/button";
+import { KEY_FIELDS, KeyField, type ModelSettingsPatch } from "@/components/settings/models-section";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Radio, RadioGroup } from "@/components/ui/radio-group";
@@ -14,7 +13,7 @@ import { CONNECTED_AGENTS_SETTINGS } from "@/lib/agent-links";
 import { keyFormatProblem } from "@/lib/api-key-format";
 import { apiFetch } from "@/lib/api";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
-import { couldnt } from "@/lib/error-text";
+import { couldnt, REFUSED_KEY } from "@/lib/error-text";
 import {
   CONFIGURED,
   EVERYDAY_JOBS,
@@ -23,7 +22,15 @@ import {
   providerLabel,
   type Provider,
 } from "@/lib/model-catalog";
-import { modelPlan, planWords, testPassed, type ModelPlan } from "@/lib/setup-flow";
+import {
+  checkVerdict,
+  modelPlan,
+  movesOnUnchecked,
+  planWords,
+  refusedWords,
+  type CheckVerdict,
+  type ModelPlan,
+} from "@/lib/setup-flow";
 import type { CapabilityReport, OpenAIInfo, RecommendedModelsInfo } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -54,13 +61,27 @@ function startingPick(info: OpenAIInfo): Pick {
 
 /**
  * Step 1, the AI model. It starts on the suggested provider, so a beginner only pastes a key; the five cards,
- * named in text, wait behind "Use a different AI", open when you already use another. Paste the key and press Test: the key
- * is saved (`PUT /api/settings/openai`), the model it will use is tested (`POST /api/settings/openai/probe`,
+ * named in text, wait behind "Use a different AI", open when you already use another. Paste the key and press the nav's
+ * Save and continue (it calls `saveRef`): the key is saved (`PUT /api/settings/openai`), the model it will use is
+ * tested (`POST /api/settings/openai/probe`,
  * WorkingDots while it runs, a chip per result after), and only once it passes are the provider's
  * recommended models turned on (`PUT /api/settings/models/recommended`), unless your own picks already
- * run on it (lib/setup-flow.ts `modelPlan`). The line under the chips says which it chose.
+ * run on it (lib/setup-flow.ts `modelPlan`). The line under the chips says which it chose. The flow moves on only
+ * once the check passes; with nothing typed and a key or server already set, it moves on without one, unless
+ * the last check failed (`movesOnUnchecked`). The probe checks only the saved key, so a pasted key the provider
+ * refuses is removed again (`refusedWords` says what that left); a check that could not run keeps the key and
+ * says so, and the next press moves on.
  */
-export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; headingRef: RefObject<HTMLHeadingElement | null> }) {
+export function SetupModelStep({
+  info,
+  headingRef,
+  saveRef,
+}: {
+  info: OpenAIInfo;
+  headingRef: RefObject<HTMLHeadingElement | null>;
+  /** Set by this step: saves what was typed and checks it, true when the flow may move on. */
+  saveRef: RefObject<(() => Promise<boolean>) | null>;
+}) {
   const qc = useQueryClient();
   const [pick, setPick] = useState<Pick>(() => startingPick(info));
   // Fixed when the step opens: after that the disclosure is yours, and choosing a card never closes it.
@@ -72,6 +93,8 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
   const [problem, setProblem] = useState<string | undefined>();
   const [testing, setTesting] = useState(false);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  // The last check's verdict: after a failed or refused one, the next press checks again.
+  const [last, setLast] = useState<CheckVerdict | null>(null);
   const keyRef = useRef<HTMLInputElement>(null);
   const addressId = useId();
   const addressHintId = useId();
@@ -89,8 +112,8 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
       return next;
     });
 
-  const test = async () => {
-    if (testing) return;
+  const test = async (): Promise<boolean> => {
+    if (testing) return false;
     setOutcome(null);
     const base = address.trim();
     const model = serverModel.trim();
@@ -98,22 +121,24 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
     if (pick === "server") {
       if (!base || !model) {
         setProblem("Add the server address and the model name.");
-        return;
+        return false;
       }
     } else if (key) {
       const shape = keyFormatProblem(pick, key, info.custom_endpoint);
       if (shape) {
         setProblem(shape);
         keyRef.current?.focus();
-        return;
+        return false;
       }
     } else if (info[CONFIGURED[pick]] !== true) {
       setProblem(`Paste your ${card.name} API key first.`);
       keyRef.current?.focus();
-      return;
+      return false;
     }
     setProblem(undefined);
     setTesting(true);
+    // Set once the pasted key is saved: a check that then cannot run leaves it saved, and says so.
+    let saved = false;
     try {
       let current = info;
       if (pick === "server") {
@@ -126,7 +151,7 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
         });
       } else if (key) {
         current = await saveModels({ [`${pick}_api_key`]: key });
-        setTyped(null);
+        saved = true;
       }
       const rec = await apiFetch<RecommendedModelsInfo>("/api/settings/models/recommended");
       const plan: ModelPlan =
@@ -135,15 +160,30 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
           : modelPlan(pick, rec, current.model_options);
       const words = planWords(plan, card.name);
       if (!plan.test) {
+        setTyped(null);
         setOutcome({ kind: "saved", words });
-        return;
+        setLast("passed");
+        return true;
       }
       const report = await apiFetch<CapabilityReport>("/api/settings/openai/probe", {
         method: "POST",
         body: JSON.stringify({ model: plan.test }),
       });
-      const refused = keyProblemIn(report);
-      const passed = testPassed(report, Boolean(refused));
+      const provider = pick === "server" ? null : pick;
+      const refused = provider !== null && Object.values(report.errors).some((e) => REFUSED_KEY.test(e));
+      const verdict = checkVerdict(report, refused, provider === null);
+      setLast(verdict);
+      if (verdict === "refused" && provider) {
+        // The probe can only check the saved key: a pasted key it refused is taken out again.
+        saved = false;
+        const after = key ? await saveModels({ [`${provider}_api_key`]: "" }) : current;
+        const flag = CONFIGURED[provider];
+        setOutcome({ kind: "error", text: refusedWords(card.name, Boolean(key), info[flag] === true, after[flag] === true) });
+        keyRef.current?.focus();
+        return false;
+      }
+      setTyped(null);
+      const passed = verdict === "passed";
       // A key that has not passed changes no model: the recommended set waits for a working key.
       if (passed && plan.change) {
         await apiFetch<RecommendedModelsInfo>("/api/settings/models/recommended", {
@@ -151,23 +191,27 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
           body: JSON.stringify(plan.change),
         });
       }
-      const unreachable =
-        report.reachable === false
-          ? pick === "server"
-            ? "Couldn't reach your server. Check its address, then try again."
-            : `Couldn't reach ${card.name}. Check your API key, then try again.`
-          : undefined;
       const name = modelName(current.model_options, plan.test);
-      setOutcome({
-        kind: "report",
-        report,
-        name,
-        passed,
-        problem: refused ?? unreachable ?? (passed ? undefined : `${name} didn't answer. Try another model in Settings.`),
-        words: passed ? words : undefined,
-      });
+      const problem =
+        verdict === "unchecked"
+          ? `Key saved, but ${card.name} couldn't be reached to check it. Press Save and continue to go on without the check.`
+          : report.reachable === false
+            ? "Couldn't reach your server. Check its address, then try again."
+            : `${name} didn't answer. Try another model in Settings.`;
+      setOutcome({ kind: "report", report, name, passed, problem: passed ? undefined : problem, words: passed ? words : undefined });
+      return passed;
     } catch (err) {
-      setOutcome({ kind: "error", text: couldnt(pick === "server" ? "test your server" : "test your key", err) });
+      // A key saved before the failure stays saved: the check could not run, and the next press moves on.
+      // A refused key whose removal failed keeps its refused verdict, so the next press checks again.
+      if (saved) setLast("unchecked");
+      else setLast((was) => (was === "refused" ? was : "failed"));
+      setOutcome({
+        kind: "error",
+        text: saved
+          ? "Key saved, but it couldn't be checked. Press Save and continue to go on without the check."
+          : couldnt(pick === "server" ? "test your server" : "test your key", err),
+      });
+      return false;
     } finally {
       setTesting(false);
       // The key, the roles and the step's Done all changed: every reader sees it now.
@@ -176,6 +220,23 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
       }
     }
   };
+
+  // Save and continue: nothing typed with a key or server already set moves on, unless the last check failed;
+  // anything typed is saved and checked.
+  const saveAndCheck = (): Promise<boolean> => {
+    const anySet =
+      info.custom_endpoint || CARDS.some((c) => c.id !== "server" && info[CONFIGURED[c.id as Provider]] === true);
+    const untouched =
+      pick === "server"
+        ? address.trim() === (info.custom_endpoint ? (info.base_url ?? "") : "") &&
+          serverModel.trim() === (info.custom_endpoint ? info.fast_model : "")
+        : !typed?.trim();
+    if (movesOnUnchecked(untouched, anySet, last)) return Promise.resolve(true);
+    return test();
+  };
+  useEffect(() => {
+    saveRef.current = saveAndCheck;
+  });
 
   return (
     <section aria-labelledby="setup-model-title" className="flex flex-col gap-6">
@@ -279,17 +340,12 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
             }}
           />
         )}
-        <div className="flex flex-wrap items-center gap-4">
-          <Button type="button" variant="tonal" size="lg" pending={testing} onClick={() => void test()}>
-            Test
-          </Button>
-          <div aria-live="polite" className="min-w-0">
-            {testing ? (
-              <WorkingDots label={pick === "server" ? "Checking your server" : "Checking your key"} />
-            ) : outcome ? (
-              <TestOutcome outcome={outcome} />
-            ) : null}
-          </div>
+        <div aria-live="polite" className="min-w-0">
+          {testing ? (
+            <WorkingDots label={pick === "server" ? "Checking your server" : "Checking your key"} />
+          ) : outcome ? (
+            <TestOutcome outcome={outcome} />
+          ) : null}
         </div>
       </div>
 
@@ -304,7 +360,7 @@ export function SetupModelStep({ info, headingRef }: { info: OpenAIInfo; heading
   );
 }
 
-/** After Test: Works and a chip per result, or what to fix. */
+/** After the check: Works and a chip per result, or what to fix. */
 function TestOutcome({ outcome }: { outcome: Outcome }) {
   if (outcome.kind === "error") return <p className="text-body-medium text-destructive">{outcome.text}</p>;
   if (outcome.kind === "saved") {

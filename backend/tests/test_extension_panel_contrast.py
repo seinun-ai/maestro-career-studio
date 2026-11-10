@@ -61,7 +61,9 @@ _TEXT_PAIRS = [
     ("primary", "surface", ".linkish, .resid button"),
     ("primary", "surface-2", ".stg.active ::before (Next), .resid button in the card"),
     ("primary", "primary-tonal", ".chip.lib, .identity .linkish:hover"),
-    ("on-primary", "primary", ".cta, .save"),
+    ("on-primary", "primary", ".save"),
+    ("on-signal", "signal", ".cta (the one main button)"),
+    ("on-signal", "signal-hover", ".cta:hover"),
     ("good", "surface", ".prog .st.done, the done tick"),
     ("good", "surface-2", "the done tick inside the Next card"),
     ("good", "good-tonal", ".ats .delta, .baserow .score.good"),
@@ -90,10 +92,27 @@ def test_text_on_a_fill_meets_aa(theme, text, fill, where):
 
 @pytest.mark.parametrize("theme", _THEMES)
 def test_the_primary_button_text_meets_aa_while_hovered(theme):
-    """`.cta:hover` mixes 12% of the text colour into the fill."""
+    """`.cta` is the signal fill and `.cta:hover` the signal-hover token, with on-signal text on both."""
     tokens = _tokens(theme)
-    ratio = _contrast(_rgb(tokens, "on-primary"), _mix(tokens, "primary", "on-primary", 0.12))
-    assert ratio >= 4.5, f"{theme}: hovered .cta is {ratio:.2f}:1"
+    for fill in ("signal", "signal-hover"):
+        ratio = _contrast(_rgb(tokens, "on-signal"), _rgb(tokens, fill))
+        assert ratio >= 4.5, f"{theme}: .cta text on --cs-{fill} is {ratio:.2f}:1"
+
+
+def test_the_main_button_is_the_signal_with_its_edge():
+    """The one main button takes the signal (never primary) and its 1px outline, and hovers to signal-hover."""
+    body = _PANEL_CSS.split("\n.cta {", 1)[1].split("}", 1)[0]
+    assert "background: var(--cs-signal);" in body and "color: var(--cs-on-signal);" in body
+    assert "border: 1px solid var(--cs-signal-outline);" in body
+    assert ".cta:hover:not(:disabled):not([aria-disabled=\"true\"]) { background: var(--cs-signal-hover); }" in _PANEL_CSS
+    # Secondary footer buttons stay neutral.
+    assert ".cta.alt { background: var(--cs-surface); color: var(--cs-text); border: 1px solid var(--cs-line); }" in _PANEL_CSS
+
+
+def test_the_signal_is_never_a_text_colour_in_the_panel():
+    """The signal is a fill with dark text: no `color:` and no lone `border-color` names it."""
+    assert not re.search(r"(?<![\w-])color:\s*var\(--cs-signal", _PANEL_CSS)
+    assert not re.search(r"border-color:\s*var\(--cs-signal", _PANEL_CSS)
 
 
 @pytest.mark.parametrize("theme", _THEMES)

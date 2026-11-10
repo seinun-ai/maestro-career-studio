@@ -71,15 +71,19 @@ def test_job_header_shows_the_best_score_and_the_steps_below_it():
     assert "<JobSteps steps={steps} current={step} onSelect={setStep} />" in src
     assert src.index("</header>") < src.index("<JobSteps")
     # The stepper (design refresh Task 4.3): a 4px bar over each step, then its mark, its name and one number. Done
-    # is the register's CircleCheck in `success` (never a bare Check), the stage's step a ringed dot in `primary`, a
-    # later one its number on a quiet disc; the shown one's name is in `primary`.
+    # is the register's CircleCheck in `success` (never a bare Check), the stage's step the signal (the brand
+    # refresh's D4: a marigold disc with its edge around an on-signal dot), a later one its number on a quiet disc;
+    # done bars are ink (`bg-primary`); the shown one's name is in `primary` with the tab's 2px underline.
     steps = _read("components/job-steps.tsx")
     assert "const DoneIcon = CONCEPT_ICONS.done;" in steps and not re.search(r"\bCheck\b", steps)
     assert '<DoneIcon aria-hidden="true" className="size-4 shrink-0 text-success" />' in steps
-    assert "border-2 border-primary" in steps and "bg-surface-container text-label-small text-muted-foreground" in steps
+    assert "border border-signal-outline bg-signal" in steps and "bg-on-signal" in steps
+    assert "border-2 border-primary" not in steps and "text-signal" not in steps
+    assert "bg-surface-container text-label-small text-muted-foreground" in steps
     bar = steps[steps.index("function StepBar(") : steps.index("export function JobSteps(")]
     assert "block h-1 w-full" in bar and 'progress === null ? "bg-primary-container" : "bg-surface-container-highest"' in bar
-    assert 'shown ? "text-primary"' in steps
+    assert '<span className="block h-full rounded-full bg-primary"' in bar and "signal" not in bar
+    assert '? "text-primary underline decoration-2 underline-offset-4"' in steps
     assert 'aria-current={shown ? "step" : undefined}' in steps and '<nav aria-label="Steps"' in steps
     # A button is named "Step N: title, done" (or ", current step"); its number is the description.
     assert "aria-labelledby={nameId}" in steps and "aria-describedby={step.metric ? lineId : undefined}" in steps

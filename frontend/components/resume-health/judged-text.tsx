@@ -76,7 +76,7 @@ export function SourceQuote({ text, clamp }: { text: string; clamp?: boolean }) 
       {clamp && (open || cut) && (
         <button
           type="button"
-          className="text-primary mt-0.5 text-body-small underline-offset-2 hover:underline"
+          className="text-primary mt-0.5 text-body-small underline underline-offset-2"
           aria-expanded={open}
           onClick={() => setOpen((v) => !v)}
         >

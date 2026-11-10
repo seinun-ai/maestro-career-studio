@@ -1122,9 +1122,10 @@ export interface TodayStep {
   at: string;
 }
 
-/** `services/today.py` NEXT_UP_ORDER: an offer awaiting your answer, the best ready PDF, a proposal's question. */
+/** `services/today.py` NEXT_UP_ORDER: an offer awaiting your answer, the best ready PDF, a proposal's question,
+ *  then a job you saved on its next step (not applied to, no ready PDF). */
 export interface TodayNextUp {
-  kind: "offer" | "pdf_ready" | "needs_you";
+  kind: "offer" | "pdf_ready" | "needs_you" | "next_step";
   job_id: UUID;
   application_id: UUID | null;
   /** Set only for `needs_you`. */
@@ -1142,6 +1143,9 @@ export interface TodayNextUp {
   proposed_by: string | null;
   reason: string | null;
   steps: TodayStep[];
+  /** `next_step` only: the job's rung, and its open gap analysis on the `gaps` rung. */
+  stage?: "saved" | "scored" | "gaps" | "tailored";
+  session_id?: UUID | null;
 }
 
 /** One non-zero count; a zero count is left out of `also` and `more`. */
@@ -1162,6 +1166,8 @@ export interface TodayResponse {
   /** The zone used: the IANA name, else "UTC+05:30" from the offset, else "UTC". */
   time_zone: string;
   next_up: TodayNextUp | null;
+  /** False until a first job is saved: Today then leads with Add your first job. */
+  has_jobs: boolean;
   also: TodayCount[];
   more: TodayCount[];
   week: {

@@ -167,9 +167,10 @@ export function TailoredResumeStudio({
   /** Back target — usually the job output tab. */
   backHref: string;
   /**
-   * Open in review mode (design §4.5). True when routed here straight from a
-   * completed tailor (`?review=1`); the toggle stays available either way, and
-   * review mode is an overlay — the plain editor is never fenced off.
+   * Open in review mode (design §4.5). True for a link with `?review=1`
+   * (tailoring no longer sets it: it lands on the job page); the toggle stays
+   * available either way, and review mode is an overlay, so the plain editor is
+   * never fenced off.
    */
   reviewDefault?: boolean;
 }) {

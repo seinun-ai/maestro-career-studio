@@ -8,7 +8,7 @@ import { React, load, renderElement, servedQuestions, withRouter } from "../rend
 const { ProfileView } = load("components/profile/profile-view.tsx");
 
 // The one filled button's classes (components/ui/button.tsx, variant "default").
-const FILLED = /bg-primary text-primary-foreground/g;
+const FILLED = /bg-signal text-on-signal/g;
 
 const MARKETS = [
   { key: "US", label: "United States", country_code: "US", currency: "USD", date_format: "MDY", offers_eeo: true },
@@ -407,7 +407,7 @@ test("with no country chosen: nothing picked, no country's questions, and a way 
   // Next up asks where you apply first: until then every form pauses on the permits no country asks.
   assert.match(html, /Next up · Where you apply/);
   assert.match(html, /The countries you apply in/);
-  assert.match(html, /<button[^>]*bg-primary text-primary-foreground[^>]*>Choose countries<\/button>/);
+  assert.match(html, /<button[^>]*bg-signal text-on-signal[^>]*>Choose countries<\/button>/);
   assert.ok(html.indexOf("Next up · Where you apply") < html.indexOf(">Citizen of</label>"));
 });
 

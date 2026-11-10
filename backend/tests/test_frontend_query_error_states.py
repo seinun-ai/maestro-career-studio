@@ -52,7 +52,7 @@ _ERROR_BRANCH = re.compile(
 # or of the skeleton-forever gate that hid the failure.
 _QUERY_SURFACES: list[tuple[str, str]] = [
     # Original guard set — already correct; ride along so a regression is a fail.
-    ("app/applications/page.tsx", "<GettingStartedCard"),
+    ("app/applications/page.tsx", '"No jobs yet"'),
     ("app/jobs/[id]/page.tsx", "isLoading || !data"),
     # The settings cards no longer own this branch — `SettingCard` does, and
     # `test_settings_cards_route_through_the_shared_shell` below pins that none
@@ -80,7 +80,6 @@ _QUERY_SURFACES: list[tuple[str, str]] = [
     ("components/resume-step.tsx", "No match scores yet."),
     ("components/resume-health/health-badges.tsx", 'title="Check this resume\'s health"'),
     ("components/resume-health/health-report-page.tsx", "No health report yet."),
-    ("components/setup/getting-started-card.tsx", "Getting started"),
     ("app/applications/[id]/page.tsx", "This application no longer exists."),
     # Profile (design refresh Task 7.2): the tiles need the answers, the consent and your countries.
     ("components/profile/profile-view.tsx", "<AutofillProfileProvider"),
@@ -266,7 +265,6 @@ _FAILURE_BRANCHES = {
     "components/resume-health/health-report-page.tsx": "if (isLoadFailure(baseQuery)) {",
     "components/resume-health/question-pass.tsx": "if (isLoadFailure(baseQuery)) {",
     "components/chat/chat-page.tsx": "const threadFailed = sessionId !== null && isLoadFailure(detail);",
-    "components/setup/getting-started-card.tsx": "if (isLoadFailure(setupStatus)) {",
     # Setup reads five settings at once and shows one failed state for them (components/setup/setup-flow.tsx).
     "components/setup/setup-flow.tsx": "const loadFailed = queries.some((q) => isLoadFailure(q));",
     "components/chat/scope-picker.tsx": "{isLoadFailure(kbEntities) ? (",

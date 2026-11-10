@@ -438,17 +438,11 @@ export default function TailorSessionPage({
           { description: skips.map((skip) => skip.detail).join(" · ") },
         );
       }
-      // Review-first (design §4.5): land in the studio's diff mode, where every
-      // change is listed with its provenance and can be reverted one at a time —
-      // the consent surface for everything the resolver auto-applied. The job's
-      // Resume tab (compare + PDF) is one click away, and is still the landing
-      // spot if the tailor somehow produced no application to open.
-      const applicationId = result.session.application_id;
-      router.push(
-        applicationId
-          ? `/applications/${applicationId}/resume?review=1`
-          : `/jobs/${jobId}?tab=output`,
-      );
+      // Land on the job page's Tailored resume step (step 3): it lists every
+      // change tailoring made, each with its Revert, and its one filled button
+      // is Create PDF, so the next move is right there. The full editor is one
+      // click away behind Edit resume.
+      router.push(`/jobs/${jobId}?tab=output`);
     },
     onError: (error: Error, applyProfile) => {
       // A failed tailor USED to mean the server changed nothing — that is

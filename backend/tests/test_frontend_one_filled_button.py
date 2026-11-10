@@ -282,7 +282,11 @@ _VIEWS = {
 # count (Jobs' Add job shows only while the sidebar's Add job is hidden; Analytics' lead card takes no action). In
 # the others the controls are alternatives, each kept apart by the test that names that view below.
 _FILLED = {
-    "Today": {("app/today/page.tsx", "NextUp"): 1, ("components/setup/setup-entry-card.tsx", "SetupEntryCard"): 1},
+    "Today": {
+        ("app/today/page.tsx", "NextUp"): 1,
+        ("components/setup/setup-entry-card.tsx", "SetupEntryCard"): 1,
+        ("components/today/first-job-card.tsx", "FirstJobCard"): 1,
+    },
     "Jobs": {("app/applications/page.tsx", "ApplicationsContent"): 1},
     "Agent inbox": {
         ("components/proposals/proposals-section.tsx", "ProposalsSection"): 1,
@@ -320,12 +324,18 @@ def _body(view: str, key: tuple[str, str]) -> str:
 
 
 def test_today_leads_with_next_up_or_setup_never_both():
-    # One ternary chain: Next up, else a skeleton while Setup's status loads, else Setup's card, else a quiet line.
+    # One ternary chain: Next up (all but a saved job's next step), else a skeleton while Setup's status loads, else
+    # Setup's card, else a saved job's next step, else Add your first job, else a quiet line. Each branch is one card.
     page = _body("Today", ("app/today/page.tsx", "TodayPage"))
-    lead = "{data.next_up ? ( <NextUp item={data.next_up} onSkipped={() => (skipped.current = true)} /> ) : setup.isPending"
-    setup = ") : setup.data && needsSetup(setup.data) ? ( <SetupEntryCard status={setup.data} /> ) : ("
-    assert page.count("<NextUp") == page.count("<SetupEntryCard") == 1
-    assert lead in page and setup in page and page.index(lead) < page.index(setup)
+    lead = (
+        '{data.next_up && data.next_up.kind !== "next_step" ? ( <NextUp item={data.next_up} '
+        "onSkipped={() => (skipped.current = true)} /> ) : setup.isPending"
+    )
+    setup = ") : setup.data && needsSetup(setup.data) ? ( <SetupEntryCard status={setup.data} /> ) : data.next_up ? ("
+    first = ") : !data.has_jobs ? ( <FirstJobCard /> ) : ("
+    assert page.count("<NextUp") == 2 and page.count("<SetupEntryCard") == page.count("<FirstJobCard") == 1
+    assert lead in page and setup in page and first in page
+    assert page.index(lead) < page.index(setup) < page.index(first)
 
 
 def test_the_inbox_empty_state_returns_before_the_select_bar():

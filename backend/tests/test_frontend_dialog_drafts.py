@@ -35,7 +35,6 @@ def _between(source: str, start: str, end: str) -> str:
 
 _DIALOG = _read("components/ui/dialog.tsx")
 _NBR = _read("components/base-resumes/new-base-resume-dialog.tsx")
-_GETTING_STARTED = _read("components/setup/getting-started-card.tsx")
 _SHEET = _read("components/resume-editor/instruct-sheet.tsx")
 _DEMONSTRATE = _read("components/resume-health/demonstrate-skill-dialog.tsx")
 _FINDINGS = _read("components/resume-health/finding-cards.tsx")
@@ -102,8 +101,8 @@ def test_start_over_knows_what_a_draft_is():
     touched = _flat(_between(_NBR, "const touched =", ";"))
     for field in ("name", "instruction", "selected.size", "plan", "source", "file"):
         assert re.search(rf"[(|] ?{re.escape(field)} ?[|)]", touched), field
-    assert "tag !== initialTag" in touched
-    assert "const [tag, setTag] = useState<FavoredRole | null>(initialTag);" in _NBR
+    assert "tag !== null" in touched
+    assert "const [tag, setTag] = useState<FavoredRole | null>(null);" in _NBR
 
 
 def test_start_over_shows_only_for_a_touched_draft():
@@ -133,35 +132,10 @@ def test_new_base_resume_ids_are_per_instance():
     assert "useId()" in _NBR
 
 
-def test_getting_started_keeps_one_draft_per_suggestion():
-    """Closing suggestion A and opening B used to unmount A's form."""
-    assert "composeSuggestion" not in _GETTING_STARTED
-    flat = _flat(_GETTING_STARTED)
-    assert (
-        "setOpened((all) => all.some((s) => s.role_category === suggestion.role_category) "
-        "? all : [...all, suggestion], );"
-    ) in flat
-    dialogs = flat[flat.index("{opened.map((suggestion) => (") :]
-    dialogs = dialogs[: dialogs.index("))}")]
-    assert (
-        "<NewBaseResumeDialog key={suggestion.role_category} "
-        "open={openRole === suggestion.role_category}"
-    ) in dialogs
-    assert "initialRole={suggestion}" in dialogs
-    assert "if (!next) setOpenRole(null);" in dialogs
-    assert "onClick={() => compose(suggestion)}" in flat
-
-
-def test_a_suggested_role_is_named_by_its_label():
-    """The suggestion's picker showed the raw key ("ai_ml_engineer"), and a
-    create sent it as the role label. The caller hands over the catalog label
-    it already has (mutant: the key as the label)."""
-    assert "initialRole?: { role_category: string; label: string };" in _NBR
-    initial = _flat(_between(_NBR, "const [initialTag] = useState<FavoredRole | null>(() =>", ");"))
-    assert (
-        "initialRole ? { role: initialRole.role_category, label: initialRole.label, category: null } : null"
-    ) in initial
-    assert "favoredRoleFromTag(initialRole" not in _NBR
+def test_no_caller_preselects_a_role_any_more():
+    """Getting started's suggestions were the only caller that handed over a role; with them gone the prop
+    went too, and every new dialog opens with no role picked."""
+    assert "initialRole" not in _NBR and "initialTag" not in _NBR
 
 
 def test_instruct_sheet_keeps_a_proposal_until_applied():

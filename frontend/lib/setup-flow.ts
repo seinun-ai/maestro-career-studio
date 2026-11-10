@@ -155,9 +155,33 @@ export function planWords(plan: ModelPlan, provider: string): string {
   }
 }
 
-/** A key passes when the model was reached, wrote, and no result blames the key. */
-export function testPassed(report: CapabilityReport, keyProblem: boolean): boolean {
-  return !keyProblem && report.reachable !== false && report.text === true;
+/** What the AI model step's check found. passed: reached and wrote. refused: the provider refused the key.
+ *  unchecked: the check never ran (no network, a timeout, the provider down), so the key stays and the next
+ *  press moves on. failed: anything else, so the next press checks again. A server never reached is failed:
+ *  its address is what was being checked. */
+export type CheckVerdict = "passed" | "refused" | "unchecked" | "failed";
+
+export function checkVerdict(report: CapabilityReport, refused: boolean, server: boolean): CheckVerdict {
+  if (refused) return "refused";
+  if (report.reachable === false) return server ? "failed" : "unchecked";
+  return report.text === true ? "passed" : "failed";
+}
+
+/** Save and continue moves on without a check only when nothing was typed, a key or server is already set,
+ *  and the last check did not fail. */
+export function movesOnUnchecked(untouched: boolean, anySet: boolean, last: CheckVerdict | null): boolean {
+  return untouched && anySet && last !== "failed" && last !== "refused";
+}
+
+/** The words for a refused key. `typed`: the key was just pasted (and removed again); `before`: a key was saved
+ *  before it; `still`: a key is set now (one set outside the app). */
+export function refusedWords(provider: string, typed: boolean, before: boolean, still: boolean): string {
+  const again = "Check the key and paste it again.";
+  if (!typed) return `${provider} refused your saved key. ${again}`;
+  const lead = `${provider} refused this key, so it wasn't saved.`;
+  if (still) return `${lead} The key set outside the app is used again. ${again}`;
+  if (before) return `${lead} It had replaced your earlier key, so no ${provider} key is saved now. ${again}`;
+  return `${lead} ${again}`;
 }
 
 /** "2 base resumes": the import response's counts, only the ones it has, each in its own words. */

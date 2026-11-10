@@ -910,7 +910,7 @@ export function AskCard({
           {metricAsk && finding.alt_question && (
             <button
               type="button"
-              className="text-primary text-body-medium underline-offset-2 hover:underline"
+              className="text-primary text-body-medium underline underline-offset-2"
               aria-expanded={useAlternative}
               onClick={() => { setUseAlternative((v) => !v); focusNext(cardRef); }}
               disabled={locked}

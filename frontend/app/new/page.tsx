@@ -15,7 +15,6 @@ import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
 import { couldnt } from "@/lib/error-text";
 import { ingestJob } from "@/lib/ingest-job";
-import { anchorHref } from "@/lib/settings-tabs";
 import type { Job, SetupStatus } from "@/lib/types";
 import { PageHeader, PageShell } from "@/components/page-shell";
 
@@ -99,7 +98,7 @@ export default function NewApplicationPage() {
             size="sm"
             variant="outline"
             nativeButton={false}
-            render={<Link href={anchorHref("/settings", "api-keys")} />}
+            render={<Link href="/setup" />}
           >
             Add API key
           </Button>

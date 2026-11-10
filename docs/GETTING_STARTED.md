@@ -247,7 +247,7 @@ anywhere else.
 Four steps from nothing to a PDF:
 
 1. **Add your AI key.** Setup asks for it first. It suggests OpenAI, and **Use a different AI**
-   has the others. Paste the key and press **Test** to check the models work. You can change it later in **Settings › Basics**.
+   has the others. Paste the key and click **Save and continue**: it saves the key and checks the models work. You can change it later in **Settings › Basics**.
    No key? Skip it, connect Claude or Codex ([§5](#5-connect-your-ai-assistant-optional))
    and ask it to import your resume, save the job and tailor it. Steps 2 to 4 below are
    the in-app way, and they need the key.
@@ -265,8 +265,8 @@ Four steps from nothing to a PDF:
    step 2, **Resume and gaps**, pick a resume and click **Analyze gaps**. Each gap
    is a requirement your resume doesn't show yet. Answer its questions honestly —
    new true facts are saved to your career history for next time — then click
-   **Tailor resume**. Every AI change is shown for you to accept or undo. On step
-   3, **Tailored resume**, click **Create PDF**, then **Download PDF**.
+   **Tailor resume**. Maestro opens step 3, **Tailored resume**, which lists every
+   AI change with an undo. Click **Create PDF**, then **Download PDF**.
    A copy of every PDF is also saved in the `applications/` folder, so you can
    always check what you sent.
 

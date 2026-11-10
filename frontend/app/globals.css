@@ -50,6 +50,12 @@
   --color-secondary-container: var(--secondary-container);
   --color-on-secondary-container: var(--on-secondary-container);
   --color-secondary-container-hover: var(--secondary-container-hover);
+  /* The signal: one marigold fill that means "this is your move". A fill
+     with dark text only, never a text, icon, border or chart colour. */
+  --color-signal: var(--signal);
+  --color-on-signal: var(--on-signal);
+  --color-signal-hover: var(--signal-hover);
+  --color-signal-outline: var(--signal-outline);
   --color-canvas: var(--canvas);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
@@ -188,25 +194,36 @@
   --card-foreground: oklch(0.145 0 0);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.145 0 0);
-  /* Google-blue primary at M3 tone 40, the light-theme primary Material
-     derives from a blue source. It was oklch(0.55), a tone lighter, and blue
-     text failed WCAG AA (3.8-4.3:1) on its own tints across 25+ controls.
+  /* Primary is ink: links, the tab underline, bars, checked controls and
+     icon tints. It stays a text role (an ink link is told apart by its
+     underline, not its colour). Blue lives only in the chart palette.
      Pinned by backend/tests/test_frontend_color_roles.py. */
-  --primary: oklch(0.48 0.17 259);
+  --primary: oklch(0.205 0 0);
   --primary-foreground: oklch(0.985 0 0);
-  /* M3 colour roles from the same hue (a static scheme: no wallpaper source
-     on a desktop app). FAB = primary container; tonal buttons and the nav
-     active indicator = secondary container. Hover is M3's 8% state layer of
-     the on-colour, mixed once here so call sites never pick an opacity.
-     Declared once: next-themes puts .dark on <html>, the element :root
-     matches, so these color-mix()es resolve against .dark's container
-     values. (A .dark SUBTREE would inherit the light mix already resolved.) */
-  --primary-container: oklch(0.91 0.043 259);
-  --on-primary-container: oklch(0.33 0.12 259);
+  /* Container roles (a static scheme: no wallpaper source on a desktop
+     app). Primary container is the "info" status tint (Applied, Proposed,
+     the FAB) and keeps a trace of slate so it stays apart from a neutral
+     chip; secondary container (tonal buttons, the current nav row, a
+     selected chip) is pure neutral, one step under the surface ladder.
+     Hover is M3's 8% state layer of the on-colour, mixed once here so call
+     sites never pick an opacity. Declared once: next-themes puts .dark on
+     <html>, the element :root matches, so these color-mix()es resolve
+     against .dark's container values. (A .dark SUBTREE would inherit the
+     light mix already resolved.) */
+  --primary-container: oklch(0.9 0.014 259);
+  --on-primary-container: oklch(0.3 0.03 259);
   --primary-container-hover: color-mix(in oklab, var(--primary-container), var(--on-primary-container) 8%);
-  --secondary-container: oklch(0.925 0.022 259);
-  --on-secondary-container: oklch(0.33 0.05 259);
+  --secondary-container: oklch(0.89 0 0);
+  --on-secondary-container: oklch(0.2 0 0);
   --secondary-container-hover: color-mix(in oklab, var(--secondary-container), var(--on-secondary-container) 8%);
+  /* The signal (marigold), the one colour that means "your move": the
+     filled button, the needs-you count, the job page's current step. On a
+     light surface it carries a 1px signal-outline edge (marigold on white is
+     1.7:1). The same fill in both schemes. */
+  --signal: oklch(0.828 0.166 79.4);
+  --on-signal: oklch(0.19 0.039 92.2);
+  --signal-hover: oklch(0.792 0.165 77.5);
+  --signal-outline: oklch(0.717 0.151 75.7);
   /* Neutral canvas behind the rendered page in studio previews. */
   --canvas: oklch(0.915 0 0);
   /* Recessed tonal step. These were 0.97 — indistinguishable from a 0.976 page,
@@ -222,8 +239,8 @@
   --destructive: oklch(0.49 0.185 27.3);
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
-  /* Solid ring is at least 3:1 on --canvas. 0.65 was 2.52:1 there. */
-  --ring: oklch(0.57 0.11 259);
+  /* Solid ring is at least 3:1 on --canvas and the other surfaces. */
+  --ring: oklch(0.4 0 0);
   /* Categorical chart palette, fixed assignment order: blue, orange, teal,
      violet, ochre, slate. OKLCH like every other token, near one lightness
      and calmer chroma, and no red or green series, so a chart never reads as
@@ -243,7 +260,7 @@
      so a column of status chips reads as one family. They
      replace the hand-paired palette classes (bg-amber-500/10 text-amber-800
      dark:...), which needed a dark twin at every call site. "Info" has no
-     pair of its own: it is the primary container. Every pair and every role
+     pair of its own: it is the slate primary container. Every pair and every role
      on every surface below is pinned at 4.5:1 by
      backend/tests/test_frontend_design_tokens.py. */
   --success: oklch(0.48 0.1 163);
@@ -289,9 +306,8 @@
   --sidebar-accent: oklch(0.97 0 0);
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
-  /* Was neutral grey against the blue --ring the rest of the app uses, so a
-     keyboard user tabbing from the page into the sidebar watched the focus
-     indicator change hue. One ring colour. */
+  /* The sidebar takes the app's one ring colour, so a keyboard user tabbing
+     from the page into the sidebar sees the same focus indicator. */
   --sidebar-ring: var(--ring);
 }
 
@@ -302,13 +318,18 @@
   --card-foreground: oklch(0.985 0 0);
   --popover: oklch(0.205 0 0);
   --popover-foreground: oklch(0.985 0 0);
-  /* Lighter tonal blue on dark, per Material dark-theme guidance. */
-  --primary: oklch(0.76 0.11 259);
-  --primary-foreground: oklch(0.205 0.05 259);
-  --primary-container: oklch(0.37 0.09 259);
-  --on-primary-container: oklch(0.92 0.038 259);
-  --secondary-container: oklch(0.33 0.03 259);
-  --on-secondary-container: oklch(0.91 0.02 259);
+  /* Ink on dark is near-white. */
+  --primary: oklch(0.92 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --primary-container: oklch(0.33 0.014 259);
+  --on-primary-container: oklch(0.92 0.01 259);
+  --secondary-container: oklch(0.34 0 0);
+  --on-secondary-container: oklch(0.93 0 0);
+  /* The signal keeps its fill on dark; only the hover and the edge lift. */
+  --signal: oklch(0.828 0.166 79.4);
+  --on-signal: oklch(0.19 0.039 92.2);
+  --signal-hover: oklch(0.856 0.156 84.4);
+  --signal-outline: oklch(0.856 0.156 84.4);
   --canvas: oklch(0.115 0 0);
   --secondary: oklch(0.269 0 0);
   --secondary-foreground: oklch(0.985 0 0);
@@ -320,7 +341,7 @@
   --destructive: oklch(0.838 0.089 26.76);
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.62 0.09 259);
+  --ring: oklch(0.8 0 0);
   /* Chart series on dark: the same hues and chroma at lightness 0.72
      (the slate at 0.68), 3:1 or more on the dark --card. */
   --chart-1: oklch(0.66 0.14 259);
@@ -360,8 +381,8 @@
   --on-resume-container-c: 0.4;
   --sidebar: oklch(0.205 0 0);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.92 0 0);
+  --sidebar-primary-foreground: oklch(0.205 0 0);
   --sidebar-accent: oklch(0.269 0 0);
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);

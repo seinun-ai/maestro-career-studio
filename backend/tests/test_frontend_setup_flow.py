@@ -148,6 +148,40 @@ def test_skip_for_now_and_back_on_every_step():
     assert "onBack: step > 0 ? () => go(step - 1) : undefined" in flow
 
 
+def test_the_ai_model_steps_main_button_saves_and_checks_the_key():
+    """A pasted key followed by the main button is saved, never lost: Save and continue saves what was typed, runs
+    the same check Test ran, and moves on only once it passes. Skip for now still saves nothing."""
+    flow = _read("components/setup/setup-flow.tsx")
+    model = _read("components/setup/setup-model-step.tsx")
+    assert 'label: "Save and continue"' in flow
+    assert "if (await (modelSave.current?.() ?? Promise.resolve(true))) go(step + 1);" in flow
+    assert "saveRef={modelSave}" in flow
+    # Skip moves on without calling the save.
+    assert "onSkip={() => go(step + 1)}" in flow
+    # The step's save: nothing typed with a key or server already set moves on, unless the last check failed or
+    # was refused (lib/setup-flow.ts `movesOnUnchecked`, node-tested); anything else is saved and checked.
+    assert "saveRef.current = saveAndCheck;" in model
+    assert "if (movesOnUnchecked(untouched, anySet, last)) return Promise.resolve(true);" in model
+    assert "return test();" in model
+    assert "return passed;" in model
+
+
+def test_a_refused_key_is_removed_again_and_a_check_that_could_not_run_keeps_it():
+    """The probe checks only the saved key, so a pasted key the provider refuses is taken out again, and the words
+    say what that left (lib/setup-flow.ts `refusedWords`, never Settings). A check that could not run keeps the key
+    and says it was saved but not checked."""
+    model = _read("components/setup/setup-model-step.tsx")
+    refused = model.index('if (verdict === "refused" && provider) {')
+    removed = model.index('await saveModels({ [`${provider}_api_key`]: "" })')
+    assert refused < removed < model.index("refusedWords(card.name, Boolean(key), info[flag] === true,")
+    assert "Check it in Settings" not in model and "keyProblemIn" not in model
+    for present in ("REFUSED_KEY.test(e)", 'if (saved) setLast("unchecked");', "setLast(verdict);",
+                    "couldn't be reached to check it. Press Save and continue to go on without the check."):
+        assert present in model, present
+    # No separate Test button on the step.
+    assert "<Button" not in model and ">\n            Test\n" not in model
+
+
 def test_provider_cards_name_providers_in_text_and_hold_no_image():
     src = _setup_src()
     assert "<img" not in src and "next/image" not in src

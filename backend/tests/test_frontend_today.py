@@ -26,6 +26,7 @@ _HOME = _read("app/page.tsx")
 _PAGE = _read("app/today/page.tsx")
 _LIB = _read("lib/today.ts")
 _SETUP = _read("components/setup/setup-entry-card.tsx")
+_FIRST_JOB = _read("components/today/first-job-card.tsx")
 _SIDEBAR = _read("components/app-sidebar.tsx")
 
 
@@ -131,6 +132,23 @@ def test_next_up_is_one_lead_card_with_one_action():
     assert _SETUP.count("<LeadCard") == 1
     assert open_tag(_SETUP, "LeadCard").count("action=") == 1
     assert "<Button" not in _SETUP
+    # So does Add your first job, with no job saved: one button, to Add job.
+    assert _FIRST_JOB.count("<LeadCard") == 1
+    assert 'action={{ label: "Add job", href: "/new" }}' in _FIRST_JOB
+    assert "<Button" not in _FIRST_JOB
+
+
+def test_a_new_user_is_led_to_a_first_job_then_to_its_next_step():
+    """With nothing more pressing and no job saved, the lead is Add your first job; with a saved job not
+    applied to and no ready PDF, Next up is its next step (services/today.py `next_step`, last in the order),
+    and Setup's required steps come before it. This week waits for a first application."""
+    lead = _PAGE[_PAGE.index('<div ref={lead} tabIndex={-1} className="outline-none">') :]
+    assert lead.index('data.next_up && data.next_up.kind !== "next_step"') < lead.index("<SetupEntryCard")
+    assert lead.index("<SetupEntryCard") < lead.index(") : data.next_up ? (") < lead.index("<FirstJobCard />")
+    assert lead.index("!data.has_jobs ? (") < lead.index("Nothing waiting on you")
+    assert "{data.week.applied_all_time > 0 ? <ThisWeek week={data.week} /> : null}" in _PAGE
+    for words in ('"Score my resumes"', '"Analyze gaps"', '"Continue gap analysis"', '"Create PDF"'):
+        assert words in _LIB, words
 
 
 def test_skip_writes_skipped_with_undo_and_an_agents_job_takes_the_job_pages_skip():

@@ -523,9 +523,6 @@ def test_errors_and_setup_speak_plainly():
         "`PDF creation is ready, but your TeX needs an update: ${pdflatex.warning}.`",
     ):
         assert words in pdf_output, words
-    card = _read("components/setup/getting-started-card.tsx")
-    # A PDF step with nothing to do is not a step; a TeX that needs an update is.
-    assert '!(row.id === "engines" && row.done && pdflatex.available && !pdflatex.warning)' in card
     # Profile's setup strip went with the tabs (design refresh Task 7.2): its header says how many sections
     # are ready, in words beside the ring, and Setup and Today's setup card carry the steps.
     header = _flat(_read("components/profile/profile-header.tsx"))

@@ -14,9 +14,11 @@
 <!-- The static test-count badge is refreshed from the release checklist in
      docs/RELEASING.md; edit it there, not here. -->
 
-# Stop rewriting your resume for every job.
+# Give your job search a memory.
 
-Maestro tailors it from your whole career history in under a minute, and every bullet is something you actually did, so you can defend it in an interview. Then the Companion fills in the application. You press Submit.
+**Automate everything between your career and the Submit button. You stay in the loop.** Career history, templates, tailored resumes, autofill and your own automations, in one studio.
+
+Maestro tailors your resume from your whole career history in under a minute, and every bullet is something you actually did, so you can defend it in an interview. Then the Companion fills in the application. You press Submit.
 
 <!-- hero.gif: career-history animation, approved by the owner 2026-10-12 for the
      launch. All data is the fictional Jordan Ellis persona (example.com email,
@@ -39,6 +41,8 @@ Maestro tailors it from your whole career history in under a minute, and every b
 ## Start here
 
 <a id="quickstart"></a>
+
+Start with one resume. Grow into the whole studio.
 
 **1. Paste this in a terminal and press Enter.**
 

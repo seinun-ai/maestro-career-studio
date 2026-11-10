@@ -85,9 +85,8 @@ function autofillTarget(autofill: SetupStatus["autofill"]): string | null {
 /**
  * The single source of truth for the setup steps.
  *
- * Both the compact pill strip and the expanded getting-started card render from
- * this. Neither owns a step list — that is exactly how the two drifted apart,
- * leaving the strip as a degraded copy of the card.
+ * Today's Setup card and Setup's resume step read from this; neither owns a
+ * step list, so the two cannot drift apart.
  *
  * `action` resolves against the CURRENT route: a step whose answer already
  * lives on the page you are on focuses in place instead of navigating, because

@@ -150,6 +150,19 @@ function SetupScreens({ data }: { data: SetupData }) {
   const moved = useRef(false);
   // A Continue pressed on citizenship while its save was on its way: it moves on once that save lands.
   const [continuing, setContinuing] = useState(false);
+  // The AI model step's Save and continue: the step saves and checks what was typed, and the flow moves on
+  // only once that passes (setup-model-step.tsx sets `modelSave`). Skip for now saves nothing.
+  const modelSave = useRef<(() => Promise<boolean>) | null>(null);
+  const [savingModel, setSavingModel] = useState(false);
+  const saveModel = async () => {
+    if (savingModel) return;
+    setSavingModel(true);
+    try {
+      if (await (modelSave.current?.() ?? Promise.resolve(true))) go(step + 1);
+    } finally {
+      setSavingModel(false);
+    }
+  };
 
   const go = (next: number) => {
     moved.current = true;
@@ -197,7 +210,14 @@ function SetupScreens({ data }: { data: SetupData }) {
           },
           waiting: onCitizenship && answers.pending ? "Saving your citizenship…" : undefined,
         }
-      : { onBack: step > 0 ? () => go(step - 1) : undefined, onContinue: () => go(step + 1) };
+      : SETUP_STEPS[step]?.id === "model"
+        ? {
+            onBack: step > 0 ? () => go(step - 1) : undefined,
+            onContinue: () => void saveModel(),
+            label: "Save and continue",
+            pending: savingModel,
+          }
+        : { onBack: step > 0 ? () => go(step - 1) : undefined, onContinue: () => go(step + 1) };
 
   return (
     <div className="grid items-start gap-10 md:grid-cols-[15rem_minmax(0,1fr)]">
@@ -216,6 +236,7 @@ function SetupScreens({ data }: { data: SetupData }) {
           diversity={diversity}
           onDiversity={setDiversity}
           go={go}
+          modelSave={modelSave}
         />
         {step < SETUP_STEPS.length ? <StepNav {...nav} onSkip={() => go(step + 1)} /> : null}
       </div>
@@ -236,6 +257,7 @@ function StepBody({
   diversity,
   onDiversity,
   go,
+  modelSave,
 }: {
   step: number;
   data: SetupData;
@@ -249,10 +271,11 @@ function StepBody({
   diversity: DiversityChoice;
   onDiversity: (choice: DiversityChoice) => void;
   go: (step: number) => void;
+  modelSave: RefObject<(() => Promise<boolean>) | null>;
 }) {
   switch (SETUP_STEPS[step]?.id) {
     case "model":
-      return <SetupModelStep info={data.info} headingRef={headingRef} />;
+      return <SetupModelStep info={data.info} headingRef={headingRef} saveRef={modelSave} />;
     case "resume":
       return <SetupResumeStep status={data.status} headingRef={headingRef} />;
     case "where":
@@ -358,17 +381,22 @@ function StepMark({ index, done, current }: { index: number; done: boolean; curr
 }
 
 /** Under every step: Back (none on the first), Skip for now, and Continue, the view's one filled button, which
- *  waits while a save it must follow is on its way, saying why beside it (`waiting`, its words). */
+ *  waits while a save it must follow is on its way, saying why beside it (`waiting`, its words). On the AI model
+ *  step it reads Save and continue (`label`) and shows its check running (`pending`). */
 function StepNav({
   onBack,
   onSkip,
   onContinue,
   waiting,
+  label = "Continue",
+  pending = false,
 }: {
   onBack?: () => void;
   onSkip: () => void;
   onContinue: () => void;
   waiting?: string;
+  label?: string;
+  pending?: boolean;
 }) {
   const waitingId = useId();
   return (
@@ -391,11 +419,12 @@ function StepNav({
         type="button"
         size="lg"
         disabled={Boolean(waiting)}
+        pending={pending}
         focusableWhenDisabled
         aria-describedby={waiting ? waitingId : undefined}
         onClick={onContinue}
       >
-        Continue
+        {label}
       </Button>
     </div>
   );

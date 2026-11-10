@@ -1,13 +1,14 @@
 "use client";
 
 import { type ReactNode, useId, useLayoutEffect, useRef, useState } from "react";
-import { Check, ExternalLink, MessageSquareText } from "lucide-react";
+import { Check, ExternalLink, MessageSquareText, Puzzle } from "lucide-react";
 
 import { QASections } from "@/components/qa-tab";
 import { TailoredResumeThumb } from "@/components/tailored-resume-thumb";
 import { Button } from "@/components/ui/button";
 import { LeadCard, type LeadAction } from "@/components/ui/lead-card";
 import { DeltaChip } from "@/components/visual";
+import { COMPANION_STORE_URL } from "@/lib/agent-links";
 import { CONCEPT_ICONS } from "@/lib/concept-icons";
 import { focusIfDropped, focusTarget } from "@/lib/focus";
 import { ownershipControlProps } from "@/lib/job-ownership";
@@ -62,9 +63,10 @@ function ApplyRow({
  * Step 4, Apply, as the page's lead card: the job's resume (its page, its band and its square), its Match score with
  * the gain over its base resume, where it stands, then the view's one filled button, Open the job post (a new tab on
  * the apply link, else the source link; without either, Mark applied is the filled one), Mark applied (outline, only
- * while a draft) and two rows that open the cover letter and the application questions. History follows the card.
- * No PDF line: step 3 holds the PDF. No button hands the form to the Companion: the web app cannot tell whether the
- * Companion is paired. What was submitted and the application's details are the page's folds.
+ * while a draft) and two rows that open the cover letter and the application questions; while a draft, a third row
+ * names the Companion, with its Chrome Web Store link. The web app cannot tell whether the Companion is installed or
+ * paired (no API holds that), so the link always shows and no button hands the form over. History follows the card.
+ * No PDF line: step 3 holds the PDF. What was submitted and the application's details are the page's folds.
  */
 export function ApplyStep({
   app,
@@ -181,6 +183,20 @@ export function ApplyStep({
                     >
                       {questions}
                     </ApplyRow>
+                    {isDraft ? (
+                      <div className="flex items-center gap-3 border-b py-3.5 last:border-b-0">
+                        <Puzzle aria-hidden="true" className="size-4 shrink-0" />
+                        <h2 className="min-w-0 flex-1 text-title-small">Fill the form with the Companion</h2>
+                        <a
+                          href={COMPANION_STORE_URL}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-corner-xs text-body-medium underline underline-offset-2 outline-none focus-visible:ring-3 focus-visible:ring-ring"
+                        >
+                          Add to Chrome
+                        </a>
+                      </div>
+                    ) : null}
                   </div>
                 </>
               }

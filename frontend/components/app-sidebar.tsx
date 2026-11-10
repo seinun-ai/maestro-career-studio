@@ -53,11 +53,16 @@ const ACCOUNT_ITEMS: NavItem[] = [
   { href: "/settings", label: "Settings", icon: CONCEPT_ICONS.settings },
 ];
 
-// The Needs-you count wears the Needs you chip's orange (status-chip.tsx).
-// The attention role's container pair, the same as the Needs you chip. It is
-// a solid fill, so it holds 4.5:1 on all four row states
-// (test_frontend_color_roles.py).
-const NEEDS_YOU_BADGE = "bg-attention-container text-on-attention-container";
+// The Needs-you count is the signal (marigold), the app's one "your move"
+// colour, with its 1px edge on the light sidebar. It is a solid fill, so it
+// holds 4.5:1 on all four row states (test_frontend_color_roles.py). The Needs
+// you status chip keeps the attention role (status-chip.tsx).
+const NEEDS_YOU_BADGE = "border border-signal-outline bg-signal text-on-signal";
+
+// Add job while on /new: the current menu row's neutral look (ui/sidebar.tsx's data-active classes), so
+// the page's Save job stays its one filled button.
+const FAB_CURRENT =
+  "bg-secondary-container font-semibold text-on-secondary-container hover:bg-secondary-container-hover [&_svg]:text-primary";
 
 export function AppSidebar() {
   const pathname = usePathname();
@@ -117,10 +122,12 @@ function MainNav({ pathname, from }: { pathname: string; from: string | null | u
           href="/new"
           aria-current={fabCurrent}
           className={cn(
-            // Current: the full-strength role, M3's selected state for a
-            // container-coloured control; the container fill is ~1.05:1 from
-            // the active row. Geometry stays the extended FAB either way.
-            buttonVariants({ variant: fabCurrent ? "default" : "fab", size: "lg" }),
+            // Current: the neutral fill every current menu row has, never a
+            // solid one beside /new's own Save job. Not the `default`
+            // variant: that is the signal. Geometry stays the extended FAB
+            // either way.
+            buttonVariants({ variant: "fab", size: "lg" }),
+            fabCurrent && FAB_CURRENT,
             "h-10 gap-2.5 rounded-corner-lg px-4",
           )}
         >

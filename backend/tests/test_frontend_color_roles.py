@@ -168,12 +168,78 @@ def test_primary_text_on_primary_tints_meets_aa(mode):
             )
 
 
-def test_light_primary_is_m3_tone_40():
-    lightness, _, _ = LIGHT["primary"]
-    assert lightness <= 0.49, (
-        "light --primary is M3 tone 40 (about oklch 0.48); any lighter and blue "
-        "text fails AA on its own tints again"
-    )
+def test_primary_is_ink_in_both_modes():
+    """Primary is ink, not a brand blue (the app refresh's D1): neutral in both
+    modes, dark on light and near-white on dark, so a link reads as text and is
+    told apart by its underline. Blue lives only in the chart palette."""
+    light_l, light_c, _ = LIGHT["primary"]
+    dark_l, dark_c, _ = DARK["primary"]
+    assert light_c == 0 and dark_c == 0, "--primary is a neutral ink, never a hue"
+    assert light_l <= 0.25, "light --primary is ink (about oklch 0.205)"
+    assert dark_l >= 0.85, "dark --primary is near-white ink (about oklch 0.92)"
+    assert LIGHT["ring"][1] == 0 and DARK["ring"][1] == 0, "the focus ring is neutral too"
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_the_containers_are_quiet_and_stay_apart(mode):
+    """D2: secondary container (tonal, the current nav row, a selected chip) is
+    pure neutral; primary container (the "info" tint) keeps a trace of slate. A
+    selected chip must not match an unselected one, nor info a neutral chip."""
+    t = _MODES[mode]
+    assert t["secondary-container"][1] == 0 and t["on-secondary-container"][1] == 0
+    assert 0 < t["primary-container"][1] <= 0.03, "info keeps a trace of slate, no more"
+    for neutral in ("background", "card", "muted", "surface-container-high", "surface-container-highest"):
+        assert t["secondary-container"] != t[neutral], (mode, neutral)
+    assert t["primary-container"] != t["secondary-container"]
+
+
+# The signal (marigold): one fill that means "this is your move" (D3, D4).
+_SIGNAL_ROLES = ("signal", "on-signal", "signal-hover", "signal-outline")
+
+
+@pytest.mark.parametrize("mode", list(_MODES))
+def test_on_signal_meets_aa_on_the_signal_at_rest_and_on_hover(mode):
+    t = _MODES[mode]
+    for fill in ("signal", "signal-hover"):
+        ratio = _contrast(_rgb(t, "on-signal"), _rgb(t, fill))
+        assert ratio >= 4.5, f"{mode}: --on-signal on --{fill} is {ratio:.2f}:1"
+
+
+def test_theme_exposes_the_signal_roles():
+    for role in _SIGNAL_ROLES:
+        assert f"--color-{role}: var(--{role});" in _CSS
+        assert role in LIGHT and role in DARK, role
+
+
+def test_the_default_button_is_the_signal_with_its_edge():
+    default = _variant(_BUTTON, "default", "button.tsx")
+    assert {"bg-signal", "text-on-signal", "hover:bg-signal-hover", "border-signal-outline"} <= set(default.split())
+    assert "bg-primary" not in default
+
+
+def test_the_link_variants_are_underlined_at_rest():
+    for where, source in (("button.tsx", _BUTTON), ("badge.tsx", _BADGE)):
+        link = _variant(source, "link", where).split()
+        assert "underline" in link and "text-primary" in link, (where, link)
+
+
+_TEXT_SIGNAL = re.compile(r"(?<![\w-])(?:[\w-]+:)*text-signal\b")
+
+
+def test_the_signal_is_never_a_text_colour():
+    """The signal is a fill with dark text, never a text colour: marigold on a
+    light surface is 1.7:1. No `text-signal` class anywhere in the app or the
+    Companion (`text-on-signal` is the text that sits on it)."""
+    root = _FRONTEND.parent
+    offenders = [
+        f"{path.relative_to(root)}:{n}"
+        for base in (_FRONTEND / "app", _FRONTEND / "components", _FRONTEND / "lib", root / "extension")
+        for path in base.rglob("*")
+        if path.suffix in {".tsx", ".ts", ".mjs", ".js", ".css", ".html"} and "node_modules" not in path.parts
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if _TEXT_SIGNAL.search(line)
+    ]
+    assert offenders == [], offenders
 
 
 def test_primary_text_tints_stay_under_the_ceiling():
@@ -351,7 +417,7 @@ def test_segmented_controls_and_entity_cards_expose_pressed():
 # `bg-primary/N` and `bg-background/N` as a component fill is retired (design-system README, Color):
 # a faded fill is not a role, so its text partner has no contrast guarantee. The exceptions, each with
 # the exact number of matches it may hold: a bar that floats over scrolling content, a pill over an
-# image, the hover tint on a solid primary fill (Button, Badge), and the editor's resize handle on a
+# image, the hover tint on a solid primary fill (Badge), and the editor's resize handle on a
 # transparent fill. A new match anywhere else, or one more in these files, fails.
 _OVERLAY_FILES = {
     "app/jobs/[id]/tailor/[sessionId]/page.tsx": ("sticky footer", 1),
@@ -361,7 +427,7 @@ _OVERLAY_FILES = {
     "components/sidebar-reveal-trigger.tsx": ("floating trigger", 1),
     "components/gallery/preview-thumbnail.tsx": ("two pills over the page image", 2),
     "components/templates/template-gallery.tsx": ("the selected pill over the preview image", 1),
-    "components/ui/button.tsx": ("hover on the solid primary, and a comment", 2),
+    "components/ui/button.tsx": ("a comment naming the retired tonal fill", 1),
     "components/ui/badge.tsx": ("hover on the solid primary", 1),
     "components/resume-editor/editor-shell.tsx": ("the resize handle's hover and focus tint", 2),
 }
@@ -427,7 +493,8 @@ def test_the_steps_inside_a_resting_card_climb_one_each():
     assert 'variant="outline" className="bg-card"' in _read("components/resume-versions/version-diff-view.tsx")
 
 
-_RING_SURFACES = ("background", "card", "sidebar", "canvas", "muted", "secondary-container")
+# primary-container (the FAB, info chips) joined once the ring went neutral: the old blue dark ring read 2.88:1 on it.
+_RING_SURFACES = ("background", "card", "sidebar", "canvas", "muted", "secondary-container", "primary-container")
 
 
 @pytest.mark.parametrize("mode", list(_MODES))
@@ -900,15 +967,16 @@ def _text_on_tint_ratio(mode, classes, under):
     return _contrast(_chip_colour(mode, text[0]), fill)
 
 
-_SIDEBAR_BADGE = "bg-attention-container text-on-attention-container"
+_SIDEBAR_BADGE = "border border-signal-outline bg-signal text-on-signal"
 
 
 @pytest.mark.parametrize("mode", list(_MODES))
 def test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state(mode):
-    """The Agent inbox count sits on the sidebar at rest, on a hovered row
-    (--sidebar-accent), on the current row (secondary container) and on the
-    current row under the pointer (its hover mix). The pair is a solid fill;
-    a tint let the row show through, and one dark shade read 3.88:1 there."""
+    """The needs-you count is the signal (D4): a solid fill with its edge, so it
+    reads the same on the sidebar at rest, on a hovered row (--sidebar-accent),
+    on the current row (secondary container) and on the current row under the
+    pointer (its hover mix). A tint let the row show through, and one dark shade
+    read 3.88:1 there. The fill itself stays apart from every row state."""
     assert f'const NEEDS_YOU_BADGE = "{_SIDEBAR_BADGE}";' in _read("components/app-sidebar.tsx")
     t = _MODES[mode]
     mix = _HOVER_MIX["secondary-container"]
@@ -918,9 +986,11 @@ def test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state(mode):
         "secondary-container": _rgb(t, "secondary-container"),
         "secondary-container-hover": _hover(t, "secondary-container", "on-secondary-container", mix[2]),
     }
+    text, fill = _rgb(t, "on-signal"), _rgb(t, "signal")
     for name, under in surfaces.items():
-        ratio = _text_on_tint_ratio(mode, _SIDEBAR_BADGE, under)
+        ratio = _contrast(text, fill)
         assert ratio >= 4.5, f"{mode}: needs-you badge on {name} is {ratio:.2f}:1"
+        assert fill != under, f"{mode}: the badge fill matches {name}"
 
 
 def test_preferred_skills_are_tonal():
@@ -929,7 +999,7 @@ def test_preferred_skills_are_tonal():
 
 
 def test_a_done_setup_step_says_done_in_words():
-    src = (_FRONTEND / "components/setup/getting-started-card.tsx").read_text()
+    src = (_FRONTEND / "components/setup/setup-entry-card.tsx").read_text()
     assert ">Done<" in src
 
 

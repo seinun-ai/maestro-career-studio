@@ -14,18 +14,36 @@
 
 
 - Next.js 16 App Router, React 19, Tailwind v4 tokens in `app/globals.css`
-  (oklch; Google-blue primary `oklch(0.48 0.17 259)` light (M3 tone 40) /
-  `oklch(0.76 0.11 259)` dark; light focus ring `oklch(0.57 0.11 259)`, dark
-  `oklch(0.62 0.09 259)`, so the solid ring is at least 3:1 on `--canvas`;
+  (oklch; the app is neutral greys and ink with one marigold signal: ink primary
+  `oklch(0.205 0 0)` light / `oklch(0.92 0 0)` dark; neutral focus ring
+  `oklch(0.4 0 0)` light, `oklch(0.8 0 0)` dark, so the solid ring is at least
+  3:1 on every surface it lands on; blue is a chart colour only (`--chart-1`);
   the base-layer browser outline is that solid ring; motion utilities
   `animate-fade-rise`, `animate-shimmer`, `animate-confirm`, `animate-check-draw`, `.working-dot`, `collapse-exit` with `[data-leaving]`, `[data-pending]`; `hooks/use-count-up.ts` counts a number to its new value).
-- **Colour roles are M3's, pinned for contrast.** `globals.css` derives primary
-  and secondary container pairs (`--primary-container`/`--on-primary-container`
-  and the secondary twins) from the primary's hue, each with a `-hover` token
-  (M3's 8% state layer, mixed once so no call site picks an opacity), plus
-  `--canvas`, the neutral behind rendered pages. The `fab` Button variant is
+- **Colour roles are M3's, pinned for contrast.** `--primary` is ink: links,
+  the tab underline, progress and score bars, checked controls, badges and icon
+  tints. The container pairs (`--primary-container`/`--on-primary-container`
+  and the secondary twins) each have a `-hover` token (M3's 8% state layer,
+  mixed once so no call site picks an opacity), plus `--canvas`, the neutral
+  behind rendered pages. Secondary container is pure neutral, one step under
+  the surface ladder so a selected chip never matches an unselected one; primary
+  container keeps a trace of slate (`oklch(0.9 0.014 259)` light) so "info"
+  stays apart from a neutral chip. The `fab` Button variant is
   primary container; the `tonal` Button and Badge, the sidebar's active row and
-  a selected zoom preset are secondary container. The hover mixes live once in
+  a selected zoom preset are secondary container. **The signal** (`--signal`,
+  marigold `oklch(0.828 0.166 79.4)` in both modes, with `--on-signal`,
+  `--signal-hover` and `--signal-outline`) means "this is your move" and appears
+  in exactly three places: the `default` Button (`bg-signal text-on-signal
+  hover:bg-signal-hover` with a `border-signal-outline` edge), the needs-you
+  count in the sidebar, and the current step's mark on the job page's four
+  steps. It is a fill with dark text, never a text colour, an icon colour on a
+  light surface, a border on its own or a chart colour, and a signal fill on a
+  light surface carries the 1px `signal-outline` edge (marigold on white is
+  1.7:1). The one-filled-button rule (`test_frontend_one_filled_button.py`) is
+  what keeps it rare; anything else that was a solid `bg-primary` fill is ink.
+  `test_frontend_color_roles.py` pins `on-signal` at 4.5:1 on `signal` and
+  `signal-hover` in both modes, the `default` variant's classes, and that no
+  `text-signal` class exists in `frontend/` or `extension/`. The hover mixes live once in
   `:root` and follow dark mode only because `.dark` sits on `<html>`; a `.dark`
   subtree would keep the light mix. `test_frontend_color_roles.py` computes
   WCAG contrast from the CSS (every pair ≥ 4.5:1 at rest and on hover) and
@@ -36,6 +54,11 @@
   (light `oklch(0.49 0.185 27.3)`, dark tone 80 `oklch(0.838 0.089 26.76)`),
   and `text-destructive` on its tints is pinned at 4.5:1. `--muted-foreground`
   on `--background` and `--card` is pinned at 4.5:1 in both modes.
+  **A link is underlined ink.** Ink reads like body text, so clickable
+  `text-primary` text carries `underline underline-offset-2` (the `link`
+  Button and Badge variants are underlined at rest), unless it already has a
+  chevron or icon affordance or sits in a button shape; an icon tint, an
+  eyebrow or a selected mark in `text-primary` is not a link and takes none.
   **A link's colour is a role** (`text-primary`), never a raw palette shade:
   the referral careers URL's `text-blue-600` had no dark variant and read
   3.77:1 on the dark page. `test_underlined_links_take_a_colour_role` refuses a
@@ -75,7 +98,7 @@
   selectable card's focus ring is the only thing OUTSIDE it (2px off, on the
   surface); its selection is an edge INSIDE the card (an `::after` overlay
   above the preview) plus a Check. `--card` equals `--popover`, so an outside
-  selection ring and the offset focus ring merged into one 4px blue band
+  selection ring and the offset focus ring merged into one 4px band
   (ring against primary is 1.49:1 light, 1.70:1 dark). **Current in a list or nav**
   (a sidebar row, the open chat) is secondary container, semibold, and
   `aria-current`, with no Check. The one exception is the health check's
@@ -94,10 +117,10 @@
   and `migration.md` maps every old class to its token). New code takes a
   token, never a raw value.
   **Status** is a role with a container pair, cut at M3's tones from the hue
-  the app already used, with chroma held near the primary container's: `success` (accepted, passed, added text), `warning`
+  the app already used, with chroma held in one family: `success` (accepted, passed, added text), `warning`
   (interviewing, a caution), `attention` (Needs you), `tertiary` (an offer,
-  an Ask), the `error-container` pair beside `--destructive`, and the primary
-  container for information (Applied, Proposed). A chip is
+  an Ask), the `error-container` pair beside `--destructive`, and the slate
+  primary container for information (Applied, Proposed). A chip is
   `bg-success-container text-on-success-container`; text or a dot on a
   surface is `text-success` / `bg-success`. The hand-paired palette classes
   (`bg-amber-500/10 text-amber-800 dark:…`) needed a dark twin at every call
@@ -171,8 +194,8 @@
   mode. `test_frontend_color_roles.py` pins all three by scanning every `.tsx`
   under `app/` and `components/`. `--ring` is pinned at
   3:1 on the page, card, sidebar, canvas, muted and secondary-container
-  surfaces; `--primary-container` (the FAB) is not in that set, because the
-  dark ring measures 2.88:1 on it (SYSTEM.md §11 item 28). `outline-none`
+  surfaces, and on `--primary-container` (the FAB and info chips), which joined
+  the set once the ring went neutral (the old blue dark ring read 2.88:1 there). `outline-none`
   (and `outline-hidden`) sets `--tw-outline-style: none`, and `outline-2` then
   reads that variable, so the two together paint nothing. An element paints
   its own outline BEFORE its positioned and transformed descendants, so a
@@ -989,7 +1012,7 @@
   keepMounted`, New base resume, whose twelve fields and two requests live in
   the popup). A caller mounts such a dialog for the page's lifetime, never
   `{open ? <Dialog/> : null}`, with one instance per subject where there are
-  several (Getting started's suggestions, the health report's skills), and a
+  several (the health report's skills), and a
   kept-mounted form takes its ids from `useId`, since several copies share
   the page. Only a success clears the draft (a key bump or a reset in
   `onSuccess`), plus **Start over** on New base resume, shown once the draft
@@ -1101,8 +1124,9 @@
   `rounded-full`, so hover and the current row share one pill shape
   (`test_frontend_design_tokens.py` pins it). Above the nav groups, Add job is M3's extended FAB (`variant: "fab"`,
   `rounded-corner-lg`, 16px). On `/new` it is
-  current and renders with the `default` (primary) variant, keeping that
-  geometry; it stays `fab` on every other route. It rests flat
+  current and takes a full-strength ink fill (`FAB_CURRENT`, not the
+  `default` variant, which is the signal: /new's Save job is the one signal
+  there), keeping that geometry; it stays `fab` on every other route. It rests flat
   and hover raises it one level: a resting shadow read as permanently hovered.
   It is the one Add job per screen, so the Jobs header renders
   its own button only while `useSidebarHidden()` holds (collapsed, or the sheet
@@ -1145,7 +1169,8 @@
   is `aria-hidden` and the link's `aria-label` reads "Today, N need you"
   (an sr-only span, out of flow, made Chrome's name "Agent inbox , N…"); it
   polls every 60 s (a connected agent changes proposals outside the tab), and
-  its `attention` pair is measured on all four row states
+  it is the signal (`bg-signal text-on-signal` with its `border-signal-outline`
+  edge), measured on all four row states
   (`test_the_needs_you_badge_meets_aa_on_every_sidebar_row_state`). A new route goes in `MAIN_ITEMS`
   or `MORE_TOOLS` in `components/app-sidebar.tsx`. Pinned by
   `test_frontend_sidebar_nav.py`, `test_frontend_today.py` and `test_frontend_first_run.py`.
@@ -1155,7 +1180,10 @@
   `lib/today.ts` holds the URL and the words (node-tested). The Lead is Next up, a `LeadCard` whose one
   button is the view's one filled button: **Apply** (a ready PDF) and **Review the offer** open the
   job's Apply step (`?tab=qa`); **Answer** (or **See what it needs** for a stopped agent) opens the
-  job from the Agent inbox (`?from=proposals`), on the agent's card. Beside it sits **Skip**
+  job from the Agent inbox (`?from=proposals`), on the agent's card. Last comes a job you saved, not
+  applied to and with no ready PDF (`next_step`, the most recently touched; none an agent proposal
+  carries), its button worded as the job page's for its rung (**Score my resumes**, **Analyze gaps**,
+  **Continue gap analysis**, **Create PDF**). Beside it sits **Skip**
   (`SkipControl`, outline, the card's `secondary`): a ready PDF's application turns Skipped and the
   toast "Job skipped" offers Undo (back to Draft); an agent's job takes the job page's Skip (the
   reason dialog, the proposal Skipped); an offer has none, since it needs an answer. Today refetches
@@ -1167,11 +1195,14 @@
   is up to three cards with `NumberRoll` counts, each a link to its list (a list that holds more than
   the count, the quiet card's Waiting to hear, is named under the words: `countWhere`); the rest is one "N more"
   `Fold` whose summary says what it holds, each row a `NextStep`; This week is seven bars
-  (`chart-1`, one `role="img"` sentence) with replies and interviews. The server leaves zero counts
-  out and the page draws only what came. With nothing next, a new user with no API key or no career
-  history (`needsSetup`) sees Setup's entry card (`components/setup/setup-entry-card.tsx`: the two
+  (`chart-1`, one `role="img"` sentence) with replies and interviews, shown from a first application
+  (`week.applied_all_time`). The server leaves zero counts out and the page draws only what came.
+  A new user with no API key or no career history (`needsSetup`) and nothing more pressing than a
+  saved job's next step sees Setup's entry card instead (`components/setup/setup-entry-card.tsx`: the two
   required steps of `setup-steps.ts`, its one button **Start setup** or **Finish setup** opening
-  `/setup`); everyone else sees "Nothing waiting on you." A brand-new install (no key AND no resume)
+  `/setup`); with nothing next and no job saved (`has_jobs` false) the lead is **Add your first job**
+  (`components/today/first-job-card.tsx`, one button to `/new`); everyone else sees "Nothing waiting
+  on you." A brand-new install (no key AND no resume)
   is sent to `/setup` once (`components/setup/use-first-run.ts`: Setup notes in this browser that it
   was opened, so a user who skips it lands on Today next time). While setup status loads the lead is a
   skeleton (never one card, then the other); a failed read of it falls through to that line. A failed
@@ -1190,9 +1221,15 @@
   model**: a new install starts on the suggested provider (OpenAI, `SUGGESTED`), its key field showing, so a
   beginner has nothing to choose; the five provider cards, named in text (no logos), wait behind **Use a
   different AI**, open on arrival for someone already on another provider or their own server, and one line
-  offers the keyless road (Settings › Agent apps). Test saves the key, tests the model it will
-  use (WorkingDots, then a chip per everyday job), and only a passed test turns the provider's
-  recommended models on, unless your own picks already run on it (`modelPlan`, said under the chips).
+  offers the keyless road (Settings › Agent apps). The step has no Test button: the nav's main button
+  reads **Save and continue** (`saveRef`), saves what was typed, checks the model it will use
+  (WorkingDots, then a chip per everyday job) and moves on only once the check passes; with nothing
+  typed and a key or server already set it moves on unchecked, unless the last check failed, and **Skip
+  for now** saves nothing. The check reads only the saved key, so a pasted key the provider refuses is
+  removed again and the words (`refusedWords`) say so and ask you to paste it again; a check that could
+  not run keeps the key, says it was saved unchecked, and the next press moves on (`checkVerdict`). Only
+  a passed check turns the provider's recommended models on, unless your own picks already run on it
+  (`modelPlan`, said under the chips).
   **Your resume**: one drop zone into the import dialog's own flow (`use-resume-import.ts`, shared with
   its resume lane), its counts only from the response (`importCounts`); with no model key a line above it
   says reading a resume needs a key or a connected agent app, linking Settings › Agent apps. **Where and what**: You live
@@ -1357,7 +1394,7 @@
   `aria-sort`. Every row is two lines (the title, then "Company · Place"), so every row is one
   height; nothing a row can gain goes inside the Role cell. Columns with fixed content are in rem
   with `px-3` (the table scrolls at 57rem); Role takes the rest. **Next step** is `NextStep` (D3), the
-  one control `lib/next-step.ts` gives the row's stage as a blue text link with a chevron (Score,
+  one control `lib/next-step.ts` gives the row's stage as an ink text link with a chevron (Score,
   Analyze gaps, Continue gaps · 2 of 5, Review resume, Apply), its click kept from opening the row; it
   is never disabled, since it only navigates and the page it opens says whose the job is. An applied
   row reads "Waiting to hear back" in grey only while its status is Applied, and a later or closed row
@@ -1388,9 +1425,11 @@
   ("72.3 → 84.0", the tailored one alone without a base score), Apply none. Where the data has no number the step
   shows none, never a made-up one. The bar is full when done, empty when later, and the current step's own share
   where the data says one (gaps closed of all, a PDF made, the job applied); with no share it is a tonal
-  `primary-container` track that claims none. The mark: done is the register's CircleCheck in `success`, the stage's
-  step a ringed dot in `primary`, a later step its number on a `surface-container` disc. The step whose panel shows
-  has its name in `primary` and `aria-current="step"`. A step is a button when it is done, current or has something
+  `primary-container` track that claims none; a filled bar is ink (`bg-primary`). The mark: done is the register's
+  CircleCheck in `success`, the stage's step the signal (a `bg-signal` disc with its `border-signal-outline` edge
+  around an `on-signal` dot), a later step its number on a `surface-container` disc. The step whose panel shows
+  has its name in `primary` with the tab's 2px underline (ink sits too close to body text to mark it alone) and
+  `aria-current="step"`. A step is a button when it is done, current or has something
   to show (`reachable`: step 3 with a draft or PDF, step 4 with an application), named "Step N: title, done" (or ",
   current step") with its number as the description; a later step with nothing to show is plain text, not focusable
   and **never disabled**: no lock, no tooltip with a reason. `?tab=` keeps the values the app has always written
@@ -1492,10 +1531,12 @@
   shown only while the status is Draft; the line under them says it sets today as the applied date and that the
   later statuses are on the chip). The page holds one guarded status starter (`useSingleFlight(patch.mutate)`)
   that the header's StatusChip and Mark applied share; once marked, focus goes to the card's first control. Under
-  the buttons, two rows with `<h2>` names: **Cover letter** ("Written" or "Not written", said only once the
+  the buttons, rows with `<h2>` names: **Cover letter** ("Written" or "Not written", said only once the
   answers loaded) and **Application questions** (how many are answered), each with a tonal toggle (Write,
   Answer; Hide while open, `aria-expanded`) that opens `QASections`' part under it: the tone and **Write cover
-  letter**, the questions box and **Answer questions** (both outline). History follows the card. `QASections`
+  letter**, the questions box and **Answer questions** (both outline); while a draft, a third row, **Fill the
+  form with the Companion**, with an underlined **Add to Chrome** link to the store listing (`COMPANION_STORE_URL`).
+  History follows the card. `QASections`
   places them through its required `arrange` prop and hands it `facts` for the rows (the state stays in
   `QASections`, which never returns early since it renders the whole step). The receipt is the page's **What was
   submitted** fold and the application's details its **Details and history** fold (Job steps): `ApplicationDetails`
@@ -1503,7 +1544,8 @@
   so a stale local note cannot overwrite an agent's. Applied on and Notes save on blur, only when changed; the
   tracking link, Referral, Delete application with its confirm. No PDF line and no preview (step 3 holds the PDF
   and its download). The receipt's "Cover letter attached" jumps to the letter's History entry
-  (`COVER_LETTER_ID`). No Companion button: the web app cannot tell whether the Companion is paired. Edit resume
+  (`COVER_LETTER_ID`). The Companion row is a link, never a button that hands the form over: the web app cannot
+  tell whether the Companion is installed or paired, so the link always shows. Edit resume
   stays on step 3. Pinned by `test_frontend_jobs_honest_words.py`, `test_frontend_job_submitted_tab.py` and
   `test_frontend_single_flight.py`.
 - Naming: the no-application state is **Saved** everywhere; the tracker
@@ -1931,13 +1973,12 @@
   `aria-expanded`.
 - **Derived setup guidance**: Profile's header counts the sections setup
   status reports ready, and its Next up asks the first required answer still
-  missing (above). The empty tracker leads with its empty state, what
-  the page is for, and places `GettingStartedCard` BELOW it: the same derived
-  steps, deep links, locally dismissible, gone when setup completes. The
-  API-key and import steps carry a Required badge until done (`required` in
-  `setup-steps.ts`): nothing extracts without a key, nothing scores without a
-  base resume. `["setup-status"]` is read by the Profile header, Getting
-  started, `/new` and Setup, each `refetchOnMount: "always"` to bypass the
+  missing (above). The empty tracker shows only its empty state, what the
+  page is for; the one setup list is Setup itself, and the no-key notices on
+  `/new` and the Jobs page link to `/setup`. The API-key and import steps are
+  `required` in `setup-steps.ts` (Today's entry card names them): nothing
+  extracts without a key, nothing scores without a base resume.
+  `["setup-status"]` is read by the Profile header, `/new` and Setup, each `refetchOnMount: "always"` to bypass the
   30-second stale window, and shared by Today (the first-run redirect and its
   setup card), the Jobs page (its no-key notice) and the Agent apps writer
   card (its "Needs an API key" line, read only while Maestro's AI is picked;
@@ -2067,8 +2108,8 @@
   3:1 on `--card`; `test_frontend_color_roles.py` computes it);
   shared helpers live in `components/charts/chart-kit.tsx` — never re-declare
   per-chart COLORS arrays, failed/loading/empty states (`chartGate`) or week
-  bucketing (`weekRows`); the heatmap uses a `color-mix` primary-blue
-  sequential ramp. A chart split by base resume is the one exception: the
+  bucketing (`weekRows`); the heatmap uses a `color-mix` sequential ramp
+  of `--chart-1` (in a chart blue is data, not brand; never `--primary`, which is ink). A chart split by base resume is the one exception: the
   fit-distribution chart fills each series with its resume's own color
   (`resumeFill` in `lib/resume-color.ts`) and its legend is `ResumeTag`s, so a
   resume keeps its color across the app. The fill is a CSS string with the theme's
@@ -2087,9 +2128,7 @@
   level, employment and work-mode badges read `humanizeEnum`'s words, never
   `full_time`). `test_no_role_key_reaches_the_screen` refuses a humanized or
   bare `role_category` in JSX.
-  Getting started hands New base resume each suggestion's label with its key
-  (`initialRole`), so the dialog's role picker and its create never use the key.
-  While the catalog loads, or when its request fails, the label is
+  While the catalog loads, or when its request fails, `useRoleLabel`'s label is
   `humanizeSlug` (`lib/humanize-slug.ts`):
   the key's own words with the catalog's acronyms cased as its labels case
   them (AI/ML, MLOps, BI, QA, IT), never blank. A resume is named by

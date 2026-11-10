@@ -175,7 +175,11 @@ def for_job_rows(
     base score when the caller already has it (`ats_score.best_base_scores`). Four queries for the
     page (newest applications, open sessions, best base scores, draft times), three when `scored`
     is passed; none for an empty list."""
-    ids = [j.id for j in jobs]
+    return for_job_ids(db, [j.id for j in jobs], scored=scored)
+
+
+def for_job_ids(db: Session, ids: list[UUID], *, scored: set[UUID] | None = None) -> dict[UUID, Stage]:
+    """`for_job_rows` from the jobs' ids alone, for a caller that has not loaded the rows."""
     if not ids:
         return {}
     newest = newest_applications(db, ids)

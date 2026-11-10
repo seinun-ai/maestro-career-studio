@@ -14,14 +14,18 @@ const STATE_WORDS: Record<Step["state"], string> = { done: ", done", current: ",
 const CELL =
   "flex h-full w-full min-w-0 flex-col gap-2 rounded-corner-sm px-1 pt-1 pb-1.5 text-left";
 
-/** The mark by the name: done is the register's CircleCheck in `success`, the stage's own step a ringed dot in
- * `primary`, a later step its number on a quiet disc. */
+/** The mark by the name: done is the register's CircleCheck in `success`, the stage's own step a signal disc
+ * (marigold, the app's "your move" fill, with its 1px edge) around an ink dot, a later step its number on a quiet
+ * disc. */
 function StepMark({ step }: { step: Step }) {
   if (step.state === "done") return <DoneIcon aria-hidden="true" className="size-4 shrink-0 text-success" />;
   if (step.state === "current") {
     return (
-      <span aria-hidden="true" className="grid size-4 shrink-0 place-items-center rounded-full border-2 border-primary">
-        <span className="size-1.5 rounded-full bg-primary" />
+      <span
+        aria-hidden="true"
+        className="grid size-4 shrink-0 place-items-center rounded-full border border-signal-outline bg-signal"
+      >
+        <span className="size-1.5 rounded-full bg-on-signal" />
       </span>
     );
   }
@@ -55,7 +59,7 @@ function StepBar({ progress }: { progress: number | null }) {
 /**
  * The job page's four steps, where its tab row was (lib/job-steps.ts says each step's state, number and bar).
  * Each is a 4px bar, then its mark, its name and its one number; no sentences. `current` is the step whose
- * panel shows: its name is in `primary` and it is `aria-current="step"`. A step is a button when it is done,
+ * panel shows: its name is in `primary`, underlined, and it is `aria-current="step"`. A step is a button when it is done,
  * current or reachable (a later step with something to show, such as a draft from before a re-analysis); a
  * later step with nothing to show is plain text, never a disabled button or a tooltip, and nothing is locked.
  * A button's name is "Step N: title" and its state; its number is the description. While `busy` (the gap
@@ -91,7 +95,10 @@ export function JobSteps({
                   id={nameId}
                   className={cn(
                     "min-w-0 truncate text-title-small",
-                    shown ? "text-primary" : step.state === "next" && "text-muted-foreground",
+                    // Ink is near the body text, so the shown step's name also carries the tab's 2px underline.
+                    shown
+                      ? "text-primary underline decoration-2 underline-offset-4"
+                      : step.state === "next" && "text-muted-foreground",
                   )}
                 >
                   <span className="sr-only">{`Step ${step.number}: `}</span>

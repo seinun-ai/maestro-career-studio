@@ -2,7 +2,7 @@ import { ChevronRight } from "lucide-react";
 
 import { GuardedLink as Link } from "@/components/guarded-link";
 
-/** A row's next step (owner rule D3), one look for every row: your move is a blue text link with a
+/** A row's next step (owner rule D3), one look for every row: your move is an ink text link with a
  * chevron, their move is grey text. The tonal fill shows only while the row is hovered, so the row
  * that uses it carries `group/row`. */
 export function NextStep(props: { label: string; href: string } | { waiting: string }) {

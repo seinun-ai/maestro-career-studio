@@ -183,9 +183,9 @@ this contract. Code citing "§4" lands here; the table says which file to open.
 
 ## 5. The application workflow, end to end (web)
 
-The app opens on **Today** (`/today`; `/` redirects there): one read, `GET /api/today`, names the one move that matters most
-(an offer, the best ready PDF, a proposal's question) with counts that link into the steps below, and a Skip beside its button
-for all but an offer (your draft turns Skipped; an agent's job takes its own Skip); frontend-conventions, "Today".
+The app opens on **Today** (`/today`; `/` redirects there): one read, `GET /api/today`, names your most pressing move
+(an offer, the best ready PDF, a proposal's question, else the open job owned here you touched last in 14 days, on its
+next step; with no job you saved, Add your first job) with counts linking into the steps below, and a Skip for all but an offer; frontend-conventions, "Today".
 A brand-new install (no key, no resume) opens **Setup** (`/setup`) once: four steps that write through the existing settings,
 import and profile endpoints and store no progress of their own; frontend-conventions, "Setup".
 
@@ -245,8 +245,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
 6. **Tailor** — the gap page's **Tailor resume** → `POST /tailoring-sessions/{id}/tailor`: deterministic pre-ops → smart-model
    edit ops → keyword-survival and voice checks (§6 inv-resume-voice) → the job's one application (new, or the newest one taking
    the new base: "Switched to {resume}" in version history) + version row → draft-KBPoint write-back → session `tailored` →
-   tailored score, one transaction (tailor() commits once at its end). The UI then lands in the studio's review mode
-   (`?review=1`); step 3 shows the same changes. Internals: docs/entities/tailoring-session.md, "The tailor pipeline".
+   tailored score, one transaction (tailor() commits once at its end). The UI then lands on step 3 (`?tab=output`): the
+   changes; Edit resume opens the studio. Internals: docs/entities/tailoring-session.md, "The tailor pipeline".
 7. **Output** — step 3 (**Tailored resume**, `components/tailored-resume-step.tsx`): the lead card (the compact before/after
    compare and its Score breakdown; one filled button, **Create PDF** then **Continue to Apply**, with **Edit resume** → the
    studio `/applications/[id]/resume`, where Save chains render → re-score, and ⋯ with Tailor again and Delete application
@@ -258,8 +258,8 @@ import and profile endpoints and store no progress of their own; frontend-conven
 8. **Apply** — step 4 (**Apply**, `components/apply-step.tsx`), the lead card: the job's resume (its page, band and square),
    its Match score and the gain over its base, **where this stands** (`lib/job-standing.ts`), **Open the job post** (apply link,
    else source link; the card's filled button, **Mark applied** when there is no link), **Mark applied** (outline) while a draft
-   (the StatusChip's PATCH), and rows that open the **Cover letter** (tone; no
-   PDF line: step 3 holds the PDF) and the application questions; their History (`QASections`) under it. The receipt is the
+   (the StatusChip's PATCH), rows that open the **Cover letter** (tone) and the application questions, and
+   while a draft a Companion row linking its store listing; their History (`QASections`) under it. The receipt is the
    page's **What was submitted** fold (docs/entities/filled-answers.md), and the application's details (applied date, tracking
    link, referral, notes, Delete application) its **Details and history** fold. Cold
    messages are free-form questions; the QA prompt injects the application's linked referral contact.
@@ -566,14 +566,13 @@ Code citing "§7" lands here; the table says which section to open. What orienta
 
 ## 8. Frontend conventions
 
-Reference tier, like §4: consulted while working in `frontend/`, not read for orientation. Lives in
-[`docs/frontend-conventions.md`](docs/frontend-conventions.md): layout and sidebar rules, Tailwind v4 tokens and
-M3 colour roles, the studios' save and preview model, a11y and focus behaviour, naming, the copy rules and the one
-glossary (the app calls its fixed-rules score **Match score**; *Canonical terms*; ratchets `test_frontend_vocabulary.py`,
-`test_frontend_sentence_length.py`), each
-with the failure mode that bought it. One bullet per page (sidebar, Today, Setup, Profile, Settings' four tabs and their
-anchors, Jobs, Agent inbox, job steps, Analytics); the tiers (one `LeadCard`, the Also tier, `Fold`s, no subtitle) and
-`NextStep` are under Visual encodings. Code citing "§8" lands here.
+Reference tier, like §4: read while working in `frontend/`. Lives in [`docs/frontend-conventions.md`](docs/frontend-conventions.md):
+layout and sidebar rules, Tailwind v4 tokens and colour roles (ink primary, underlined links, one marigold signal for your
+next move), the studios' save and preview model, a11y and focus, naming, the copy rules and the one glossary (the
+fixed-rules score is **Match score**; *Canonical terms*; ratchets `test_frontend_vocabulary.py`,
+`test_frontend_sentence_length.py`), each with the failure mode that bought it. One bullet per page (sidebar, Today,
+Setup, Profile, Settings' four tabs and their anchors, Jobs, Agent inbox, job steps, Analytics); the tiers (one
+`LeadCard`, the Also tier, `Fold`s, no subtitle) and `NextStep` are under Visual encodings. Code citing "§8" lands here.
 
 ## 9. Dev & test environment
 
@@ -832,8 +831,8 @@ overflow moves to `docs/deferred.md` under this same contract, each item keeping
     the rest of the 2026-10-14 live-check limits: `extension/INTERNALS.md`, "Known limits". Do when Phase 3 (run list, Queue view, parallel tabs) is
     built or a listed limit is reproduced.
 
-The other 49 items (3–6, 8, 10, 12, 14–17, 19, 21, 22, 24, 26–30, 32, 33, 37–43, 45–57, 60, 62–67) live in [`docs/deferred.md`](docs/deferred.md),
-each keeping its number and carrying its trigger; code citing "§11 item N" for one of them lands there. The design refresh's
+The other 49 items (3–6, 8, 10, 12, 14–17, 19, 21, 22, 24, 26, 27, 29, 30, 32, 33, 37–43, 45–57, 60, 62–68) live in [`docs/deferred.md`](docs/deferred.md),
+each keeping its number and trigger; code citing "§11 item N" for one of them lands there. The design refresh's
 not-fixed observations are 53–57, 60 and 62 there: one diversity set for every country, no per-country work-permit breakdown, Today
 never expiring proposals, mail events dated when learned, no version check on profile saves, the slop ratchet's stale pair, readers
 still on a job's country text.

@@ -31,7 +31,7 @@ const {
 } = load("lib/setup-answers.ts");
 
 // The one filled button's classes (components/ui/button.tsx, variant "default").
-const FILLED = /bg-primary text-primary-foreground/g;
+const FILLED = /bg-signal text-on-signal/g;
 
 const MARKETS = [
   { key: "US", label: "United States", country_code: "US", currency: "USD", date_format: "MDY", offers_eeo: true, work_auth_vocab: "us_visa" },
@@ -174,7 +174,7 @@ const PERMITTED = {
   },
 };
 
-test("a new install opens on the AI model: one key to paste, the other AIs tucked away, no image, one filled Continue", () => {
+test("a new install opens on the AI model: one key to paste, the other AIs tucked away, no image, one filled Save and continue", () => {
   const html = render();
   assert.match(html, /<h1[^>]*>Setup<\/h1>/);
   assert.match(html, /Add the AI that does the writing/);
@@ -199,7 +199,10 @@ test("a new install opens on the AI model: one key to paste, the other AIs tucke
   assert.match(html, />Skip for now</);
   assert.doesNotMatch(html, />Back</);
   assert.equal((html.match(FILLED) ?? []).length, 1);
-  assert.match(html, /bg-primary text-primary-foreground[^>]*>Continue</);
+  // The main button saves the key: no separate Test, and a pasted key is never lost to Continue.
+  assert.match(html, /bg-signal text-on-signal[^>]*>Save and continue</);
+  assert.doesNotMatch(html, />Test</);
+  assert.doesNotMatch(html, />Continue</);
 });
 
 test("a saved key for another provider opens on that provider, the choices showing and nothing suggested", () => {
@@ -215,6 +218,8 @@ test("a saved key opens the resume step: one drop zone, Back and Skip for now", 
   assert.equal((html.match(/type="file"/g) ?? []).length, 1);
   assert.match(html, />Back</);
   assert.match(html, />Skip for now</);
+  // Past the AI model, the main button is Continue again.
+  assert.match(html, /bg-signal text-on-signal[^>]*>Continue</);
   assert.match(html, /1 of 4 done/);
   assert.match(html, /AI model<\/span><span[^>]*>Done</);
 });
@@ -252,7 +257,7 @@ test("then form answers, one at a time: citizenship first, with its country pick
   assert.match(html, /its work-permit answers follow from it\./);
   assert.doesNotMatch(html, /Work permit</);
   // Continue moves on; nothing is saving.
-  assert.match(html, /<button[^>]*bg-primary text-primary-foreground[^>]*>Continue<\/button>/);
+  assert.match(html, /<button[^>]*bg-signal text-on-signal[^>]*>Continue<\/button>/);
   assert.doesNotMatch(html.match(/<button[^>]*>Continue<\/button>/)?.[0] ?? "", /aria-disabled="true"|disabled=""/);
   assert.match(html, />Skip for now</);
 });
@@ -537,7 +542,7 @@ test("the done screen: Add your first job filled, the agent app and the Companio
   });
   assert.match(html, /You&#x27;re set, Lena/);
   assert.equal((html.match(FILLED) ?? []).length, 1);
-  assert.match(html, /<a[^>]*href="\/new"[^>]*bg-primary text-primary-foreground[^>]*>Add your first job<\/a>|<a[^>]*bg-primary text-primary-foreground[^>]*href="\/new"[^>]*>Add your first job<\/a>/);
+  assert.match(html, /<a[^>]*href="\/new"[^>]*bg-signal text-on-signal[^>]*>Add your first job<\/a>|<a[^>]*bg-signal text-on-signal[^>]*href="\/new"[^>]*>Add your first job<\/a>/);
   assert.match(html, /href="\/settings\?tab=agents"[^>]*>.*?Connect an agent app/s);
   assert.match(html, /href="https:\/\/github\.com\/[^"]+GETTING_STARTED\.md#4-the-companion-browser-extension-optional"[^>]*target="_blank"[^>]*>.*?Add the Companion/s);
   // Chose to answer diversity and left some blank: where to finish, beside its consent (the hash opens the fold).

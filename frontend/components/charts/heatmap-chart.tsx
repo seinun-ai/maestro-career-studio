@@ -13,11 +13,11 @@ import { skillName } from "@/lib/skill-name";
 import { cn } from "@/lib/utils";
 
 function cellColor(pct: number): string {
-  // Sequential single-hue ramp from the theme's primary blue (theme-aware,
-  // unlike the old hard-coded violet rgba).
+  // Sequential single-hue ramp from the first chart series (theme-aware). In a
+  // chart blue is data, not brand, so it follows --chart-1, never --primary (ink).
   const intensity = Math.min(1, pct / 100);
   const alpha = Math.round((0.1 + intensity * 0.8) * 100);
-  return `color-mix(in oklab, var(--primary) ${alpha}%, transparent)`;
+  return `color-mix(in oklab, var(--chart-1) ${alpha}%, transparent)`;
 }
 
 export function HeatmapChart({

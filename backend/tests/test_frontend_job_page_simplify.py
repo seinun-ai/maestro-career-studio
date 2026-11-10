@@ -310,3 +310,17 @@ def test_a_draft_application_never_reads_applied_from_its_old_proposal():
 
 def test_the_standing_line_holds_its_words_while_a_skips_reason_loads():
     assert '!application && job.proposal_status === "rejected" && proposalQuery.isLoading ? "" : standing.text;' in _STEPS
+
+
+# ── After tailoring: the job page's Tailored resume step ──────────────────
+
+
+def test_tailoring_lands_on_the_tailored_resume_step_with_the_editor_one_click_away():
+    """Tailor resume ends on step 3 (Tailored resume), which lists the changes with Revert and holds Create PDF,
+    never in the full editor, whose only way on is a back arrow. Edit resume opens the editor from there."""
+    gap = _read("app/jobs/[id]/tailor/[sessionId]/page.tsx")
+    on_success = gap[gap.index("const tailor = useMutation({") : gap.index("onError:", gap.index("const tailor = useMutation({"))]
+    assert "router.push(`/jobs/${jobId}?tab=output`);" in on_success
+    assert "/resume?review=1" not in gap
+    step = _read("components/tailored-resume-step.tsx")
+    assert "Edit resume" in step and "/resume`" in step

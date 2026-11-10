@@ -45,9 +45,23 @@ def test_active_row_is_a_tinted_indicator_distinct_from_hover():
 
 
 def test_create_action_is_the_fab_variant():
-    # Current on /new is the full-strength primary; everywhere else it stays fab.
-    assert re.search(r'variant:\s*fabCurrent \? "default" : "fab"', _SIDEBAR)
+    # Current on /new takes the neutral look of every current menu row (ui/sidebar.tsx's data-active classes),
+    # never a solid fill that reads as a second primary beside /new's Save job; everywhere else it stays fab.
+    # Never the `default` variant: that is the signal (the brand refresh's D4).
+    assert 'buttonVariants({ variant: "fab", size: "lg" }),\n            fabCurrent && FAB_CURRENT,' in _SIDEBAR
+    assert '"default"' not in _SIDEBAR
+    # The only signal fill in the sidebar is the needs-you count.
+    assert re.findall(r"(?<![\w-])bg-signal(?![\w-])", _SIDEBAR) == ["bg-signal"]
     assert "bg-primary/15" not in _SIDEBAR
+
+
+def test_add_job_current_on_new_looks_like_every_current_menu_row():
+    current = _SIDEBAR[_SIDEBAR.index("const FAB_CURRENT ="):].split(";", 1)[0]
+    for tok in ("bg-secondary-container", "text-on-secondary-container", "hover:bg-secondary-container-hover",
+                "font-semibold", "[&_svg]:text-primary"):
+        assert tok in current.split('"')[1].split(), tok
+        assert f"data-active:{tok}" in _UI, tok
+    assert "bg-primary " not in current and "text-primary-foreground" not in current
 
 
 def test_offcanvas_sidebar_is_inert_when_collapsed():

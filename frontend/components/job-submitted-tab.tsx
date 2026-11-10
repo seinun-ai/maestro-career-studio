@@ -251,7 +251,7 @@ function ClampedText({ text }: { text: string }) {
       {open || cut ? (
         <button
           type="button"
-          className="mt-0.5 text-body-small text-primary underline-offset-2 hover:underline"
+          className="mt-0.5 text-body-small text-primary underline underline-offset-2"
           aria-expanded={open}
           onClick={() => setOpen((was) => !was)}
         >
@@ -279,7 +279,7 @@ function UploadLine({ field, onOpenTab }: { field: FilledField; onOpenTab?: Open
   return (
     <button
       type="button"
-      className="text-left text-body-medium text-primary wrap-anywhere hover:underline"
+      className="text-left text-body-medium text-primary wrap-anywhere underline underline-offset-2"
       onClick={open}
     >
       {label}

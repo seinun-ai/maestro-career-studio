@@ -98,7 +98,9 @@ def test_a_decision_sent_to_the_other_copy_moves_its_question_on(client, db_sess
     mine = _question(db_session)
     # Needs you lists newest first: this copy's question is newer, so answer it first.
     assert _next_up(client)["proposal_id"] == str(mine.id)
+    # Its job goes too: a saved job no proposal carries would be Next up's last pick, its next step.
     db_session.delete(mine)
+    db_session.delete(db_session.get(Job, mine.job_id))
     db_session.commit()
     assert _next_up(client)["proposal_id"] == str(bots.id)
 
@@ -106,3 +108,26 @@ def test_a_decision_sent_to_the_other_copy_moves_its_question_on(client, db_sess
         "status": "rejected", "reason": "Not the right team", "consent": {"channel": "frontend"}})
     assert (response.status_code, response.json()) == (202, QUEUED)
     assert _next_up(client) is None
+
+
+def test_a_saved_jobs_next_step_is_only_a_job_this_copy_owns_with_nothing_on_its_way(
+        client, db_session, sync_on):
+    replica = _job("Data Scientist", "other-copy")
+    _replicated(db_session, replica)
+    # The other copy's job is never this copy's next step.
+    assert _next_up(client) is None
+
+    mine = _job("Data Analyst", None)
+    db_session.add(mine)
+    db_session.commit()
+    assert _next_up(client)["job_id"] == str(mine.id)
+
+    # A request on its way to the other copy for the job takes it out until it is answered.
+    request = SyncRequest(kind="job_patch", origin="local", status="pending", job_id=mine.id,
+                          payload_json={})
+    db_session.add(request)
+    db_session.commit()
+    assert _next_up(client) is None
+    request.status = "refused"
+    db_session.commit()
+    assert _next_up(client)["job_id"] == str(mine.id)

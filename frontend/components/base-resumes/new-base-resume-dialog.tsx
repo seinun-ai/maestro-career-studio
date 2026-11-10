@@ -111,15 +111,11 @@ export function NewBaseResumeDialog({
   open,
   onOpenChange,
   initialMode = "kb",
-  initialRole,
   existingResumes,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialMode?: Mode;
-  /** Pre-select a target role, e.g. from a suggested-base prompt: a catalog
-   *  key with its label, which the picker shows and a create sends. */
-  initialRole?: { role_category: string; label: string };
   existingResumes: BaseResumeSummary[];
 }) {
   // Lifted only so a backdrop/Esc close cannot yank the dialog mid-create.
@@ -156,7 +152,6 @@ export function NewBaseResumeDialog({
           onOpenChange={onOpenChange}
           onBusyChange={setBusy}
           initialMode={initialMode}
-          initialRole={initialRole}
           existingResumes={existingResumes}
         />
       </DialogContent>
@@ -170,7 +165,6 @@ function NewBaseResumeForm({
   onOpenChange,
   onBusyChange,
   initialMode,
-  initialRole,
   existingResumes,
 }: {
   open: boolean;
@@ -178,7 +172,6 @@ function NewBaseResumeForm({
   onOpenChange: (open: boolean) => void;
   onBusyChange: (busy: boolean) => void;
   initialMode: Mode;
-  initialRole?: { role_category: string; label: string };
   existingResumes: BaseResumeSummary[];
 }) {
   const router = useRouter();
@@ -194,10 +187,7 @@ function NewBaseResumeForm({
   // ALL three tabs share the free-text tag picker now. The KB tab's plan
   // endpoint still wants a coarse key, derived on demand by coarseFromTag —
   // one picker state, not a parallel kbRole that could disagree with it.
-  const [initialTag] = useState<FavoredRole | null>(() =>
-    initialRole ? { role: initialRole.role_category, label: initialRole.label, category: null } : null,
-  );
-  const [tag, setTag] = useState<FavoredRole | null>(initialTag);
+  const [tag, setTag] = useState<FavoredRole | null>(null);
   const [nameMatchApplied, setNameMatchApplied] = useState(false);
   const pendingNameMatch = useRef<string | null>(null);
   const [instruction, setInstruction] = useState("");
@@ -472,7 +462,7 @@ function NewBaseResumeForm({
   // What Start over would throw away. Switching tabs is not a draft.
   const touched =
     Boolean(name || instruction || selected.size || plan || source || file) ||
-    tag !== initialTag ||
+    tag !== null ||
     chosen !== null;
 
   const toggle = (id: string) =>

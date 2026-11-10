@@ -14,7 +14,10 @@ const buttonVariants = cva(
         // <button>, which left the one high-emphasis control in the app with no
         // hover feedback at all. (The gate is correct in badge.tsx, where it
         // came from: a Badge is usually not interactive.)
-        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        // The signal (marigold): "this is your move". A fill with dark text and
+        // a 1px signal-outline edge, since marigold on white is only 1.7:1. One
+        // filled button per view keeps it rare (test_frontend_one_filled_button.py).
+        default: "border-signal-outline bg-signal text-on-signal hover:bg-signal-hover",
         // The one low-emphasis filled button (the grey `secondary` variant was
         // folded into it). M3's filled-tonal: SECONDARY container, M3's role for "recessive
         // components like tonal buttons". It was `bg-primary/10 text-primary`,
@@ -36,7 +39,8 @@ const buttonVariants = cva(
           "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-surface-container-high",
         destructive:
           "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
-        link: "text-primary underline-offset-4 hover:underline",
+        // Ink like body text, so the underline at rest is what says "link".
+        link: "text-primary underline underline-offset-4 hover:decoration-2",
       },
       size: {
         default:

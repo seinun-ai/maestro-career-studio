@@ -14,10 +14,21 @@ def _read(rel: str) -> str:
     return (_FRONTEND / rel).read_text()
 
 
-def test_empty_tracker_leads_with_the_task_not_the_checklist():
+def test_empty_tracker_leads_with_the_task_and_holds_no_second_setup_list():
+    """One setup list: Setup (and Today's card from it). The Jobs page's Getting started card is gone, and
+    both no-key notices (Jobs' empty state and Add job's) open /setup, never Settings."""
     page = _read("app/applications/page.tsx")
     empty = page[page.index("filtered.length === 0 ?") :]
-    assert empty.index("<EmptyState") < empty.index("<GettingStartedCard")
+    assert "<EmptyState" in empty
+    assert "GettingStartedCard" not in page
+    assert not (_FRONTEND / "components/setup/getting-started-card.tsx").exists()
+    key = empty[empty.index("needsKey ? (") : empty.index("Add API key")]
+    assert '<Link href="/setup">' in key
+    new = _read("app/new/page.tsx")
+    notice = new[new.index("{needsKey ? (") : new.index("Add API key")]
+    assert 'render={<Link href="/setup" />}' in notice
+    for src in (page, new):
+        assert 'anchorHref("/settings", "api-keys")' not in src
 
 
 def test_header_new_application_only_while_the_sidebar_fab_is_hidden():
@@ -32,8 +43,8 @@ def test_header_new_application_only_while_the_sidebar_fab_is_hidden():
 
 def test_required_setup_steps_are_marked():
     assert _read("components/setup/setup-steps.ts").count("required: true") == 2
-    card = _read("components/setup/getting-started-card.tsx")
-    assert "row.required && !row.done" in card
+    card = _read("components/setup/setup-entry-card.tsx")
+    assert ".filter((step) => step.required)" in card
 
 
 def test_score_tab_offers_import_when_there_is_nothing_to_score():

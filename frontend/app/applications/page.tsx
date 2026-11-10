@@ -20,7 +20,6 @@ import { ListSearch } from "@/components/list-search";
 import { ListToolbar } from "@/components/list-toolbar";
 import { LoadErrorState } from "@/components/load-error-state";
 import { SelectToggle } from "@/components/selection-bar";
-import { GettingStartedCard } from "@/components/setup/getting-started-card";
 import { useSidebarHidden } from "@/components/sidebar-reveal-trigger";
 import { SourceToggle } from "@/components/source-toggle";
 import { LaneDot, SavedJobChip, StatusChip, StatusDot, statusLabel } from "@/components/status-chip";
@@ -74,7 +73,6 @@ import {
   viewOf,
 } from "@/lib/tracker-filters";
 import { isLoadFailure } from "@/lib/query-state";
-import { anchorHref } from "@/lib/settings-tabs";
 import { cn } from "@/lib/utils";
 import {
   APPLICATION_STATUSES,
@@ -773,8 +771,6 @@ function ApplicationsContent() {
         </div>
       ) : filtered.length === 0 ? (
         <div className="space-y-5">
-          {/* The task leads and the setup checklist supports it: a new user
-              reads what this page is for before a list of setup homework. */}
           <EmptyState
             icon={Inbox}
             title={
@@ -800,7 +796,7 @@ function ApplicationsContent() {
                   nativeButton={false}
                   render={
                     needsKey ? (
-                      <Link href={anchorHref("/settings", "api-keys")}>
+                      <Link href="/setup">
                         <KeyRound className="size-4" />
                         Add API key
                       </Link>
@@ -815,7 +811,6 @@ function ApplicationsContent() {
               ) : null
             }
           />
-          {allRows.length === 0 ? <GettingStartedCard /> : null}
         </div>
       ) : (
         <TableFrame className={cn(selectMode && "mb-16")}>

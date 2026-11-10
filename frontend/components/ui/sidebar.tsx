@@ -423,7 +423,7 @@ function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
   )
 }
 
-// The active row is a tinted indicator (secondary container, blue icon),
+// The active row is a tinted indicator (secondary container, ink icon),
 // distinct from the neutral hover it used to share at ~1.05:1. Keep the
 // explicit `data-active:hover:` pairs for fill and label: shadcn's
 // `data-active` compiles to a zero-specificity `:where()`, so a bare

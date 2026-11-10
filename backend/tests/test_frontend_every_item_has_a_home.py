@@ -322,7 +322,8 @@ _ABOUT = "Settings › Basics"
 _SETUP: list[tuple[str, str, tuple[Needle, ...]]] = [
     ("AI model", "AI provider", ('aria-label="AI provider"', "{CARDS.map((c) => (", "<Radio value={c.id} />")),
     ("AI model", "API key and Test", (
-        "label={`${card.name} API key`}", "onClick={() => void test()}> Test </Button>", '"/api/settings/openai/probe"',
+        # The test runs from the main button, Save and continue (setup-flow.tsx), through the step's save.
+        "label={`${card.name} API key`}", "saveRef.current = saveAndCheck;", '"/api/settings/openai/probe"',
     )),
     ("Your resume", "Import resume", (
         "Bring your resume", "void importer.run(picked)", '"Choose or drop a file"', "kbImportResume(file, false)",

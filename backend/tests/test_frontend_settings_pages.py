@@ -263,9 +263,9 @@ def test_links_into_settings_and_profile_name_their_tab():
     ]
     assert offenders == [], offenders
     assert "anchorHref(step.home, step.anchor)" in _read("components/setup/setup-steps.ts")
-    assert "anchorHref(row.home, row.anchor)" in _read("components/setup/getting-started-card.tsx")
     assert 'anchorHref("/profile", group ?' in _read("components/job-knockout-card.tsx")
-    assert 'anchorHref("/settings", "api-keys")' in _read("app/new/page.tsx")
+    # The no-key notice on Add job opens Setup, the one setup list (its first step is the AI model).
+    assert 'render={<Link href="/setup" />}' in _read("app/new/page.tsx")
 
 
 def test_a_section_lands_only_once_it_is_shown():

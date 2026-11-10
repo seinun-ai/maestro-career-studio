@@ -20,7 +20,8 @@ def test_first_run_says_the_key_comes_first():
     tracker = _read("app/applications/page.tsx")
     assert '? "Add an API key first, then add a job."' in tracker
     assert "const needsKey = setup.data?.model_key.done === false;" in tracker
-    assert '<Link href={anchorHref("/settings", "api-keys")}>' in tracker
+    # The key is added in Setup, the one setup list, whose first step is the AI model.
+    assert '<Link href="/setup">' in tracker
 
 
 def test_the_tracker_names_its_status_filter():

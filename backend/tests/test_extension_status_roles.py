@@ -59,6 +59,8 @@ _COPIED = {
     # The panel's own names for the app's primary, success and warning roles, and the text colours.
     "--cs-primary": "--primary", "--cs-on-primary": "--primary-foreground",
     "--cs-primary-tonal": "--primary-container",
+    # The signal (marigold), the panel's one main button.
+    **{f"--cs-{r}": f"--{r}" for r in ("signal", "on-signal", "signal-hover", "signal-outline")},
     "--cs-good": "--success", "--cs-good-tonal": "--success-container",
     "--cs-warn-tonal": "--warning-container", "--cs-warn-text": "--on-warning-container",
     "--cs-danger-text": "--destructive", "--cs-muted": "--muted-foreground",

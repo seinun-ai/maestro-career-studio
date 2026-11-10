@@ -1,14 +1,15 @@
-// Brand mark and lockup as inline SVG. Path data is the outlined v2 brand
-// package (docs/assets/brand/ — wordmark converted to paths, no font needed).
-// The wordmark renders in currentColor so it follows the surrounding text
-// color in light and dark themes; the mark's blue/yellow is fixed by design.
+// Brand mark and lockup as inline SVG. Path data is the outlined brand package
+// in docs/assets/brand/ (wordmark converted to paths, no font needed). The mark
+// is one colour and, like the wordmark, renders in currentColor, so both follow
+// the surrounding text colour in light and dark themes.
+// MARK_D is written by scripts/build_brand_assets.py (the lockup's mark); do not edit it by hand.
+
+const MARK_D =
+  "M56.91 231.83 A5.25 5.25 0 0 1 56.12 228.09 L84.47 56.94 A5.25 5.25 0 0 1 84.75 55.93 L86.12 52.32 A5.25 5.25 0 0 1 88.08 49.84 L90.12 48.47 A5.25 5.25 0 0 1 94.65 47.81 L97.34 48.66 A5.25 5.25 0 0 1 99.31 49.81 L102.66 52.89 A5.25 5.25 0 0 1 102.9 53.13 L160 113.18 L217.1 53.13 A5.25 5.25 0 0 1 217.34 52.89 L220.69 49.81 A5.25 5.25 0 0 1 222.66 48.66 L225.35 47.81 A5.25 5.25 0 0 1 229.88 48.47 L231.92 49.84 A5.25 5.25 0 0 1 233.88 52.32 L235.25 55.93 A5.25 5.25 0 0 1 235.53 56.94 L263.88 228.09 A5.25 5.25 0 0 1 263.09 231.83 L258.24 239.24 A5.25 5.25 0 0 1 256.72 240.76 L251.6 244.11 A5.25 5.25 0 0 1 248.03 244.92 L242.65 244.19 A5.25 5.25 0 0 1 239.95 242.99 L234.3 238.2 A5.25 5.25 0 0 1 233.99 237.91 L160 163.92 L86.01 237.91 A5.25 5.25 0 0 1 85.7 238.2 L80.05 242.99 A5.25 5.25 0 0 1 77.35 244.19 L71.97 244.92 A5.25 5.25 0 0 1 68.4 244.11 L63.28 240.76 A5.25 5.25 0 0 1 61.76 239.24Z";
 
 const MARK = (
   <g transform="translate(34 28)">
-      <path d="M58 236 L86 48 Q87 41 93 47 L145 103 Q150 108 145 113 L123 133 L144 134 L72 241 Q64 251 58 236Z" fill="#2563EB" />
-      <path d="M93 47 L145 103 Q150 108 145 113 L123 133 L104 115Z" fill="#1D4ED8" />
-      <path d="M262 236 L234 48 Q233 41 227 47 L175 103 Q170 108 175 113 L197 133 L176 134 L248 241 Q256 251 262 236Z" fill="#FBBF24" />
-      <path d="M227 47 L175 103 Q170 108 175 113 L197 133 L216 115Z" fill="#D99A00" />
+    <path d={MARK_D} fill="currentColor" />
   </g>
 );
 

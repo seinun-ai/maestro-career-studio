@@ -887,6 +887,26 @@ def test_step_three_has_one_filled_button_and_the_pdf_card_carries_its_actions()
     assert "Creating the PDF failed. Try again." in step
 
 
+def test_step_four_names_the_companion_in_one_row_with_its_store_link():
+    """While a draft, one row under the cover letter and the questions says the Companion fills the form, with its
+    Chrome Web Store link (the README's): underlined ink, a new tab, no card and no button. No API says a Companion
+    has connected, so the link always shows."""
+    src = _read("components/apply-step.tsx")
+    row = src[src.index("{isDraft ? (\n                      <div") : src.index("Add to Chrome")]
+    for present in ("Fill the form with the Companion", "href={COMPANION_STORE_URL}", 'target="_blank"',
+                    'rel="noopener noreferrer"', "underline underline-offset-2"):
+        assert present in row, present
+    assert "<Button" not in row and "text-signal" not in row and "text-primary" not in row
+    assert src.count("COMPANION_STORE_URL") == 2  # the import and the one row
+
+
+def test_the_companion_store_link_is_the_readmes():
+    links = _read("lib/agent-links.ts")
+    readme = (_FRONTEND.parent / "README.md").read_text(encoding="utf-8")
+    url = re.search(r'export const COMPANION_STORE_URL = "([^"]+)";', links).group(1)
+    assert f"[Add the Companion to Chrome]({url})" in readme
+
+
 def test_step_four_is_one_lead_card_with_the_details_folded():
     """Design refresh Task 4.3: step 4 is the page's lead card. The job's resume (its page, band and square), its Match
     score with the gain over its base resume, where the job stands, Open the job post (the one filled button), Mark

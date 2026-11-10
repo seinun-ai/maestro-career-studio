@@ -596,7 +596,11 @@
   proposal past `expires_at` is left out via `proposals.past_expiry`, not expired). Like the Jobs list it reads the
   other copy's replicas too. `next_up` is the first that exists in `NEXT_UP_ORDER`: an application at `offered`
   (waited longest first), the `pdf_ready` rung (`services/stage.py`) with the best tracker score, a Needs you proposal
-  (newest, the lane's order); null when none. Each passes over an application whose status change, or a proposal
+  (newest, the lane's order), then `next_step`: your own job (`source` user, no agent proposal) on a rung below
+  `pdf_ready` (saved, scored, gaps, tailored), owned by this copy with no local request pending or sent for it, the
+  one most recently touched (its save, or its application's or gap analysis's last write) and only if that was in
+  the past `NEXT_STEP_DAYS` (14), carrying its `stage` and open `session_id`; null when none. `has_jobs` says whether
+  you saved any job yourself (`source` user, no agent proposal; with none the page leads to Add job). Each passes over an application whose status change, or a proposal
   whose decision, is on its way to the other copy (`sync/requests.on_their_way`: a local request pending or sent),
   so a Skip "Sent at the next sync" moves the card on; a refused request brings the job back. It carries `kind`, the job, application and proposal ids, title,
   company, location, `pay` as posted, `base_resume` (slug, name, colour hue), `score`, `status`, `proposed_by`,

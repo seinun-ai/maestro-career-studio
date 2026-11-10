@@ -97,7 +97,7 @@ export function ResumesFolderNote({ copyMissed = false, className }: { copyMisse
       <span aria-hidden="true">·</span>
       <GuardedLink
         href={anchorHref("/settings", "resumes-folder")}
-        className="text-primary shrink-0 underline-offset-4 hover:underline"
+        className="text-primary shrink-0 underline underline-offset-4"
       >
         Change folder
       </GuardedLink>

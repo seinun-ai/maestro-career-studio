@@ -538,7 +538,7 @@ function PassRowView({
           {metricAsk && row.finding.alt_question && (
             <button
               type="button"
-              className="text-primary text-body-medium underline-offset-2 hover:underline disabled:pointer-events-none disabled:opacity-50"
+              className="text-primary text-body-medium underline underline-offset-2 disabled:pointer-events-none disabled:opacity-50"
               aria-expanded={row.useAlternative}
               disabled={!open}
               onClick={() => onChange({ useAlternative: !row.useAlternative })}

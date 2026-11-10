@@ -17,11 +17,11 @@ const { todayKey } = load("lib/today.ts");
 const ZONE = { tz: Intl.DateTimeFormat().resolvedOptions().timeZone || null, offsetMinutes: -new Date().getTimezoneOffset() };
 const TODAY_KEY = todayKey(ZONE);
 // The one filled button's classes (components/ui/button.tsx, variant "default").
-const FILLED = /bg-primary text-primary-foreground/g;
+const FILLED = /bg-signal text-on-signal/g;
 
 /** The one filled control: its tag, its href (a link) and its words. */
 function filled(html) {
-  const m = /<(a|button)\b([^>]*bg-primary text-primary-foreground[^>]*)>([^<]*)<\/\1>/.exec(html);
+  const m = /<(a|button)\b([^>]*bg-signal text-on-signal[^>]*)>([^<]*)<\/\1>/.exec(html);
   assert.ok(m, "no filled button");
   return { tag: m[1], href: /href="([^"]*)"/.exec(m[2])?.[1] ?? null, label: m[3] };
 }
@@ -68,6 +68,7 @@ const response = (over = {}) => ({
   today: "2026-10-20",
   time_zone: "Europe/Berlin",
   next_up: item(),
+  has_jobs: true,
   also: [
     { key: "to_approve", count: 3, href: "/proposals" },
     { key: "to_check", count: 4, href: "/applications?stage=tailored" },
@@ -176,7 +177,7 @@ test("an offer and a proposal's question each say their own move", () => {
 /** The quiet Skip beside the filled button: an outline button worded Skip, or null. */
 function skip(html) {
   const m = /<button\b([^>]*)>Skip<\/button>/.exec(html);
-  return m ? { outline: /\bborder\b/.test(m[1]) && !/bg-primary text-primary-foreground/.test(m[1]) } : null;
+  return m ? { outline: /\bborder\b/.test(m[1]) && !/bg-signal text-on-signal/.test(m[1]) } : null;
 }
 
 test("Skip sits beside the button for a ready PDF and an agent's question, never for an offer", () => {
@@ -271,6 +272,51 @@ test("a new user without a key or a resume sees Setup's card instead", () => {
   const busy = render({ today: response(), setup: SETUP_NEW });
   assert.match(busy, />Next up</);
   assert.doesNotMatch(busy, />Set up</);
+});
+
+test("no job saved yet: Add your first job leads, its one filled button opening Add job", () => {
+  const html = render({ today: response({ next_up: null, has_jobs: false, also: [], more: [] }) });
+  assert.match(html, />Next up</);
+  assert.match(html, /<h2[^>]*>Add your first job<\/h2>/);
+  assert.equal((html.match(FILLED) ?? []).length, 1);
+  assert.deepEqual(filled(html), { tag: "a", href: "/new", label: "Add job" });
+  assert.doesNotMatch(html, /Nothing waiting on you/);
+  // Setup's required steps still come first.
+  const fresh = render({ today: response({ next_up: null, has_jobs: false }), setup: SETUP_NEW });
+  assert.match(fresh, />Set up</);
+  assert.doesNotMatch(fresh, /Add your first job/);
+});
+
+test("a saved job's next step leads in the job page's words, below Setup's required steps", () => {
+  const step = (stage, over = {}) =>
+    render({
+      today: response({
+        next_up: item({ kind: "next_step", stage, application_id: null, status: null, steps: [{ key: "saved", at: "2026-10-19T09:00:00+00:00" }], ...over }),
+      }),
+    });
+  assert.deepEqual(filled(step("saved")), { tag: "a", href: "/jobs/job-1?tab=fit", label: "Score my resumes" });
+  assert.deepEqual(filled(step("scored")), { tag: "a", href: "/jobs/job-1?tab=fit", label: "Analyze gaps" });
+  assert.deepEqual(filled(step("gaps", { session_id: "s-1" })), { tag: "a", href: "/jobs/job-1/tailor/s-1", label: "Continue gap analysis" });
+  assert.deepEqual(filled(step("tailored")), { tag: "a", href: "/jobs/job-1?tab=output", label: "Create PDF" });
+  const scored = step("scored");
+  assert.equal((scored.match(FILLED) ?? []).length, 1);
+  assert.match(scored, />Next up</);
+  assert.match(scored, /Analyze gaps<\/span><span[^>]*>now</);
+  // No Skip on a job you saved: its one move is the button.
+  assert.equal(skip(scored), null);
+  // A new user's Setup card outranks a job's next step, never a ready PDF.
+  const fresh = render({
+    today: response({ next_up: item({ kind: "next_step", stage: "scored", application_id: null }) }),
+    setup: SETUP_NEW,
+  });
+  assert.match(fresh, />Set up</);
+  assert.doesNotMatch(fresh, /Analyze gaps/);
+});
+
+test("this week waits for a first application", () => {
+  const html = render({ today: response({ week: { ...WEEK, days: WEEK.days.map((d) => ({ ...d, applied: 0 })), applied: 0, replies: 0, interviews: 0, applied_all_time: 0 } }) });
+  assert.doesNotMatch(html, /This week/);
+  assert.doesNotMatch(html, /role="img"/);
 });
 
 test("a failed read is its own state, never the empty one", () => {

@@ -12,6 +12,7 @@ import { PageHeader, PageShell } from "@/components/page-shell";
 import { DeclineDialog, useProposalActions } from "@/components/proposals/triage-actions";
 import { SetupEntryCard, needsSetup } from "@/components/setup/setup-entry-card";
 import { useOpenSetupOnFirstLaunch } from "@/components/setup/use-first-run";
+import { FirstJobCard } from "@/components/today/first-job-card";
 import { Button } from "@/components/ui/button";
 import { Fold } from "@/components/ui/fold";
 import { LeadCard } from "@/components/ui/lead-card";
@@ -72,8 +73,9 @@ function browserZone(): BrowserZone {
 
 /**
  * Today, the home page (`/` redirects here): Next up as the Lead, three counts under Also today, the rest in
- * one fold, then this week. One read, `GET /api/today`, picks and counts everything; Setup's entry card
- * takes the lead place for a new user with nothing to do yet, and a brand-new install opens Setup once.
+ * one fold, then this week (from a first application). One read, `GET /api/today`, picks and counts everything;
+ * Setup's entry card takes the lead place for a new user with nothing more pressing than a saved job's next step,
+ * then Add your first job with no job saved, and a brand-new install opens Setup once.
  */
 export default function TodayPage() {
   const zone = browserZone();
@@ -124,7 +126,7 @@ export default function TodayPage() {
       ) : (
         <div className="flex flex-col gap-7">
           <div ref={lead} tabIndex={-1} className="outline-none">
-            {data.next_up ? (
+            {data.next_up && data.next_up.kind !== "next_step" ? (
               <NextUp item={data.next_up} onSkipped={() => (skipped.current = true)} />
             ) : setup.isPending && setup.failureCount === 0 ? (
               // Setup's card or the empty line: whichever it is, not one and then the other. A failed setup
@@ -132,6 +134,11 @@ export default function TodayPage() {
               <Skeleton className="h-40 w-full rounded-corner-lg" />
             ) : setup.data && needsSetup(setup.data) ? (
               <SetupEntryCard status={setup.data} />
+            ) : data.next_up ? (
+              // A saved job's next step, below every other pick and below Setup's required steps.
+              <NextUp item={data.next_up} onSkipped={() => (skipped.current = true)} />
+            ) : !data.has_jobs ? (
+              <FirstJobCard />
             ) : (
               <section aria-label="Next up" className="flex items-center gap-3 rounded-corner-lg bg-card p-7">
                 <CONCEPT_ICONS.done aria-hidden="true" className="size-5 shrink-0 text-success" />
@@ -141,7 +148,8 @@ export default function TodayPage() {
           </div>
           {data.also.length > 0 ? <AlsoToday counts={data.also} /> : null}
           {data.more.length > 0 ? <More counts={data.more} /> : null}
-          <ThisWeek week={data.week} />
+          {/* Nothing to chart before a first application. */}
+          {data.week.applied_all_time > 0 ? <ThisWeek week={data.week} /> : null}
         </div>
       )}
     </PageShell>

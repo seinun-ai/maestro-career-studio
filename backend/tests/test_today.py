@@ -94,7 +94,7 @@ def test_nothing_to_do_means_no_next_up(db_session):
 
 
 def test_the_order_rule_is_a_named_constant():
-    assert today.NEXT_UP_ORDER == ("offer", "pdf_ready", "needs_you")
+    assert today.NEXT_UP_ORDER == ("offer", "pdf_ready", "needs_you", "next_step")
     assert today.QUIET_FOLLOW_UP_DAYS == 14
 
 
@@ -159,6 +159,73 @@ def test_a_question_from_an_agent_comes_last(db_session):
     assert item["reason"] == "Which start date should I give?"
     assert item["base_resume"]["slug"] == "alpha" and item["score"] == 72
     assert [step["key"] for step in item["steps"]] == ["saved", "proposed"]
+
+
+def test_with_no_job_saved_today_says_so(db_session):
+    body = _build(db_session)
+    assert body["next_up"] is None and body["has_jobs"] is False
+    # Jobs only an agent brought, its own or one a proposal carries, are not jobs you saved.
+    _job(db_session, title="Agent's", source="agent")
+    db_session.add(ApplicationProposal(job_id=_job(db_session, title="Proposed").id, status="pending_review"))
+    assert _build(db_session)["has_jobs"] is False
+    _job(db_session)
+    assert _build(db_session)["has_jobs"] is True
+
+
+def test_a_saved_job_is_next_only_while_touched_in_the_past_fourteen_days(db_session):
+    job = _job(db_session, title="Saved a while ago")
+    edge = NOW - timedelta(days=today.NEXT_STEP_DAYS)
+    job.created_at = edge
+    assert _build(db_session)["next_up"]["title"] == "Saved a while ago"
+    job.created_at = edge - timedelta(minutes=1)
+    assert _build(db_session)["next_up"] is None
+    # Touching it again (an application written inside the window) brings it back.
+    _app(db_session, job, updated_at=NOW - timedelta(days=2))
+    assert _build(db_session)["next_up"]["title"] == "Saved a while ago"
+    # Still a saved job you made: Today keeps leading with its own lead, not "Add your first job".
+    assert _build(db_session)["has_jobs"] is True
+
+
+def test_a_saved_job_not_applied_to_is_next_on_its_next_step_the_most_recently_touched_first(db_session):
+    older = _job(db_session, title="Older save")
+    older.created_at = NOW - timedelta(days=9)
+    newer = _job(db_session, title="Newer save")
+    newer.created_at = NOW - timedelta(days=4)
+    # Touched since: a gap analysis written yesterday makes the older save the newest touched.
+    db_session.add(TailoringSession(job_id=older.id, base_resume="alpha", status="open",
+                                    gaps_json={"categories": []}, updated_at=NOW - timedelta(days=1)))
+    # Never picked: an agent's job, a job a proposal carries, an applied one, a closed one.
+    _job(db_session, title="Agent's", source="agent")
+    db_session.add(ApplicationProposal(job_id=_job(db_session, title="Proposed").id, status="pending_review"))
+    _app(db_session, _job(db_session, title="Applied"), status="applied", applied_at=NOW)
+    _app(db_session, _job(db_session, title="Skipped"), status="skipped")
+
+    item = _build(db_session)["next_up"]
+    assert item["kind"] == "next_step"
+    assert (item["title"], item["stage"]) == ("Older save", "gaps")
+    assert item["session_id"] is not None and item["application_id"] is None
+    assert [step["key"] for step in item["steps"]] == ["saved"]
+
+
+def test_a_tailored_draft_is_still_a_next_step_and_its_application_rides_along(db_session):
+    # Create PDF is its next step.
+    newer = _job(db_session, title="Newer save")
+    newer.created_at = NOW - timedelta(days=4)
+    draft = _app(db_session, newer, customized_json=DRAFT)
+    draft_item = _build(db_session)["next_up"]
+    assert (draft_item["title"], draft_item["stage"]) == ("Newer save", "tailored")
+    assert draft_item["application_id"] == str(draft.id) and draft_item["status"] == "draft"
+
+
+def test_every_existing_pick_comes_before_a_saved_jobs_next_step(db_session):
+    _job(db_session, title="Just saved")
+    prop = _needs_you(db_session)
+    assert _build(db_session)["next_up"]["kind"] == "needs_you"
+    db_session.delete(prop)
+    _pdf_ready(db_session, 70.0)
+    assert _build(db_session)["next_up"]["kind"] == "pdf_ready"
+    _offer(db_session)
+    assert _build(db_session)["next_up"]["kind"] == "offer"
 
 
 def test_a_question_past_its_expiry_is_not_next_and_nothing_is_written(db_session, client):

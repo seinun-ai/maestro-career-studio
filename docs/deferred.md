@@ -43,7 +43,6 @@
     latest, and a foreign template-only change reads as an unsaved local edit. Do when a false "changed outside the editor" banner or a template-only foreign change reads as unsaved is reproduced.
 27. `FullscreenEditorPage` is `h-dvh` (both studios, the template editor), and `VersionBanner` renders above it in
     `SidebarGutter`, so the page overflows by the banner's height whenever the banner shows. Do when `VersionBanner` shows above a fullscreen editor.
-28. Dark `--ring` on `--primary-container` (the FAB) is 2.88:1, so that surface is not in `_RING_SURFACES` (1.4.11). Do when the FAB's dark ring contrast is next adjusted.
 29. Focus lands on `<body>` on Escape from the <768px sidebar sheet (which stays open after a nav tap) and after any
     client-side link navigation. `Button nativeButton={false} render={<a>}` announces a link as a button (~40 sites,
     21 files): use `buttonVariants` on a plain `<a>` or `GuardedLink`, the sidebar's pattern. Do when the <768px sidebar sheet or a `nativeButton={false}` link is next touched.

@@ -213,7 +213,7 @@ function GapRow({ row, maxJobs }: { row: BuildAreaRow; maxJobs: number }) {
         {row.kb_entities.length > 0 ? (
           <>
             {" · in: "}
-            <Link href="/career" className="text-primary hover:underline">
+            <Link href="/career" className="text-primary underline underline-offset-2">
               {row.kb_entities.join(", ")}
             </Link>
           </>

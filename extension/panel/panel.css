@@ -23,9 +23,14 @@
   --cs-text: oklch(0.145 0 0);
   --cs-muted: oklch(0.505 0 0);
   --cs-line: oklch(0.92 0 0);
-  --cs-primary: oklch(0.48 0.17 259);
-  --cs-primary-tonal: oklch(0.91 0.043 259);
+  --cs-primary: oklch(0.205 0 0);
+  --cs-primary-tonal: oklch(0.9 0.014 259);
   --cs-on-primary: oklch(0.985 0 0);
+  /* The app's signal (marigold): the one main button per view, a fill with dark text and a 1px edge. */
+  --cs-signal: oklch(0.828 0.166 79.4);
+  --cs-on-signal: oklch(0.19 0.039 92.2);
+  --cs-signal-hover: oklch(0.792 0.165 77.5);
+  --cs-signal-outline: oklch(0.717 0.151 75.7);
   --cs-good: oklch(0.48 0.1 163);
   --cs-good-tonal: oklch(0.915 0.06 163);
   --cs-warn-tonal: oklch(0.915 0.06 70);
@@ -38,10 +43,10 @@
    * and the text on it, one meaning per colour in both apps. Muted is the web's `--muted` and `--muted-foreground`. */
   --cs-muted-container: oklch(0.94 0 0);
   --cs-on-muted-container: oklch(0.505 0 0);
-  --cs-primary-container: oklch(0.91 0.043 259);
-  --cs-on-primary-container: oklch(0.33 0.12 259);
-  --cs-secondary-container: oklch(0.925 0.022 259);
-  --cs-on-secondary-container: oklch(0.33 0.05 259);
+  --cs-primary-container: oklch(0.9 0.014 259);
+  --cs-on-primary-container: oklch(0.3 0.03 259);
+  --cs-secondary-container: oklch(0.89 0 0);
+  --cs-on-secondary-container: oklch(0.2 0 0);
   --cs-success-container: oklch(0.915 0.06 163);
   --cs-on-success-container: oklch(0.4 0.083 163);
   --cs-warning-container: oklch(0.915 0.06 70);
@@ -63,7 +68,7 @@
   --cs-on-resume-container-l: 0.38;
   --cs-on-resume-container-c: 0.82;
 }
-/* The app's primary, success, warning and destructive tokens, light and dark (frontend/app/globals.css), pinned by
+/* The app's primary, signal, success, warning and destructive tokens, light and dark (frontend/app/globals.css), pinned by
  * test_extension_status_roles.py; every text-on-fill pair is checked by test_extension_panel_contrast.py.
  * Only the tokens that MOVE are restated. A panel is browser chrome, so it
  * follows the browser's scheme rather than the page's. */
@@ -74,9 +79,14 @@
     --cs-text: oklch(0.985 0 0);
     --cs-muted: oklch(0.708 0 0);
     --cs-line: oklch(0.32 0 0);
-    --cs-primary: oklch(0.76 0.11 259);
-    --cs-on-primary: oklch(0.205 0.05 259);
-    --cs-primary-tonal: oklch(0.37 0.09 259);
+    --cs-primary: oklch(0.92 0 0);
+    --cs-on-primary: oklch(0.205 0 0);
+    --cs-primary-tonal: oklch(0.33 0.014 259);
+    /* The signal keeps its fill; restated so the parity pin reads every copied token in this block. */
+    --cs-signal: oklch(0.828 0.166 79.4);
+    --cs-on-signal: oklch(0.19 0.039 92.2);
+    --cs-signal-hover: oklch(0.856 0.156 84.4);
+    --cs-signal-outline: oklch(0.856 0.156 84.4);
     --cs-good: oklch(0.83 0.11 163);
     --cs-good-tonal: oklch(0.38 0.075 163);
     --cs-warn-tonal: oklch(0.38 0.075 70);
@@ -85,10 +95,10 @@
     --cs-shadow: 0 2px 6px oklch(0 0 0 / 40%), 0 10px 28px oklch(0 0 0 / 34%);
     --cs-muted-container: oklch(0.269 0 0);
     --cs-on-muted-container: oklch(0.708 0 0);
-    --cs-primary-container: oklch(0.37 0.09 259);
-    --cs-on-primary-container: oklch(0.92 0.038 259);
-    --cs-secondary-container: oklch(0.33 0.03 259);
-    --cs-on-secondary-container: oklch(0.91 0.02 259);
+    --cs-primary-container: oklch(0.33 0.014 259);
+    --cs-on-primary-container: oklch(0.92 0.01 259);
+    --cs-secondary-container: oklch(0.34 0 0);
+    --cs-on-secondary-container: oklch(0.93 0 0);
     --cs-success-container: oklch(0.38 0.075 163);
     --cs-on-success-container: oklch(0.915 0.06 163);
     --cs-warning-container: oklch(0.38 0.075 70);
@@ -686,6 +696,7 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 .qna .linkish {
   border: none; background: none; cursor: pointer;
   padding: 4px 6px; margin-left: auto;
+  text-decoration: underline; text-underline-offset: 2px;
 }
 /* Only what makes it a TEXTAREA rather than the pause row's input — the rest of
  * the box is the shared rule above. A pasted question can be a paragraph, so it
@@ -789,12 +800,14 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 /* Never wraps and never shrinks: a primary broken over three lines ("Fill /
  * this / form") reads as three buttons. Full width comes from the row (`width: 100%` on a
  * `flex: none` item puts it on a line of its own), not from letting it flex. */
+/* The footer's one main button is the signal, the app's "your move" fill: dark text and a 1px edge, since
+ * marigold on white is only 1.7:1. `.cta.alt` (the secondary footer buttons) overrides fill and edge. */
 .cta {
   flex: none; width: 100%; white-space: nowrap; min-width: 96px; height: 36px; padding: 0 16px;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   font: 500 14px/1 var(--cs-font);
-  background: var(--cs-primary); color: var(--cs-on-primary);
-  border: none; border-radius: 8px; cursor: pointer;
+  background: var(--cs-signal); color: var(--cs-on-signal);
+  border: 1px solid var(--cs-signal-outline); border-radius: 8px; cursor: pointer;
 }
 .cta.spin::after { margin-left: 0; }
 /* An action is running. The button is out of reach either way — `disabled` is
@@ -852,7 +865,11 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 .run .unpick { margin-top: 4px; }
 .run-learned, .run-marking { margin-top: 10px; }
 .run-marking { display: flex; align-items: center; flex-wrap: wrap; gap: 0; margin-top: 0; }
-.run-marking .linkish, .run-learned .linkish { border: none; background: none; cursor: pointer; padding: 4px 6px; }
+/* Undo is ink text with no icon, so the underline (not a colour) says it is a control. */
+.run-marking .linkish, .run-learned .linkish {
+  border: none; background: none; cursor: pointer; padding: 4px 6px;
+  text-decoration: underline; text-underline-offset: 2px;
+}
 .run-mark-note { margin-top: 8px; overflow-wrap: anywhere; }
 
 /* The answer receipt's flags (stages/fill.js `flagNodes`) and the knock-out
@@ -868,7 +885,7 @@ button.stg-row:focus-visible { outline-offset: -2px; }
 .cta, .stop, .fork button, .fork a, .seg button, .status-seg button {
   transition: background-color 150ms, transform 140ms;
 }
-.cta:hover:not(:disabled):not([aria-disabled="true"]) { background: color-mix(in oklab, var(--cs-primary), var(--cs-on-primary) 12%); }
+.cta:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--cs-signal-hover); }
 .cta.alt:hover:not(:disabled):not([aria-disabled="true"]), .stop:hover:not(:disabled):not([aria-disabled="true"]), .fork button:hover:not(:disabled):not([aria-disabled="true"]), .fork a:hover,
 .seg button:hover:not(:disabled):not([aria-disabled="true"]), .status-seg button:hover:not(:disabled):not([aria-disabled="true"]) {
   background: color-mix(in oklab, var(--cs-surface), var(--cs-text) 6%);
