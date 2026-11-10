@@ -28,6 +28,15 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Saves work on any Docker web port.** With `FRONTEND_HOST_PORT` set to anything but 3000, pages loaded but every
+  save was refused, because the backend only trusted pages from port 3000. The default now follows that port. If you
+  set `ALLOWED_WEB_ORIGINS` yourself, it still has to name the port.
+- **A photo or scanned PDF in the Assistant no longer stalls the app.** Reading one used to hold every other request
+  until the AI model answered, for up to ten minutes. It now runs on its own, gives up after two minutes and says
+  the file took too long to read.
+
 ## [0.13.0] — 2026-11-09
 
 Until now, Maestro's form answers were written for a US applicant. Apply in India and nobody asked your
