@@ -31,12 +31,6 @@
 
   /** Prefer a described schema.org JobPosting; otherwise use visible content. */
   function extractJobPosting() {
-    const stripHtml = (html) => {
-      const div = document.createElement("div");
-      div.innerHTML = html;
-      return div.innerText;
-    };
-
     const posting = ns.findJobPostingInDocument({ presenceOnly: false });
     if (posting && !postingIsForAnotherJob(posting)) {
       const org = posting.hiringOrganization;
@@ -44,11 +38,13 @@
       const parts = [];
       if (posting.title) parts.push(`Title: ${posting.title}`);
       if (company) parts.push(`Company: ${company}`);
-      const loc = posting.jobLocation?.address?.addressLocality
-        ? `${posting.jobLocation.address.addressLocality}, ${posting.jobLocation.address.addressRegion ?? ""}`
+      // `jobLocation` is one place or a list of them; the line names the first.
+      const address = [posting.jobLocation].flat()[0]?.address;
+      const loc = address?.addressLocality
+        ? `${address.addressLocality}, ${address.addressRegion ?? ""}`
         : null;
       if (loc) parts.push(`Location: ${loc}`);
-      parts.push("", stripHtml(posting.description).trim());
+      parts.push("", ns.descriptionText(posting.description));
       return {
         url: location.href,
         title: document.title,

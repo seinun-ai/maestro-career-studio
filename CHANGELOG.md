@@ -28,6 +28,18 @@ image tag is the same version with the leading `v` removed (`0.2.0`).
 
 ## [Unreleased]
 
+### Fixed
+
+- The Companion said "No job description found on this page" on Cornerstone career sites (`csod.com`), over a
+  job you could see. Those sites write the job's title and description under capitalised names, which the
+  Companion didn't read. It reads them now, with the job's title, company and location.
+- A job page that lists its locations gave the Companion no location, even with only one in the list. The
+  first one is now the job's location.
+- A job the Companion saved from a page's own job record could run words together where a line ended
+  ("Annual SalaryJob Closing") and lose its paragraphs. The description now keeps its lines, paragraphs, list
+  items and table rows, and a page's styling code no longer lands in it. A job saved before keeps its old
+  text.
+
 ## [0.13.0] — 2026-11-09
 
 Until now, Maestro's form answers were written for a US applicant. Apply in India and nobody asked your

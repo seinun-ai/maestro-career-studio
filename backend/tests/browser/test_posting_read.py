@@ -8,6 +8,8 @@ the reader writes are then pushed through the panel's real `previewFrom` (node, 
 boxes fill and the description keeps its first line.
 """
 
+import json
+
 import pytest
 
 from tests.browser.conftest import EXTENSION, fixture_html
@@ -443,3 +445,48 @@ def test_an_h2_banner_titles_a_page_whose_only_h1_is_the_logo_but_not_a_page_wit
     body = (f"<div><h1>Careers</h1></div><div><h2>Senior Data Analyst</h2></div>"
             f"<div class=job-description>{FILLER}</div>")
     assert _header(_generic(page, body, title="Senior Data Analyst - Acme Games")) == []
+
+
+# ---------- a JSON-LD description: its HTML read block by block ----------
+
+
+def _described(page, description):
+    """The description a page's JobPosting record carries, as the reader writes it under the title line."""
+    posting = {"@context": "https://schema.org", "@type": "JobPosting", "title": "Data Analyst",
+               "description": description}
+    # "<\\/" is JSON's own escape, as a site writes it so a "</script>" in the description does not end the block.
+    record = json.dumps(posting).replace("</", "<\\/")
+    out = _generic(page, "<p>Hello.</p>", head=f'<script type="application/ld+json">{record}</script>')
+    assert out["source"] == "json-ld"
+    assert out["text"].startswith("Title: Data Analyst\n\n")
+    return out["text"].removeprefix("Title: Data Analyst\n\n")
+
+
+def test_a_json_ld_description_keeps_its_blocks_on_their_own_lines(page):
+    """A detached node's `innerText` is its `textContent`: blocks with no space between them in the source
+    ran together ("FinancePay:", "SalaryRequirements"), and the saved job lost its paragraphs."""
+    text = _described(page, (
+        "<div><b>Division:</b> Finance</div><div><b>Pay:</b> Annual Salary</div>"
+        "<p>We build weekly reports.</p><p>You own the numbers.</p>"
+        "<h3>Requirements</h3><ul><li>SQL</li><li>Python</li></ul>"
+        "Line one<br>line two"))
+    assert text == ("Division: Finance\nPay: Annual Salary\n\nWe build weekly reports.\n\nYou own the numbers.\n\n"
+                    "Requirements\nSQL\nPython\nLine one\nline two")
+
+
+def test_a_json_ld_description_table_reads_a_row_to_a_line(page):
+    text = _described(page, "<table><tr><th><p>Type</p></th><td>Full-Time</td></tr>"
+                            "<tr><td>Closing</td><td>Friday</td></tr></table>")
+    assert text == "Type\tFull-Time\nClosing\tFriday"
+
+
+def test_a_json_ld_description_drops_empty_blocks_styles_and_source_whitespace(page):
+    text = _described(page, "<div>&nbsp; &nbsp;</div>   \n\n<div>Annual&nbsp;Salary</div>\n"
+                            "<style>.x{color:red}</style><script>track()</script><div>Job  Closing</div>")
+    assert text == "Annual Salary\nJob Closing"
+
+
+def test_a_plain_text_json_ld_description_keeps_its_own_lines_and_inline_markup_joins_nothing(page):
+    plain = "Build reports for R&amp;D.\n\nRequirements:\n- SQL\n- Python"
+    assert _described(page, plain) == "Build reports for R&D.\n\nRequirements:\n- SQL\n- Python"
+    assert _described(page, "<p>Py<b>thon</b> and <a href='#'>SQL</a>.</p>") == "Python and SQL."

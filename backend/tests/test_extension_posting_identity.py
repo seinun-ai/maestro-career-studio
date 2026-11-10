@@ -120,14 +120,14 @@ global.document = {
   querySelectorAll: (selector) =>
     selector === 'script[type="application/ld+json"]' ? scripts : [],
   querySelector: () => null,
-  createElement: () => {
-    const el = { innerHTML: "" };
-    Object.defineProperty(el, "innerText", {
-      get: () => el.innerHTML.replace(/<[^>]+>/g, ""),
-    });
-    return el;
-  },
   body: { innerText: spec.page.body ?? "" },
+};
+// The description's markup as one run of text: how it reads block by block needs a real parser, and is
+// tests/browser/test_posting_read.py's to say.
+global.DOMParser = class {
+  parseFromString(html) {
+    return { body: { childNodes: [{ nodeType: 3, nodeValue: html.replace(/<[^>]+>/g, "") }] } };
+  }
 };
 global.location = { href: spec.page.url, hostname: new URL(spec.page.url).hostname };
 main(async () => {
@@ -190,6 +190,72 @@ def test_json_ld_without_a_url_is_trusted_as_before(tmp_path):
 def test_the_backend_rule_the_guard_mirrors():
     assert is_same_posting(LI_A, LI_B) is False
     assert is_same_posting(LI_A, "https://www.linkedin.com/jobs/search/?currentJobId=4001") is True
+
+
+# ---------- a JobPosting the site wrote in its own shape ----------
+
+REQ_URL = "https://careers.example.test/careersite/5/home/requisition/1475"
+# The page around the posting: no job-description container, no `main`, no description heading.
+REQ_BODY = "Search jobs\nSign in\nData Analyst\nApply now\n" + "The analyst builds weekly reports. " * 30
+REQ_DESCRIPTION = "<p>The analyst builds weekly reports for the finance team.</p>"
+
+
+def _extract_posting(tmp_path, posting):
+    return run_node(
+        _EXTRACT_DRIVER_JS,
+        {"page": {"url": REQ_URL, "body": REQ_BODY, "title": "Data Analyst | Job Details",
+                  "jsonLd": [json.dumps({"@context": "http://schema.org", "@type": "JobPosting", **posting})]}},
+        tmp_path, source=_content_source(_EXTRACT_SOURCES))
+
+
+def test_a_job_posting_with_capitalised_property_names_is_read(tmp_path):
+    """A career site whose serializer capitalises property names ("Title", "Description",
+    "HiringOrganization": {"Name"}, "Address") still declares a JobPosting. Reading only schema.org's
+    spelling found no description, so the page answered with its whole body and the panel said
+    "No job description found on this page" over a visible posting."""
+    out = _extract_posting(tmp_path, {
+        "DatePosted": "2026-11-03T06:00:00",
+        "Title": "Data Analyst",
+        "Description": REQ_DESCRIPTION,
+        "HiringOrganization": {"@type": "Organization", "Name": "Acme"},
+        "jobLocation": {"@type": "Place", "Address": {
+            "@type": "PostalAddress", "addressLocality": "Springfield", "addressRegion": "IL"}},
+    })
+    assert out["source"] == "json-ld"
+    assert out["text"] == ("Title: Data Analyst\nCompany: Acme\nLocation: Springfield, IL\n\n"
+                           "The analyst builds weekly reports for the finance team.")
+
+
+def test_schema_org_spelling_wins_over_a_capitalised_twin(tmp_path):
+    """A node carrying both spellings keeps the one schema.org defines."""
+    out = _extract_posting(tmp_path, {
+        "Title": "Not this one", "title": "Data Analyst",
+        "description": REQ_DESCRIPTION, "Description": "<p>Not this one either.</p>",
+    })
+    assert out["source"] == "json-ld"
+    assert out["text"] == "Title: Data Analyst\n\nThe analyst builds weekly reports for the finance team."
+
+
+def test_a_type_only_capitalised_posting_still_leaves_the_page_to_answer(tmp_path):
+    """Capitalised names change which property is read, not the rule that a posting needs a description."""
+    out = _extract_posting(tmp_path, {"Title": "Data Analyst"})
+    assert out["source"] == "body"
+    # A page's "__proto__" key is a property like any other, never the posting's prototype.
+    out = _extract_posting(tmp_path, {"Title": "Data Analyst", "__proto__": {"description": REQ_DESCRIPTION}})
+    assert out["source"] == "body"
+
+
+def test_the_first_of_several_job_locations_is_the_location(tmp_path):
+    """schema.org lets `jobLocation` be a list of places; a posting that lists them, even one, named no
+    location at all."""
+    out = _extract_posting(tmp_path, {
+        "title": "Data Analyst", "description": REQ_DESCRIPTION,
+        "jobLocation": [
+            {"@type": "Place", "address": {"addressLocality": "Springfield", "addressRegion": "IL"}},
+            {"@type": "Place", "address": {"addressLocality": "Lisbon"}},
+        ],
+    })
+    assert out["text"].splitlines()[:2] == ["Title: Data Analyst", "Location: Springfield, IL"]
 
 
 # ---------- where the text came from: a job signal, or just the page ----------

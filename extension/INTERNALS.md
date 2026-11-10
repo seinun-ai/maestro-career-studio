@@ -200,7 +200,19 @@ asking permission of itself.
 
 - **Save job** — the Job stage shows title, company and the grabbed job
   description in three fields you can correct before anything is saved (schema.org
-  `JobPosting` JSON-LD when the site provides it, visible text otherwise). Visible text
+  `JobPosting` JSON-LD when the site provides it, visible text otherwise). The record
+  is read in schema.org's spelling whatever the site capitalised (`schemaSpelled`,
+  `content/job-posting.js`: Cornerstone's career site, `csod.com`, writes `Title`,
+  `Description`, `HiringOrganization.Name` and `Address`, and has no description
+  container or heading to fall back on), a property already in schema.org's spelling
+  wins over its capitalised twin, and a `jobLocation` that is a list of places gives
+  the first as the location. The record's description is markup that is never
+  rendered, so it is parsed into a document of its own and read block by block
+  (`descriptionText`): a block starts a line, a `p` leaves a blank line, a `br` breaks
+  the line, a row's cells are a tab apart, `script` and `style` are not text, and a
+  newline inside a run of text is kept for a description written as plain text.
+  `innerText` of a detached node is its `textContent`, which ran blocks together
+  ("Annual SalaryJob Closing"). Visible text
   is read in this order, each candidate only if it is on screen (a hidden duplicate
   never answers): a job-description container; the section under a description
   heading (an element whose whole text is "Job Description", "About the role" and the

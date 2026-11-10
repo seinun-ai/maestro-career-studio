@@ -6,9 +6,27 @@
 (() => {
   const ns = (window.careerStudioCompanion ??= {});
 
+  /** A JSON-LD node with every property under schema.org's own spelling, all the way down.
+   *
+   * schema.org spells a property with a lower-case first letter ("description", "hiringOrganization").
+   * A career site whose serializer capitalises them ("Title", "Description", "HiringOrganization":
+   * {"Name": …}, "Address"; Cornerstone's career site) still declares a JobPosting, and a reader of
+   * schema.org's spelling finds no description in it. A property the node already carries in schema.org's
+   * spelling wins over its capitalised twin, and `@` keywords are as written. */
+  function schemaSpelled(node) {
+    if (Array.isArray(node)) return node.map(schemaSpelled);
+    if (!node || typeof node !== "object") return node;
+    // `fromEntries` defines each property outright, so a page's "__proto__" key is only a property.
+    return Object.fromEntries(Object.entries(node)
+      .map(([key, value]) => [key.charAt(0).toLowerCase() + key.slice(1), key, value])
+      .filter(([name, key]) => name === key || !Object.hasOwn(node, name))
+      .map(([name, , value]) => [name, schemaSpelled(value)]));
+  }
+
   /** Find the first usable JobPosting in a JSON-LD tree.
    * presenceOnly=true is detection: a type declaration is enough.
-   * presenceOnly=false is extraction: a description is required. */
+   * presenceOnly=false is extraction: a description is required, and the posting comes back in
+   * schema.org's spelling (`schemaSpelled`), so every reader of it reads one shape. */
   function findJobPosting(node, { presenceOnly = false } = {}) {
     if (!node || typeof node !== "object") return null;
     if (Array.isArray(node)) {
@@ -21,7 +39,11 @@
     const type = node["@type"];
     const isPosting = type === "JobPosting"
       || (Array.isArray(type) && type.includes("JobPosting"));
-    if (isPosting && (presenceOnly || Boolean(node.description))) return node;
+    if (isPosting && presenceOnly) return node;
+    if (isPosting) {
+      const posting = schemaSpelled(node);
+      if (posting.description) return posting;
+    }
     if (node["@graph"]) {
       return findJobPosting(node["@graph"], { presenceOnly });
     }
@@ -41,6 +63,55 @@
   }
 
   const oneLine = (text) => String(text ?? "").replace(/\s+/g, " ").trim();
+
+  // Elements a browser starts on a new line. A `p` also gets a blank line around it, as `innerText` gives it.
+  const BLOCK = /^(address|article|aside|blockquote|caption|center|dd|details|div|dl|dt|fieldset|figcaption|figure|footer|form|h[1-6]|header|hr|li|main|nav|ol|pre|section|summary|table|tbody|tfoot|thead|tr|ul)$/;
+  const UNREAD = /^(script|style|template|noscript)$/;
+  const CELL = -1; // between two cells of a row
+
+  /** A JobPosting description's HTML as the text a reader of the page sees.
+   *
+   * A JSON-LD description is markup that is never rendered, and the `innerText` of a node that is not
+   * rendered is its `textContent`: blocks with no space between them in the source ran together
+   * ("Annual SalaryJob Closing"), and a `style` block's rules read as prose. So the markup is parsed
+   * into a document of its own (nothing in it loads or runs) and walked: a block starts a new line, a
+   * `p` leaves a blank line, a `br` breaks the line, the cells of a row are a tab apart, and breaks
+   * that meet count once, the widest. Whitespace between two blocks is not text, and a run of spaces
+   * is one; a newline inside a run of text is kept, since a description written as plain text has
+   * nothing else to tell its lines apart. */
+  function descriptionText(html) {
+    const items = []; // text as written, and numbers: the line breaks a block edge asks for, or CELL
+    const walk = (node) => {
+      for (const child of node.childNodes) {
+        if (child.nodeType === 3) {
+          const text = child.nodeValue.replace(/[^\S\n]+/g, " ");
+          items.push(text.trim() ? text : " ");
+        }
+        if (child.nodeType !== 1) continue;
+        const tag = child.tagName.toLowerCase();
+        if (UNREAD.test(tag)) continue;
+        if (tag === "br") { items.push("\n"); continue; }
+        const edge = tag === "p" ? 2 : BLOCK.test(tag) ? 1 : 0;
+        if (edge) items.push(edge);
+        walk(child);
+        if (edge) items.push(edge);
+        if (/^t[dh]$/.test(tag) && child.nextElementSibling) items.push(CELL);
+      }
+    };
+    walk(new DOMParser().parseFromString(String(html ?? ""), "text/html").body);
+    let text = "";
+    let gap = 0;
+    for (const item of items) {
+      if (typeof item === "number") {
+        gap = item === CELL || gap === CELL ? CELL : Math.max(gap, item);
+      } else if (!(gap && item === " ")) {
+        if (text) text += gap === CELL ? "\t" : "\n".repeat(gap);
+        gap = 0;
+        text += item;
+      }
+    }
+    return text.replace(/ {2,}/g, " ").replace(/ *\n */g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
 
   /** Whether a node is on screen. `innerText` of a node that is not rendered returns its `textContent`,
    * so a hidden duplicate of a description (a mobile copy a stylesheet hides) reads exactly like the
@@ -166,6 +237,7 @@
   }
 
   ns.findJobPostingInDocument = findJobPostingInDocument;
+  ns.descriptionText = descriptionText;
   ns.postingHeaderLines = postingHeaderLines;
   ns.usableDescriptionNode = usableDescriptionNode;
   ns.descriptionUnderHeading = descriptionUnderHeading;
